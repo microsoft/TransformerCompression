@@ -2,6 +2,10 @@ from setuptools import find_packages, setup
 
 requirements = [
     "torch",
+    "datasets",
+    "transformers",
+    "numpy",
+    "wandb"
 ]
 
 setup(
