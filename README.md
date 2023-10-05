@@ -2,7 +2,7 @@
 
 This repository contains the code for the paper [SliceGPT](link made available on publication). 
 
-Slice GPT makes LLMs smaller by fir applying orthogonal tranformations to each layer that leave the model unchanged, and then slicing off rows and columns of the weight matrices.
+Slice GPT makes LLMs smaller by fir applying orthogonal transformations to each layer that leave the model unchanged, and then slicing off rows and columns of the weight matrices.
 
 The code is arranged as follows:
 
