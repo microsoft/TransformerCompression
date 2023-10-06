@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 import math
 import transformers
 import opt_modules
@@ -11,6 +12,29 @@ from transformers.models.opt.modeling_opt import OPTDecoderLayer
 
 def skip(*args, **kwargs):
     pass
+
+
+def do_not_initialize(func):
+    """
+    A decorator that prevents initalization of torch.nn modules.
+    """
+
+    def wrapper(*args, **kwargs):
+        kiming_fn = torch.nn.init.kaiming_uniform_
+        uniform_fn = torch.nn.init.uniform_
+        normal_fn = torch.nn.init.normal_
+
+        torch.nn.init.kaiming_uniform_ = skip
+        torch.nn.init.uniform_ = skip
+        torch.nn.init.normal_ = skip
+
+        func(*args, **kwargs)
+
+        torch.nn.init.kaiming_uniform_ = kiming_fn
+        torch.nn.init.uniform_ = uniform_fn
+        torch.nn.init.normal_ = normal_fn
+
+    return wrapper
 
 
 def get_opt(model):
@@ -41,6 +65,11 @@ def get_opt(model):
 
 @torch.no_grad()
 def opt_eval(model, testenc, dev):
+    """
+    evaluate the OPT model's perplexity on the test set.
+    This function loads each loayer onto the device one at a time,
+    so that we can evaluate models that are too large to fit on a single GPU.
+    """
     model.eval()
     testenc = testenc.input_ids
     nsamples = testenc.numel() // model.seqlen
@@ -140,6 +169,9 @@ def opt_eval(model, testenc, dev):
 
 
 def opt_multigpu(model, gpus):
+    """
+    Split the OPT model across multiple GPUs.
+    """
     model.model.decoder.embed_tokens = model.model.decoder.embed_tokens.to(gpus[0])
     model.model.decoder.embed_positions = model.model.decoder.embed_positions.to(
         gpus[0]
@@ -235,7 +267,6 @@ def opt_benchmark(model, input_ids, dev, check=False):
             cache["past"] = list(out.past_key_values)
             del out
         sync()
-        import numpy as np
 
         print("Median:", np.median(times))
         if check:
