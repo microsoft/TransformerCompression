@@ -7,7 +7,10 @@ import tqdm
 import utils
 import os
 import time
-from transformers.models.opt.modeling_opt import OPTDecoderLayer
+from transformers.models.opt.modeling_opt import (
+    OPTDecoderLayer,
+    OPTLearnedPositionalEmbedding,
+)
 
 
 def skip(*args, **kwargs):
@@ -448,7 +451,6 @@ def opt_add_orth_linear_output(
 
 
 def opt_add_orth_pos_embedding(pos_embedding, orth, config):
-    from transformers.models.opt.modeling_opt import OPTLearnedPositionalEmbedding
 
     layer_device = pos_embedding.weight.device
     layer_dtype = pos_embedding.weight.dtype
