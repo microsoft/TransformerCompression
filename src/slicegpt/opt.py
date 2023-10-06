@@ -125,34 +125,18 @@ def opt_argparser():
     return args
 
 
-@torch.no_grad()
-def rotate_opt(model, dataloader, dev, args):
+def get_layer0_inputs(model, dataloader, dev):
     """
-    TODO
+    Returns the inputs to the first layer of the model (after embeddings).
     """
-    model.eval()
-    use_cache = model.config.use_cache
-    model.config.use_cache = False
-    layers = model.model.decoder.layers
-
-    col_to_prune = int(args.sparsity * model.config.hidden_size)
-
+    # Move the relevant parts of the model to device. NB: this won't work from OPT 350m. 
     model.model.decoder.embed_tokens = model.model.decoder.embed_tokens.to(dev)
     model.model.decoder.embed_positions = model.model.decoder.embed_positions.to(dev)
-    if hasattr(model.model.decoder, "project_out") and model.model.decoder.project_out:
-        model.model.decoder.project_out = model.model.decoder.project_out.to(dev)
-    if hasattr(model.model.decoder, "project_in") and model.model.decoder.project_in:
-        model.model.decoder.project_in = model.model.decoder.project_in.to(dev)
-    layers[0] = layers[0].to(dev)
 
-    dtype = next(iter(model.parameters())).dtype
-    inps = torch.zeros(
-        (args.cal_nsamples, model.seqlen, model.config.hidden_size),
-        dtype=dtype,
-        device=dev,
-    )
+    layers = model.model.decoder.layers
+
     inps = []
-    cache = {"i": 0, "attention_mask": None}
+    attention_masks = []
 
     class Catcher(torch.nn.Module):
         def __init__(self, module):
@@ -161,8 +145,7 @@ def rotate_opt(model, dataloader, dev, args):
 
         def forward(self, inp, **kwargs):
             inps.append(inp)
-            cache["i"] += 1
-            cache["attention_mask"] = kwargs["attention_mask"]
+            attention_masks.append(kwargs["attention_mask"])
             raise ValueError
 
     layers[0] = Catcher(layers[0])
@@ -172,123 +155,128 @@ def rotate_opt(model, dataloader, dev, args):
         except ValueError:
             pass
     layers[0] = layers[0].module
-    layers[0] = layers[0].cpu()
 
-    _, Q_1 = utils.pca_calc(torch.cat(inps).reshape(-1, model.config.hidden_size))
-    if args.sparsity > 0:
-        Q_1 = Q_1[:, :-col_to_prune].clone()
-
-    model.model.decoder.embed_positions = opt_utils.opt_add_orth_pos_embedding(
-        model.model.decoder.embed_positions, orth=Q_1.clone(), config=model.config
-    )
-    model.model.decoder.embed_tokens = opt_utils.opt_add_orth_token_embedding(
-        model.model.decoder.embed_tokens, orth=Q_1.clone(), config=model.config
-    )
-    inps = []
-    cache = {"i": 0, "attention_mask": None}
-    layers[0] = layers[0].to(dev)
-    layers[0] = Catcher(layers[0])
-    for batch in dataloader:
-        try:
-            model(batch[0].to(dev))
-        except ValueError:
-            pass
-    layers[0] = layers[0].module
-    layers[0] = layers[0].cpu()
-
+    # Move relevant parts of the model back to cpu (if not already), and clear GPU cache.
     model.model.decoder.embed_tokens = model.model.decoder.embed_tokens.cpu()
     model.model.decoder.embed_positions = model.model.decoder.embed_positions.cpu()
-    if hasattr(model.model.decoder, "project_out") and model.model.decoder.project_out:
-        model.model.decoder.project_out = model.model.decoder.project_out.cpu()
-    if hasattr(model.model.decoder, "project_in") and model.model.decoder.project_in:
-        model.model.decoder.project_in = model.model.decoder.project_in.cpu()
     torch.cuda.empty_cache()
 
-    attention_mask = cache["attention_mask"]
-    inps = torch.cat(inps)
+    return torch.cat(inps), attention_masks[-1]
 
+def get_signals(layer, inputs, attention_mask, dev):
+    """
+    Take the input signals ("activations") for a layer, run the layer forward. 
+    Return the output of the layer (not layernormed) and the input to the MLP (pre-layernorm also). 
+    """
+    mlp_ln_inputs = []
+    layer = layer.to(dev)
+
+    def hook_fn(_, inp, _output):
+        # TODO do we really want to do the reshaeping here?
+        if type(inp) == tuple:
+            inp = inp[0]
+        mlp_ln_inputs.append(inp.cpu())
+
+    hook = layer.final_layer_norm.register_forward_hook(hook_fn)  
+    outs = [layer(input.unsqueeze(0), attention_mask=attention_mask)[0] for input in inputs]
+    hook.remove()
+        
+    return torch.cat(mlp_ln_inputs), torch.cat(outs)
+
+
+@torch.no_grad()
+def rotate_opt(model, dataloader, dev):
+    """
+    Rotate a model.
+    """
+    model.eval() # This switches off dropout.
+    model.config.use_cache = False # Do not cache attention key values.
+    dtype = next(iter(model.parameters())).dtype # Get the dtype of the model.
+
+    # List of layers to rotate.
+    layers = model.model.decoder.layers
+
+    # Get the input of the first layer norm and calculate the Q_1
+    inps, attention_mask = get_layer0_inputs(model, dataloader, dev)
+    _, Q_1 = utils.pca_calc(inps.reshape(-1, model.config.hidden_size))
+
+    # Rotate the embeddings.
+    W = model.model.decoder.embed_tokens.weight.data.to(device=dev, dtype=torch.float64)
+    Q_1 = Q_1.to(device=dev, dtype=torch.float64)
+    model.model.decoder.embed_tokens.weight.data = torch.matmul(W, Q_1).to(device="cpu", dtype=dtype)
+    
+    W = model.model.decoder.embed_positions.weight.data.to(device=dev, dtype=torch.float64)
+    model.model.decoder.embed_positions.weight.data = torch.matmul(W, Q_1).to(device="cpu", dtype=dtype)
+
+    # Clear GPU cache.
+    torch.cuda.empty_cache()
+
+    # Rotate the rest of the model.
     print(f"(Rotate) layers:", end=" ", flush=True)
     for i, layer in enumerate(layers):
         print(f" {i}", end="", flush=True)
         if i > 0:
             Q_1 = Q_5.clone()
 
-        layer.self_attn.q_proj = opt_utils.opt_add_orth_linear_input(
-            layer.self_attn.q_proj, Q_1.clone()
-        )
-        layer.self_attn.k_proj = opt_utils.opt_add_orth_linear_input(
-            layer.self_attn.k_proj, Q_1.clone()
-        )
-        layer.self_attn.v_proj = opt_utils.opt_add_orth_linear_input(
-            layer.self_attn.v_proj, Q_1.clone()
-        )
-        layer.attn_shortcut_Q = Q_1.clone().T.to(dtype)
+        # Rotate the Q, K and V matrices of the self-attention layer.
+        W = layer.self_attn.q_proj.weight.data.to(device=dev, dtype=torch.float64)
+        layer.self_attn.q_proj.weight.data = torch.matmul(W, Q_1).to(dtype)
 
-        layer = layer.to(dev)  # Load the layer into GPU
+        W = layer.self_attn.k_proj.weight.data.to(device=dev, dtype=torch.float64)
+        layer.self_attn.k_proj.weight.data = torch.matmul(W, Q_1).to(dtype)
 
-        # Extract the input of the second layer norm input and calculate the Q_3
-        mlp_ln_inputs = []
+        W = layer.self_attn.v_proj.weight.data.to(device=dev, dtype=torch.float64)
+        layer.self_attn.v_proj.weight.data = torch.matmul(W, Q_1).to(dtype)
 
-        def hook_fn(name):
-            def hook(_, inp, output):
-                if type(inp) == tuple:
-                    inp = inp[0]
-                if len(inp.shape) == 3:
-                    inp = inp.reshape(-1, inp.shape[-1])
-                mlp_ln_inputs.append(inp.cpu())
+        # Extract the inputs and outputs of the second layernorm input and calculate the Q_3
+        mlp_ln_inputs, outs = get_signals(layer, inps, attention_mask, dev)
+        _, Q_3 = utils.pca_calc(mlp_ln_inputs.reshape(-1, mlp_ln_inputs.shape[-1]))
+        _, Q_5 = utils.pca_calc(outs.reshape(-1, outs.shape[-1]))
 
-            return hook
-
-        handles = []
-        handles.append(
-            layer.final_layer_norm.register_forward_hook(hook_fn("final_layer_norm"))
-        )
-
-        outs = []
-        for j in range(args.cal_nsamples):
-            out = layer(inps[j].unsqueeze(0), attention_mask=attention_mask)[0]
-            outs.append(out)
-        for h in handles:
-            h.remove()
-
-        _, Q_3 = utils.pca_calc(torch.cat(mlp_ln_inputs, dim=0))
-        _, Q_5 = utils.pca_calc(torch.cat(outs).reshape(-1, out.shape[-1]))
-
-        if args.sparsity > 0:
-            Q_3 = Q_3[:, :-col_to_prune].clone()
-            if i < len(layers) - 1 or args.compress_head:
-                Q_5 = Q_5[:, :-col_to_prune].clone()
-
+        # Set the shortcut rotation matrix of the self-attention layer.
         layer.attn_shortcut_Q = torch.matmul(Q_1.clone().T, Q_3.clone()).to(dtype)
         layer.mlp_shortcut_Q = torch.matmul(Q_3.clone().T, Q_5.clone()).to(dtype)
 
-        model.model.decoder.layers[
-            i
-        ].self_attn.out_proj = opt_utils.opt_add_orth_linear_output(
-            layer.self_attn.out_proj, Q_3.clone()
-        )
-        layer.fc1 = opt_utils.opt_add_orth_linear_input(layer.fc1, Q_3.clone())
-        layer.fc2 = opt_utils.opt_add_orth_linear_output(layer.fc2, Q_5.clone())
+        # Rotate the Attention output matrix
+        W = layer.self_attn.out_proj.weight.data.to(device=dev, dtype=torch.float64)
+        layer.self_attn.out_proj.weight.data = torch.matmul(Q_3.T, W).to(device="cpu", dtype=dtype)
+        b = layer.self_attn.out_proj.bias.data.to(device=dev, dtype=torch.float64)
+        layer.self_attn.out_proj.bias.data = torch.matmul(Q_3.T, b).to(device="cpu", dtype=dtype)
 
-        layer = layers[i].to(dev)
-        # Now we can run the forward pass over this block
-        outs = []
-        for j in range(args.cal_nsamples):
-            out = layer(inps[j].unsqueeze(0), attention_mask=attention_mask)[0]
-            outs.append(out)
+        # Rotate the MLP input
+        W = layer.fc1.weight.data.to(device=dev, dtype=torch.float64)
+        layer.fc1.weight.data = torch.matmul(W, Q_3).to(device="cpu", dtype=dtype)
 
-        layers[i] = layer.cpu()
-        del layer
-        torch.cuda.empty_cache()
+        # Rotate MLP output
+        W = layer.fc2.weight.data.to(device=dev, dtype=torch.float64)
+        layer.fc2.weight.data = torch.matmul(Q_5.T, W).to(device="cpu", dtype=dtype)
+        b = layer.fc2.bias.data.to(device=dev, dtype=torch.float64)
+        layer.fc2.bias.data = torch.matmul(Q_5.T, b).to(device="cpu", dtype=dtype)
 
-        inps, outs = torch.cat(outs), inps
+        # The inputs to the netxt layer are the outputs from this one!
+        inps = outs
+        
     model.lm_head = opt_utils.opt_add_orth_linear_input(model.lm_head, Q_5.clone())
-    print(" Done!")
+    print(" Done rotating!")
+    
+
+def slice_rotated_OPT_model(model, new_embedding_dimension):
+    
+    # slice embeddings
+    pass# TODO
+
+    
+    
+    
+    
 
 
 @opt_utils.do_not_initialize
-def compress_opt(model, args):
-
+def slice_OPT_model(model, args):
+    """
+    TODO
+    """
+    
     # get the new embedding dimension
     col_to_prune = int(args.sparsity * model.config.hidden_size)
     if col_to_prune == 0:
@@ -426,7 +414,7 @@ if __name__ == "__main__":
         model = model.cpu()
 
     if args.benchmark and not args.ppl_check:
-        model = compress_opt(model, args)
+        model = slice_OPT_model(model, args)
         torch.cuda.empty_cache()
         dataloader, testloader = datautils.get_loaders(
             args.eval_dataset, seed=args.seed, model=args.model, seqlen=model.seqlen
@@ -460,7 +448,7 @@ if __name__ == "__main__":
             seqlen=model.seqlen,
         )
 
-        rotate_opt(model, dataloader, DEV, args)
+        rotate_opt(model, dataloader, DEV)
         model = model.cpu()
         if args.save_dir is not None:
             print(f"Saving the model to {args.save_dir}...")
@@ -468,32 +456,10 @@ if __name__ == "__main__":
     elif args.sparsity > 0:
         # load the model from load_dir
         print(f"Loading the model from {args.load_dir}...")
-        model = compress_opt(model, args)
+        model = slice_OPT_model(model, args) # this just makes an empty model!
         model.load_state_dict(
             torch.load(args.load_dir, map_location=torch.device("cpu"))
         )
-
-    if args.sparsegpt:
-        import sys
-
-        sys.path.append("./SparseGPT_Code")
-        dataloader, testloader = datautils.get_loaders(
-            args.cal_dataset,
-            nsamples=args.cal_nsamples,
-            seed=args.seed,
-            model=args.model,
-            seqlen=model.seqlen,
-        )
-        import opt_sparsegpt
-
-        sliceGPT_sparsity = args.sparsity
-        args.sparsity = args.sparsegpt_sp
-        opt_sparsegpt.opt_sequential(model, dataloader, DEV, args)
-        args.sparsity = sliceGPT_sparsity
-
-    dataloader, testloader = datautils.get_loaders(
-        args.eval_dataset, seed=args.seed, model=args.model, seqlen=model.seqlen
-    )
 
     if args.benchmark and args.ppl_check:
         gpus = [torch.device("cuda:%d" % i) for i in range(torch.cuda.device_count())]
@@ -504,6 +470,7 @@ if __name__ == "__main__":
             opt_utils.opt_multigpu(model, gpus)
         else:
             model = model.to(DEV)
+        
         input_ids = next(iter(dataloader))[0][:, :128]  # benchmark over 128 tokens
         baseline_token_per_sec = opt_utils.opt_benchmark(
             model, input_ids, dev=DEV, check=True
@@ -511,6 +478,7 @@ if __name__ == "__main__":
         print(
             f"\nRotated Model with {args.sparsity} ({args.eval_dataset.upper()}) (Compressed Real) Sec/Token: {baseline_token_per_sec:.4f} ({len(gpus)} GPUs)"
         )
+        
         if args.wandb:
             wandb.log(
                 {
