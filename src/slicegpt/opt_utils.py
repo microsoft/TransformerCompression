@@ -37,13 +37,8 @@ def do_not_initialize(func):
     return wrapper
 
 
+@do_not_initialize
 def get_opt(model):
-    kiming_fn = torch.nn.init.kaiming_uniform_
-    uniform_fn = torch.nn.init.uniform_
-    normal_fn = torch.nn.init.normal_
-    torch.nn.init.kaiming_uniform_ = skip
-    torch.nn.init.uniform_ = skip
-    torch.nn.init.normal_ = skip
     print("Loading {} Model...".format(model))
 
     cache_dir = os.getenv("TRANSFORMERS_CACHE")
@@ -57,9 +52,6 @@ def get_opt(model):
         model = transformers.OPTForCausalLM.from_pretrained(model, torch_dtype="auto")
 
     model.seqlen = model.config.max_position_embeddings
-    torch.nn.init.kaiming_uniform_ = kiming_fn
-    torch.nn.init.uniform_ = uniform_fn
-    torch.nn.init.normal_ = normal_fn
     return model
 
 
