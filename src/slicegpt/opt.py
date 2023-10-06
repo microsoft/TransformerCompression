@@ -126,7 +126,7 @@ def opt_argparser():
 
 
 @torch.no_grad()
-def opt_rotate(model, dataloader, dev, args):
+def rotate_opt(model, dataloader, dev, args):
     """
     TODO
     """
@@ -460,7 +460,7 @@ if __name__ == "__main__":
             seqlen=model.seqlen,
         )
 
-        opt_rotate(model, dataloader, DEV, args)
+        rotate_opt(model, dataloader, DEV, args)
         model = model.cpu()
         if args.save_dir is not None:
             print(f"Saving the model to {args.save_dir}...")
