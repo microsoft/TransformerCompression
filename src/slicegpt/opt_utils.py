@@ -31,11 +31,13 @@ def do_not_initialize(func):
         torch.nn.init.uniform_ = skip
         torch.nn.init.normal_ = skip
 
-        func(*args, **kwargs)
+        result = func(*args, **kwargs)
 
         torch.nn.init.kaiming_uniform_ = kiming_fn
         torch.nn.init.uniform_ = uniform_fn
         torch.nn.init.normal_ = normal_fn
+        
+        return result
 
     return wrapper
 
