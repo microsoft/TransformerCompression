@@ -208,29 +208,23 @@ def opt_rotate(model, dataloader, dev, args):
     inps = torch.cat(inps)
 
     print(f"(Rotate) layers:", end=" ", flush=True)
-    for i in range(len(layers)):
+    for i, layer in enumerate(layers):
         print(f" {i}", end="", flush=True)
         if i > 0:
             Q_1 = Q_5.clone()
 
-        model.model.decoder.layers[
-            i
-        ].self_attn.q_proj = opt_utils.opt_add_orth_linear_input(
-            model.model.decoder.layers[i].self_attn.q_proj, Q_1.clone()
+        layer.self_attn.q_proj = opt_utils.opt_add_orth_linear_input(
+            layer.self_attn.q_proj, Q_1.clone()
         )
-        model.model.decoder.layers[
-            i
-        ].self_attn.k_proj = opt_utils.opt_add_orth_linear_input(
-            model.model.decoder.layers[i].self_attn.k_proj, Q_1.clone()
+        layer.self_attn.k_proj = opt_utils.opt_add_orth_linear_input(
+            layer.self_attn.k_proj, Q_1.clone()
         )
-        model.model.decoder.layers[
-            i
-        ].self_attn.v_proj = opt_utils.opt_add_orth_linear_input(
-            model.model.decoder.layers[i].self_attn.v_proj, Q_1.clone()
+        layer.self_attn.v_proj = opt_utils.opt_add_orth_linear_input(
+            layer.self_attn.v_proj, Q_1.clone()
         )
-        model.model.decoder.layers[i].attn_shortcut_Q = Q_1.clone().T.to(dtype)
+        layer.attn_shortcut_Q = Q_1.clone().T.to(dtype)
 
-        layer = layers[i].to(dev)  # Load the layer into GPU
+        layer = layer.to(dev)  # Load the layer into GPU
 
         # Extract the input of the second layer norm input and calculate the Q_3
         mlp_ln_inputs = []
@@ -265,24 +259,16 @@ def opt_rotate(model, dataloader, dev, args):
             if i < len(layers) - 1 or args.compress_head:
                 Q_5 = Q_5[:, :-col_to_prune].clone()
 
-        model.model.decoder.layers[i].attn_shortcut_Q = torch.matmul(
-            Q_1.clone().T, Q_3.clone()
-        ).to(dtype)
-        model.model.decoder.layers[i].mlp_shortcut_Q = torch.matmul(
-            Q_3.clone().T, Q_5.clone()
-        ).to(dtype)
+        layer.attn_shortcut_Q = torch.matmul(Q_1.clone().T, Q_3.clone()).to(dtype)
+        layer.mlp_shortcut_Q = torch.matmul(Q_3.clone().T, Q_5.clone()).to(dtype)
 
         model.model.decoder.layers[
             i
         ].self_attn.out_proj = opt_utils.opt_add_orth_linear_output(
-            model.model.decoder.layers[i].self_attn.out_proj, Q_3.clone()
+            layer.self_attn.out_proj, Q_3.clone()
         )
-        model.model.decoder.layers[i].fc1 = opt_utils.opt_add_orth_linear_input(
-            model.model.decoder.layers[i].fc1, Q_3.clone()
-        )
-        model.model.decoder.layers[i].fc2 = opt_utils.opt_add_orth_linear_output(
-            model.model.decoder.layers[i].fc2, Q_5.clone()
-        )
+        layer.fc1 = opt_utils.opt_add_orth_linear_input(layer.fc1, Q_3.clone())
+        layer.fc2 = opt_utils.opt_add_orth_linear_output(layer.fc2, Q_5.clone())
 
         layer = layers[i].to(dev)
         # Now we can run the forward pass over this block
@@ -300,77 +286,72 @@ def opt_rotate(model, dataloader, dev, args):
     print(" Done!")
 
 
+@opt_utils.do_not_initialize
 def compress_opt(model, args):
-    config = model.config
+
+    # get the new embedding dimension
     col_to_prune = int(args.sparsity * model.config.hidden_size)
     if col_to_prune == 0:
         return
-    new_d = model.config.hidden_size - col_to_prune
+    new_embedding_dim = model.config.hidden_size - col_to_prune
 
     layers = model.model.decoder.layers
-    kiming_fn = torch.nn.init.kaiming_uniform_
-    uniform_fn = torch.nn.init.uniform_
-    normal_fn = torch.nn.init.normal_
-    torch.nn.init.kaiming_uniform_ = opt_utils.skip
-    torch.nn.init.uniform_ = opt_utils.skip
-    torch.nn.init.normal_ = opt_utils.skip
     dtype = next(iter(model.parameters())).dtype
 
     model.model.decoder.embed_positions = OPTLearnedPositionalEmbedding(
-        config.max_position_embeddings, new_d
+        model.config.max_position_embeddings, new_embedding_dim
     ).to(dtype)
     model.model.decoder.embed_tokens = torch.nn.Embedding(
-        config.vocab_size, new_d, config.pad_token_id
+        model.config.vocab_size, new_embedding_dim, model.config.pad_token_id
     ).to(dtype)
 
-    for i in range(len(layers)):
+    for i, layer in enumerate(layers):
 
-        model.model.decoder.layers[i].self_attn.q_proj = torch.nn.Linear(
-            new_d,
-            model.model.decoder.layers[i].self_attn.q_proj.out_features,
-            bias=model.model.decoder.layers[i].self_attn.q_proj.bias is not None,
+        layer.self_attn.q_proj = torch.nn.Linear(
+            new_embedding_dim,
+            layer.self_attn.q_proj.out_features,
+            bias=layer.self_attn.q_proj.bias is not None,
         ).to(dtype)
-        model.model.decoder.layers[i].self_attn.k_proj = torch.nn.Linear(
-            new_d,
-            model.model.decoder.layers[i].self_attn.k_proj.out_features,
-            bias=model.model.decoder.layers[i].self_attn.k_proj.bias is not None,
+        layer.self_attn.k_proj = torch.nn.Linear(
+            new_embedding_dim,
+            layer.self_attn.k_proj.out_features,
+            bias=layer.self_attn.k_proj.bias is not None,
         ).to(dtype)
-        model.model.decoder.layers[i].self_attn.v_proj = torch.nn.Linear(
-            new_d,
-            model.model.decoder.layers[i].self_attn.v_proj.out_features,
-            bias=model.model.decoder.layers[i].self_attn.v_proj.bias is not None,
+        layer.self_attn.v_proj = torch.nn.Linear(
+            new_embedding_dim,
+            layer.self_attn.v_proj.out_features,
+            bias=layer.self_attn.v_proj.bias is not None,
         ).to(dtype)
-        model.model.decoder.layers[i].self_attn.out_proj = torch.nn.Linear(
-            model.model.decoder.layers[i].self_attn.out_proj.in_features,
-            new_d,
-            bias=model.model.decoder.layers[i].self_attn.out_proj.bias is not None,
+        layer.self_attn.out_proj = torch.nn.Linear(
+            layer.self_attn.out_proj.in_features,
+            new_embedding_dim,
+            bias=layer.self_attn.out_proj.bias is not None,
         ).to(dtype)
-        model.model.decoder.layers[i].fc1 = torch.nn.Linear(
-            new_d,
-            model.model.decoder.layers[i].fc1.out_features,
-            bias=model.model.decoder.layers[i].fc1.bias is not None,
+        layer.fc1 = torch.nn.Linear(
+            new_embedding_dim,
+            layer.fc1.out_features,
+            bias=layer.fc1.bias is not None,
         ).to(dtype)
-        model.model.decoder.layers[i].attn_shortcut_Q = torch.eye(new_d).to(dtype)
-        model.model.decoder.layers[i].mlp_shortcut_Q = torch.eye(new_d).to(dtype)
+        layer.attn_shortcut_Q = torch.eye(new_embedding_dim).to(dtype)
+        layer.mlp_shortcut_Q = torch.eye(new_embedding_dim).to(dtype)
         if i < len(layers) - 1 or args.compress_head:
-            model.model.decoder.layers[i].fc2 = torch.nn.Linear(
-                model.model.decoder.layers[i].fc2.in_features,
-                new_d,
-                bias=model.model.decoder.layers[i].fc2.bias is not None,
+            layer.fc2 = torch.nn.Linear(
+                layer.fc2.in_features,
+                new_embedding_dim,
+                bias=layer.fc2.bias is not None,
             ).to(dtype)
         else:
-            model.model.decoder.layers[i].mlp_shortcut_Q = torch.rand(
-                new_d, model.model.decoder.layers[i].fc2.out_features
+            layer.mlp_shortcut_Q = torch.rand(
+                new_embedding_dim, layer.fc2.out_features
             ).to(dtype)
 
     if args.compress_head:
         model.lm_head = torch.nn.Linear(
-            new_d, model.lm_head.out_features, bias=model.lm_head.bias is not None
+            new_embedding_dim,
+            model.lm_head.out_features,
+            bias=model.lm_head.bias is not None,
         ).to(dtype)
 
-    torch.nn.init.kaiming_uniform_ = kiming_fn
-    torch.nn.init.uniform_ = uniform_fn
-    torch.nn.init.normal_ = normal_fn
     return model
 
 
