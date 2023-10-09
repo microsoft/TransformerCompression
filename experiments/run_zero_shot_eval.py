@@ -1,9 +1,11 @@
 import argparse
 import json
 import torch
+from slicegpt import opt_utils, datautils, utils, opt
 from lm_eval import tasks, evaluator, utils
 from lm_eval.base import BaseLM
 from transformers import OPTForCausalLM, AutoTokenizer
+DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class OPTClass(BaseLM):
     def __init__(self, args, **kwargs):
@@ -38,17 +40,29 @@ class OPTClass(BaseLM):
         self.args.model = self.model_name
         self.args.sparsity = kwargs.get("sparsity")
         
-        # rotate model
-        self.rotate()
+        # apply slicegpt to model
+        self.apply_slicegpt()
 
         # pretrained tokenizer for neo is broken for now so just hard-coding this to gpt2
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_name, use_fast=False)
         self.vocab_size = self.tokenizer.vocab_size
         print('OPT vocab size: ', self.vocab_size)
 
-    def rotate(self):
-        # TODO
-        pass
+    def apply_slicegpt(self):
+        opt_utils.replace_opt_modules(self.model, self.model.config)
+        opt_utils.fuse_opt_modules(self.model)
+        print()
+        self.model = self.model.cpu()
+        
+        dataloader, _ = datautils.get_loaders(
+            "wikitext2", seed=42, model=self.args.model, seqlen=self.args.seqlen
+        )
+        
+        new_embedding_dimension = int((1 - self.args.sparsity) * self.model.config.hidden_size)
+        print(f"New embedding dimension: {new_embedding_dimension} (sparsity {self.args.sparsity})")
+
+        opt.rotate_and_slice_opt(self.model, dataloader, new_embedding_dimension)
+        self.model = self.model.to(DEV)
 
     @classmethod
     def create_from_arg_string(cls, args, kwargs):
@@ -120,7 +134,7 @@ def main():
     args = parse_args()
 
     ### SliceGPT ###
-    my_model = OPTClass(args, model="facebook/opt-1.3b", sparsity=0.0)
+    my_model = OPTClass(args, model="facebook/opt-1.3b", sparsity=0.2)
 
     ### LM Eval Harness ###
     if args.tasks is None:
