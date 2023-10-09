@@ -1,7 +1,6 @@
 import argparse
 import torch
-from src.slicegpt import utils, opt_utils, datautils, opt
-
+from slicegpt import opt_utils, datautils, opt
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def opt_argparser():
@@ -132,9 +131,13 @@ def main():
     dataset_ppl = opt_utils.opt_eval(model, testloader, DEV)
     print('orig', dataset_ppl)
     
-    opt.rotate_and_slice_opt(model, dataloader, int(args.sparsity * model.config.hidden_size))
+    new_embedding_dimension = int((1 - args.sparsity) * model.config.hidden_size)
+    print(f"New embedding dimension: {new_embedding_dimension} (sparsity {args.sparsity})")
+
+    opt.rotate_and_slice_opt(model, dataloader, new_embedding_dimension)
+    print()
     dataset_ppl = opt_utils.opt_eval(model, testloader, DEV)
-    print('rotate and slice', dataset_ppl)
+    print('\nRotate and slice', dataset_ppl)
 
 
 """
