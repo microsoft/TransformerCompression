@@ -1,6 +1,10 @@
 import argparse
 import torch
+<<<<<<< HEAD
 from slicegpt import layernorm_fusion, datautils, opt_utils, rotate, ln_fn_saleh
+=======
+from slicegpt import opt_utils, datautils, utils, opt
+>>>>>>> c21c264 (Init lm eval harness expt)
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def opt_argparser():
