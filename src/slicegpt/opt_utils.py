@@ -2,9 +2,9 @@ import torch
 import numpy as np
 import math
 import transformers
-import opt_modules
+from . import opt_modules
 import tqdm
-import utils
+from . import utils
 import os
 import time
 from transformers.models.opt.modeling_opt import (
