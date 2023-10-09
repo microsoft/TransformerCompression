@@ -1,19 +1,14 @@
 import torch
-import time
 import utils
-import argparse
-import datautils
-import opt_utils
-import wandb
-from transformers.models.opt.modeling_opt import OPTLearnedPositionalEmbedding
 
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def get_layer0_inputs(model, dataloader):
     """
     Returns the inputs to the first layer of the model (after embeddings).
+    NB: this won't work from OPT 350m. 
     """
-    # Move the relevant parts of the model to device. NB: this won't work from OPT 350m. 
+    # Move the relevant parts of the model to device.
     model.model.decoder.embed_tokens = model.model.decoder.embed_tokens.to(DEV)
     model.model.decoder.embed_positions = model.model.decoder.embed_positions.to(DEV)
 
@@ -328,59 +323,3 @@ def slice_rotated_OPT_model(model, new_embedding_dimension, do_slice_head=False)
     
     if do_slice_head:
         slice_head(model, new_embedding_dimension)
-
-
-def save_rotated_model(model, model_name, save_dir):
-    """
-    Saves the rotated model to the specified directory.
-
-    Args:
-        model: the rotated model
-        model_name: the name of the model
-        save_dir: the directory to save the model to
-    """
-    model = model.cpu()
-    model_name = model_name.replace("/", "_")
-    save_path = save_dir + model_name + ".pt"
-    print(f"Saving the rotated model to {save_path}...")
-    torch.save(model.state_dict(), save_path)
-    print("Model saved.")
-
-def load_rotated_model(model_name, load_dir):
-    """
-    TODO
-    """
-    model = opt_utils.get_opt(model_name)
-    model = model.cpu() # necessary?
-    model_name = model_name.replace("/", "_")
-    load_path = load_dir + model_name + ".pt"
-    print(f"Loading the rotated model from {load_path}...")
-    model.load_state_dict(torch.load(load_path, map_location=torch.device("cpu")))
-    print("Model loaded.")
-    return model
-
-if __name__ == "__main__":
-    model_name = "facebook/opt-125m"
-    model = opt_utils.get_opt(model_name)
-
-    dataloader, testloader = datautils.get_loaders(
-            "wikitext2", seed=42, model=model_name, seqlen=model.seqlen
-        )
-    
-    opt_utils.replace_opt_modules(model, model.config)
-    opt_utils.fuse_opt_modules(model)
-    print()
-    model = model.cpu()
-    
-    dataset_ppl = opt_utils.opt_eval(model, testloader, DEV)
-    print('orig', dataset_ppl)
-    
-    rotate_and_slice_opt(model, dataloader, int(0.8 * model.config.hidden_size))
-    dataset_ppl = opt_utils.opt_eval(model, testloader, DEV)
-    print('rotate and slice', dataset_ppl)
-
-    """
-    rotate_opt(model, dataloader)
-    dataset_ppl = opt_utils.opt_eval(model, testloader, DEV)
-    print('rotate', dataset_ppl)
-    """

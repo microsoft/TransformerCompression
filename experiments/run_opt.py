@@ -1,3 +1,8 @@
+import argparse
+import torch
+from src.slicegpt import utils, opt_utils, datautils, opt
+
+DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def opt_argparser():
     parser = argparse.ArgumentParser()
@@ -45,7 +50,6 @@ def opt_argparser():
     parser.add_argument(
         "--eval_baseline", action="store_true", help="Evaluate the baseline model."
     )
-
     parser.add_argument(
         "--debug", action="store_true", help="Evaluate the fused model."
     )
@@ -57,15 +61,12 @@ def opt_argparser():
     parser.add_argument(
         "--ppl_check", action="store_true", help="Benchmark the rotated model."
     )
-
     parser.add_argument(
         "--benchmark_baseline",
         action="store_true",
         help="Benchmark the Baseline model.",
     )
-
     parser.add_argument("--compress_head", action="store_true")
-
     parser.add_argument(
         "--save_dir", type=str, default=None, help="Path to save the model."
     )
@@ -113,8 +114,31 @@ def opt_argparser():
 
     return args
 
+def main():
+    print("Running OPT experiment.")
 
-if __name__ == "__main__":
+    args = opt_argparser()
+
+    model = opt_utils.get_opt(args.model)
+
+    opt_utils.replace_opt_modules(model, model.config)
+    opt_utils.fuse_opt_modules(model)
+    print()
+    model = model.cpu()
+    
+    dataloader, testloader = datautils.get_loaders(
+        "wikitext2", seed=42, model=args.model, seqlen=model.seqlen
+    )
+    dataset_ppl = opt_utils.opt_eval(model, testloader, DEV)
+    print('orig', dataset_ppl)
+    
+    opt.rotate_and_slice_opt(model, dataloader, int(args.sparsity * model.config.hidden_size))
+    dataset_ppl = opt_utils.opt_eval(model, testloader, DEV)
+    print('rotate and slice', dataset_ppl)
+
+
+"""
+def old_main():
     args = opt_argparser()
     if args.dp2_cache:
         utils.deeplearn2_cache_dir()
@@ -270,3 +294,7 @@ if __name__ == "__main__":
     if args.wandb:
         wandb.log({"ppl/{}".format(args.eval_dataset): dataset_ppl})
         wandb.log({"(simulate) time/{}".format(args.eval_dataset): tock - tick})
+"""
+
+if __name__ == "__main__":
+    main()
