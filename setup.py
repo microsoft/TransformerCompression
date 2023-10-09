@@ -1,9 +1,16 @@
 from setuptools import find_packages, setup
 
-requirements = ["torch", "datasets", "transformers", "numpy", "wandb"]
+requirements = [
+    "torch",
+    "datasets",
+    "transformers",
+    "numpy",
+    "wandb",
+    "huggingface-hub>=0.16.4,<0.18",
+]
 
 setup(
-    name="Transformer Compression",
+    name="transformercompression",
     version="0.0.1",
     author="James Hensman, Max Croci, Saleh Ashkboos, Marcelo Gennari do Nascimento",
     description="Implementation of methods for compressing transformers",
