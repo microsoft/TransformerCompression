@@ -62,6 +62,7 @@ class OPTClass(BaseLM):
         print(f"New embedding dimension: {new_embedding_dimension} (sparsity {self.args.sparsity})")
 
         opt.rotate_and_slice_opt(self.model, dataloader, new_embedding_dimension)
+        self.model.eval()
         self.model = self.model.to(DEV)
 
     @classmethod
