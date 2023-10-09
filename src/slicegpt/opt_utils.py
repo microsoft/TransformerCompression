@@ -2,9 +2,9 @@ import torch
 import numpy as np
 import math
 import transformers
-import opt_modules
+from . import opt_modules
 import tqdm
-import utils
+from . import utils
 import os
 import time
 from transformers.models.opt.modeling_opt import (
@@ -57,6 +57,10 @@ def get_opt(model):
         model = transformers.OPTForCausalLM.from_pretrained(model, torch_dtype="auto")
 
     model.seqlen = model.config.max_position_embeddings
+    
+    model.eval() # This switches off dropout.
+    model.config.use_cache = False # Do not cache attention key values.
+    
     return model
 
 
