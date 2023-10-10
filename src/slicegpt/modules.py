@@ -3,6 +3,8 @@ from typing import List, Optional, Tuple, Union
 from transformers.models.opt import OPTConfig
 from transformers.modeling_outputs import BaseModelOutputWithPast
 from transformers.models.opt.modeling_opt import logger, OPTDecoder, OPTDecoderLayer
+from transformers.models.llama.configuration_llama import LlamaConfig
+from transformers.models.llama.modeling_llama import LlamaDecoderLayer
 
 
 class CompressedOPTDecoderLayer(OPTDecoderLayer):
@@ -115,3 +117,99 @@ class CompressedOPTDecoderLayer(OPTDecoderLayer):
             outputs += (present_key_value,)
 
         return outputs
+
+
+class CompressedLlamaDecoderLayer(LlamaDecoderLayer):
+
+    '''
+    This class simulates the LlamaDecoderLayer class from transformers
+    (https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py#L376)
+    but with the addition of a shortcut_Q attribute. This attribute is used to rotate the residual tensors.
+    '''
+    def __init__(self, config: LlamaConfig):
+        super().__init__(config)
+        self.register_buffer('mlp_shortcut_Q', None)
+        self.register_buffer('attn_shortcut_Q', None)
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        output_attentions: Optional[bool] = False,
+        use_cache: Optional[bool] = False,
+    ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
+        """
+        Args:
+            hidden_states (`torch.FloatTensor`): input to the layer of shape `(batch, seq_len, embed_dim)`
+            attention_mask (`torch.FloatTensor`, *optional*): attention mask of size
+                `(batch, 1, tgt_len, src_len)` where padding elements are indicated by very large negative values.
+            output_attentions (`bool`, *optional*):
+                Whether or not to return the attentions tensors of all attention layers. See `attentions` under
+                returned tensors for more detail.
+            use_cache (`bool`, *optional*):
+                If set to `True`, `past_key_values` key value states are returned and can be used to speed up decoding
+                (see `past_key_values`).
+            past_key_value (`Tuple(torch.FloatTensor)`, *optional*): cached past key and value projection states
+        """
+
+        residual = hidden_states
+
+        hidden_states = self.input_layernorm(hidden_states)
+
+        # Self Attention
+        hidden_states, self_attn_weights, present_key_value = self.self_attn(
+            hidden_states=hidden_states,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            past_key_value=past_key_value,
+            output_attentions=output_attentions,
+            use_cache=use_cache,
+        )
+        if self.attn_shortcut_Q is not None:
+            rotated_residual = torch.matmul(residual, self.attn_shortcut_Q)
+            hidden_states = rotated_residual + hidden_states
+        else:
+            hidden_states = residual + hidden_states
+
+        # Fully Connected
+        residual = hidden_states
+        hidden_states = self.post_attention_layernorm(hidden_states)
+        hidden_states = self.mlp(hidden_states)
+
+        if self.mlp_shortcut_Q is not None:
+            rotated_residual = torch.matmul(residual, self.mlp_shortcut_Q)
+            hidden_states = rotated_residual + hidden_states
+        else:
+            hidden_states = residual + hidden_states
+
+        outputs = (hidden_states,)
+
+        if output_attentions:
+            outputs += (self_attn_weights,)
+
+        if use_cache:
+            outputs += (present_key_value,)
+
+        return outputs
+    
+class RMSN(torch.nn.Module):
+    """
+    This class implements the Root Mean Square Normalization (RMSN) layer.
+    We use the implementation from LLAMARMSNorm here:
+    https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py#L75
+    """
+
+    def __init__(self, mean_dim):
+        super().__init__()
+        self.eps = 1e-5
+        self.mean_dim = mean_dim
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        input_dtype = x.dtype
+        if x.dtype == torch.float16:
+            x = x.to(torch.float32)
+        variance = x.pow(2).sum(-1, keepdim=True) / self.mean_dim
+        x = x * torch.rsqrt(variance + self.eps)
+        return x.to(input_dtype)
