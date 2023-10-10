@@ -1,10 +1,11 @@
+from . import opt_modules
+from . import utils
+
 import torch
 import numpy as np
 import math
 import transformers
-from . import opt_modules
 import tqdm
-from . import utils
 import os
 import time
 from transformers.models.opt.modeling_opt import (
@@ -65,9 +66,9 @@ def get_opt(model):
 
 
 @torch.no_grad()
-def opt_eval(model, testenc, dev):
+def evaluate_perplexity(model, testenc, dev):
     """
-    evaluate the OPT model's perplexity on the test set.
+    evaluate the model's perplexity on the test set.
     This function loads each loayer onto the device one at a time,
     so that we can evaluate models that are too large to fit on a single GPU.
     """
@@ -273,151 +274,6 @@ def opt_benchmark(model, input_ids, dev, check=False):
         if check:
             print("PPL:", torch.exp(tot / (input_ids.numel() - 1)).item())
         return np.median(times)
-
-
-def bake_mean_into_embedding(embedding: torch.nn.Embedding) -> None:
-    """
-    This function takes an embedding layer and subtracts the means from the
-    weights. This will result in the embedding layer performing
-    the mean substitution.
-    """
-    embedding_dtype = embedding.weight.dtype
-    embedding.weight.data = embedding.weight.double() - embedding.weight.double().mean(
-        (-1), keepdim=True
-    )
-    embedding.weight.data = embedding.weight.data.to(embedding_dtype)
-
-
-def bake_mean_into_linear(linear: torch.nn.Linear) -> None:
-    """
-    This function takes a linear layer and subtracts the means from the
-    weights and biases. This will result in the linear layer performing
-    the mean substitution.
-    """
-    linear_dtype = linear.weight.dtype
-    linear.weight.data = linear.weight.double() - linear.weight.double().mean(
-        (-2), keepdim=True
-    )
-    linear.bias.data = linear.bias.double() - linear.bias.double().mean(
-        (-1), keepdim=True
-    )
-    linear.weight.data = linear.weight.data.to(linear_dtype)
-    linear.bias.data = linear.bias.data.to(linear_dtype)
-
-
-def fold_opt_ln_linear(
-    layernorm: torch.nn.LayerNorm, linear_layers: list
-) -> torch.nn.Linear:
-    """
-    Modifies a OPT model to fuse the layernorms.
-    """
-    ln_dtype = layernorm.weight.dtype
-    ln_device = layernorm.weight.device
-
-    for linear in linear_layers:
-
-        # Check if linear layer has a bias, and if it doesn't, we have to add one
-
-        linear_dtype = linear.weight.dtype
-        linear_device = linear.weight.device
-
-        if linear.bias is None:
-            new_linear = torch.nn.Linear(linear.in_features, linear.out_features)
-            new_linear.weight.data = linear.weight.data
-            new_linear.bias.data = torch.zeros(linear.out_features)
-            linear = new_linear.to(linear_dtype)
-
-        # Calculating new weight and bias
-        new_weight = linear.weight.double() * layernorm.weight.double()
-        new_bias = (
-            torch.matmul(linear.weight.cuda().double(), layernorm.bias.cuda().double())
-            + linear.bias.cuda().double()
-        )
-
-        linear.weight.data = new_weight.to(linear_device).to(linear_dtype)
-        linear.bias.data = new_bias.to(linear_device).to(linear_dtype)
-
-    # Substituting new values
-    layernorm.weight.data = (
-        torch.ones_like(layernorm.weight.data).to(ln_device).to(ln_dtype)
-    )
-    layernorm.bias.data = (
-        torch.zeros_like(layernorm.bias.data).to(ln_device).to(ln_dtype)
-    )
-
-    return linear
-
-
-def fuse_opt_modules(model):
-    """
-    This function fuses the linear and layernorm into each other inplace.
-    After this function is called, the model should outputs the same results as before.
-
-    args:
-        model: the model to be fused
-    """
-
-    print("Fusing the OPT modules...")
-
-    # We add the mean subtraction to the first layer
-
-    number_transformer_blocks = model.config.num_hidden_layers
-
-    # First we modify the layernorms to fold their weights
-    for i in range(number_transformer_blocks):
-        fold_opt_ln_linear(
-            model.model.decoder.layers[i].self_attn_layer_norm,
-            [
-                model.model.decoder.layers[i].self_attn.q_proj,
-                model.model.decoder.layers[i].self_attn.k_proj,
-                model.model.decoder.layers[i].self_attn.v_proj,
-            ],
-        )
-        fold_opt_ln_linear(
-            model.model.decoder.layers[i].final_layer_norm,
-            [model.model.decoder.layers[i].fc1],
-        )
-
-    # Then we bake the mean substitution into the previous linear layers
-    # after this we can also substitute the layernorms for RMSN
-    for i in range(number_transformer_blocks):
-        bake_mean_into_linear(model.model.decoder.layers[i].self_attn.out_proj)
-        bake_mean_into_linear(model.model.decoder.layers[i].fc2)
-
-        model.model.decoder.layers[i].self_attn_layer_norm = utils.RMSN(
-            model.config.hidden_size
-        )
-        model.model.decoder.layers[i].final_layer_norm = utils.RMSN(
-            model.config.hidden_size
-        )
-
-    model.lm_head = fold_opt_ln_linear(
-        model.model.decoder.final_layer_norm, [model.lm_head]
-    )
-    model.model.decoder.final_layer_norm = utils.RMSN(model.config.hidden_size)
-
-    bake_mean_into_embedding(model.model.decoder.embed_tokens)
-    bake_mean_into_embedding(model.model.decoder.embed_positions)
-
-
-def replace_opt_modules(model, config):
-    """
-    Replace OPTDecoder with CompressedOPTDecoderLayer.
-    This function should be called before fusing the modules!
-    """
-
-    for name, mod in model.named_children():
-        new_mod = None
-        if isinstance(mod, OPTDecoderLayer):
-            new_mod = opt_modules.CompressedOPTDecoderLayer(config).to(
-                config.torch_dtype
-            )
-        elif len(list(mod.children())) > 0:
-            replace_opt_modules(mod, config)
-
-        if new_mod is not None:
-            new_mod.load_state_dict(mod.state_dict(), strict=True)
-            setattr(model, name, new_mod)
 
 
 @torch.no_grad()
