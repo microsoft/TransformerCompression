@@ -1,6 +1,6 @@
 import argparse
 import torch
-from slicegpt import opt_utils, datautils, opt
+from slicegpt import layernorm_fusion, datautils, opt_utils, rotate
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def opt_argparser():
@@ -118,23 +118,28 @@ def main():
 
     args = opt_argparser()
 
+    # get model, data
     model = opt_utils.get_opt(args.model)
-
-    opt_utils.replace_opt_modules(model, model.config)
-    opt_utils.fuse_opt_modules(model)
-    print()
-    model = model.cpu()
-    
     dataloader, testloader = datautils.get_loaders(
         "wikitext2", seed=42, model=args.model, seqlen=model.seqlen
     )
+
+    # original ppl
     dataset_ppl = opt_utils.evaluate_perplexity(model, testloader, DEV)
-    print('orig', dataset_ppl)
+    print('\noriginal ppl:', dataset_ppl)
     
+    # fuse layernorms, add shorcuts, check perplexity
+    layernorm_fusion.replace_modules(model, model.config)
+    model = model.cpu()
+    layernorm_fusion.fuse_modules(model)
+    dataset_ppl = opt_utils.evaluate_perplexity(model, testloader, DEV)
+    print('\npost-fusion:', dataset_ppl)
+    
+    # run slicegpt sparsity
     new_embedding_dimension = int((1 - args.sparsity) * model.config.hidden_size)
     print(f"New embedding dimension: {new_embedding_dimension} (sparsity {args.sparsity})")
 
-    opt.rotate_and_slice_opt(model, dataloader, new_embedding_dimension)
+    rotate.rotate_and_slice_opt(model, dataloader, new_embedding_dimension)
     print()
     dataset_ppl = opt_utils.evaluate_perplexity(model, testloader, DEV)
     print('\nRotate and slice', dataset_ppl)

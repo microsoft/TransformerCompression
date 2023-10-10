@@ -1,6 +1,3 @@
-from . import opt_modules
-from . import utils
-
 import torch
 import numpy as np
 import math
@@ -8,10 +5,6 @@ import transformers
 import tqdm
 import os
 import time
-from transformers.models.opt.modeling_opt import (
-    OPTDecoderLayer,
-    OPTLearnedPositionalEmbedding,
-)
 
 
 def skip(*args, **kwargs):
