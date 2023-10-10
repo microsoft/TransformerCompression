@@ -128,7 +128,7 @@ def main():
     dataloader, testloader = datautils.get_loaders(
         "wikitext2", seed=42, model=args.model, seqlen=model.seqlen
     )
-    dataset_ppl = opt_utils.opt_eval(model, testloader, DEV)
+    dataset_ppl = opt_utils.evaluate_perplexity(model, testloader, DEV)
     print('orig', dataset_ppl)
     
     new_embedding_dimension = int((1 - args.sparsity) * model.config.hidden_size)
@@ -136,7 +136,7 @@ def main():
 
     opt.rotate_and_slice_opt(model, dataloader, new_embedding_dimension)
     print()
-    dataset_ppl = opt_utils.opt_eval(model, testloader, DEV)
+    dataset_ppl = opt_utils.evaluate_perplexity(model, testloader, DEV)
     print('\nRotate and slice', dataset_ppl)
 
 

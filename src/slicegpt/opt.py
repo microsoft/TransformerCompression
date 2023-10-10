@@ -3,45 +3,18 @@ from . import utils
 
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-def get_embeddings(model):
-    # if OPT...
-    return [model.model.decoder.embed_tokens,  model.model.decoder.embed_positions]
-
-def get_layers(model):
-    #if OPT
-    return model.model.decoder.layers
-
-def get_first_layernorm(layer):
-    #if OPT
-    return layer.self_attn_layer_norm
-
-def get_second_layernorm(layer):
-    # if OPT
-    return layer.final_layer_norm
-
-def get_pre_head_layernorm(model):
-    # if OPT:
-    return model.model.decoder.final_layer_norm
-
-def get_attention_inputs(layer):
-    #if OPT
-    return [layer.self_attn.q_proj, layer.self_attn.k_proj, layer.self_attn.v_proj]
-
-def get_attention_output(layer):
-    #if OPT
-    return layer.self_attn.out_proj
-
-def get_mlp_inputs(layer):
-    #if OPT
-    return [layer.fc1]  # this is a list because gated networks need a list.
-
-def get_mlp_output(layer):
-    #if OPT
-    return layer.fc2
-
-def get_lm_head(model):
-    #if OPT
-    return model.lm_head
+from .model_utils import (
+    get_attention_inputs,
+    get_attention_output,
+    get_mlp_inputs,
+    get_mlp_output,
+    get_first_layernorm,
+    get_second_layernorm,
+    get_embeddings,
+    get_lm_head,
+    get_layers,
+    get_pre_head_layernorm
+)
 
 def get_layer0_inputs(model, dataloader):
     """
