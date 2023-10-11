@@ -8,13 +8,22 @@ from transformers import OPTForCausalLM, AutoTokenizer
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class OPTClass(BaseLM):
-    def __init__(self, args, **kwargs):
+    def __init__(self, args):
         # TODO: simplify args and add SliceGPT logic.
         super().__init__()
 
+        self.model = OPTForCausalLM.from_pretrained(args.model, torch_dtype='auto')
+        self.model.eval()
+        self.model.config.sparsity = args.sparsity
+        self.model.config.model_name = args.model
+        self.tokenizer = AutoTokenizer.from_pretrained(args.model, use_fast=False)
+        self.vocab_size = self.tokenizer.vocab_size
+        print('OPT vocab size: ', self.vocab_size)    
+
+
+        """
         class OPTArgs:
             def __init__(self):
-                self.model = None
                 self.batch_size = 1
                 self.eval_dataset = 'wikitext2'
                 self.seed = 0
@@ -24,46 +33,28 @@ class OPTClass(BaseLM):
                 self.compress_head = False
                 self.load_dir = None
 
-
-        args = OPTArgs()
-
-        self.args = args
-        self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.model_name = kwargs.get("model")
-
         self.batch_size_per_gpu = args.batch_size
+        """
 
-        self.model = OPTForCausalLM.from_pretrained(self.model_name, torch_dtype='auto').to(self._device)
-        self.model.eval()
-        self.seqlen = self.model.config.max_position_embeddings
-        self.args.seqlen = self.seqlen
-        self.args.model = self.model_name
-        self.args.sparsity = kwargs.get("sparsity")
-        
         # apply slicegpt to model
+        self.model = self.model.to(DEV)
         self.apply_slicegpt()
-
-        # pretrained tokenizer for neo is broken for now so just hard-coding this to gpt2
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model_name, use_fast=False)
-        self.vocab_size = self.tokenizer.vocab_size
-        print('OPT vocab size: ', self.vocab_size)
 
     def apply_slicegpt(self):
         opt_utils.replace_opt_modules(self.model, self.model.config)
         opt_utils.fuse_opt_modules(self.model)
         print()
-        self.model = self.model.cpu()
+        #self.model = self.model.cpu()
         
         dataloader, _ = datautils.get_loaders(
-            "wikitext2", seed=42, model=self.args.model, seqlen=self.args.seqlen
+            "wikitext2", seed=42, model=self.model.config.model_name, seqlen=self.model.config.max_position_embeddings
         )
         
-        new_embedding_dimension = int((1 - self.args.sparsity) * self.model.config.hidden_size)
-        print(f"New embedding dimension: {new_embedding_dimension} (sparsity {self.args.sparsity})")
+        new_embedding_dimension = int((1 - self.model.config.sparsity) * self.model.config.hidden_size)
+        print(f"New embedding dimension: {new_embedding_dimension} (sparsity {self.model.config.sparsity})")
 
         opt.rotate_and_slice_opt(self.model, dataloader, new_embedding_dimension)
         self.model.eval()
-        self.model = self.model.to(DEV)
 
     @classmethod
     def create_from_arg_string(cls, args, kwargs):
@@ -122,20 +113,23 @@ class OPTClass(BaseLM):
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", required=True)
-    parser.add_argument("--model_args", default="")
     parser.add_argument(
         "--tasks", default=None, choices=utils.MultiChoice(tasks.ALL_TASKS)
     )
     parser.add_argument("--num_fewshot", type=int, default=0)
     parser.add_argument("--no_cache", action="store_true")
+    parser.add_argument('--sparsity', type=float, default=0.0)
 
     return parser.parse_args()
 
 def main():
     args = parse_args()
+    
+    print(f"Using dev: {DEV}.")
 
     ### SliceGPT ###
-    my_model = OPTClass(args, model="facebook/opt-1.3b", sparsity=0.2)
+    my_model = OPTClass(args)
+    my_model.model = my_model.model.to(DEV)
 
     ### LM Eval Harness ###
     if args.tasks is None:
@@ -147,7 +141,6 @@ def main():
 
     results = evaluator.simple_evaluate(
         model=my_model,
-        model_args=args.model_args,
         tasks=task_names,
         num_fewshot=args.num_fewshot,
         no_cache=args.no_cache
