@@ -60,9 +60,10 @@ def fuse_modules(model):
     """
 
     print("Fusing layernorm modules...")
-    #' make a copy of the weights in the lm head, which are shared with embeddings...
+
+    # make a copy of the weights in the lm head, which are shared with embeddings...
     head = get_lm_head(model)
-    head.weight.data = head.weight.data.clone()
+    head.weight = torch.nn.Parameter(head.weight.clone())
 
     # We add the mean subtraction to the first embeddings
     for W in get_embeddings(model):
