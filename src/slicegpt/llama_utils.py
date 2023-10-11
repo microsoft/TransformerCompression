@@ -1,7 +1,5 @@
 import torch
-import utils
 import transformers
-import llama_modules
 import time
 import os
 from tqdm import tqdm
@@ -239,26 +237,6 @@ def llama_benchmark(model, input_ids, dev, check=False):
             print("PPL:", torch.exp(tot / (input_ids.numel() - 1)).item())
         return np.median(times)
 
-
-def replace_llama_modules(model, config):
-    """
-    Replace LLAMADecoder with CompressedLlamaDecoderLayer.
-    """
-    if isinstance(model, transformers.models.llama.modeling_llama.LlamaPreTrainedModel):
-        model = model.model
-
-    for name, mod in model.named_children():
-        new_mod = None
-        if isinstance(mod, LlamaDecoderLayer):
-            new_mod = llama_modules.CompressedLlamaDecoderLayer(config).to(
-                config.torch_dtype
-            )
-        elif len(list(mod.children())) > 0:
-            replace_llama_modules(mod, config)
-
-        if new_mod is not None:
-            new_mod.load_state_dict(mod.state_dict(), strict=True)
-            setattr(model, name, new_mod)
 
 
 def fold_llama_layernorm_linear(
