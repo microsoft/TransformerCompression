@@ -4,7 +4,7 @@ from .modules import CompressedOPTDecoderLayer
 
 OPT_MODEL = transformers.models.opt.modeling_opt.OPTForCausalLM
 OPT_LAYER = CompressedOPTDecoderLayer
-LLAMA_MODEL = transformers.models.llama.modeling_llama.LlamaModel
+LLAMA_MODEL = transformers.models.llama.modeling_llama.LlamaForCausalLM
 LLAMA_LAYER = transformers.models.llama.modeling_llama.LlamaDecoderLayer
 
 
@@ -71,7 +71,7 @@ def get_mlp_inputs(layer):
     if isinstance(layer, OPT_LAYER):
         return [layer.fc1]
     elif isinstance(layer, LLAMA_LAYER):
-        return [layer.gate_proj, layer.up_proj]
+        return [layer.mlp.gate_proj, layer.mlp.up_proj]
     else:
         raise NotImplementedError
 
@@ -79,7 +79,7 @@ def get_mlp_output(layer):
     if isinstance(layer, OPT_LAYER):
         return layer.fc2
     elif isinstance(layer, LLAMA_LAYER):
-        return layer.down_proj
+        return layer.mlp.down_proj
     else:
         raise NotImplementedError
 
