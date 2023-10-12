@@ -1,7 +1,7 @@
 import argparse
 import json
 import torch
-from slicegpt import opt_utils, datautils, utils, opt
+from slicegpt import layernorm_fusion, datautils, utils, rotate
 from lm_eval import tasks, evaluator, utils
 from lm_eval.base import BaseLM
 from transformers import OPTForCausalLM, AutoTokenizer
@@ -41,10 +41,11 @@ class OPTClass(BaseLM):
         self.apply_slicegpt()
 
     def apply_slicegpt(self):
-        opt_utils.replace_opt_modules(self.model, self.model.config)
-        opt_utils.fuse_opt_modules(self.model)
+        layernorm_fusion.replace_modules(self.model, self.model.config)
+        self.model = self.model.cpu()
+        layernorm_fusion.fuse_modules(self.model)
         print()
-        #self.model = self.model.cpu()
+        
         
         dataloader, _ = datautils.get_loaders(
             "wikitext2", seed=42, model=self.model.config.model_name, seqlen=self.model.config.max_position_embeddings
@@ -53,7 +54,7 @@ class OPTClass(BaseLM):
         new_embedding_dimension = int((1 - self.model.config.sparsity) * self.model.config.hidden_size)
         print(f"New embedding dimension: {new_embedding_dimension} (sparsity {self.model.config.sparsity})")
 
-        opt.rotate_and_slice_opt(self.model, dataloader, new_embedding_dimension)
+        rotate.rotate_and_slice_opt(self.model, dataloader, new_embedding_dimension)
         self.model.eval()
 
     @classmethod
