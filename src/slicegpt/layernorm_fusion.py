@@ -18,9 +18,9 @@ from transformers.models.opt.modeling_opt import (
 )
 from transformers.models.llama.modeling_llama import (
     LlamaDecoderLayer,
-    LlamaPreTrainedModel
+    LlamaPreTrainedModel,
+    LlamaRMSNorm
 )
-
 
 def replace_modules(model, config):
     """
@@ -61,7 +61,7 @@ def replace_layernorms(model, config):
         
     for name, mod in model.named_children():
         new_mod = None
-        if isinstance(mod, torch.nn.LayerNorm):
+        if isinstance(mod, (torch.nn.LayerNorm, LlamaRMSNorm)):
             new_mod = RMSN(config.hidden_size)
         elif len(list(mod.children())) > 0:
             replace_layernorms(mod, config)
