@@ -49,6 +49,23 @@ def replace_modules(model, config):
             new_mod.load_state_dict(mod.state_dict(), strict=True)
             setattr(model, name, new_mod)
 
+def replace_layernorms(model, config):
+    """
+    Replace 
+       nn.LayerNorm with slicegpt.modules.RMSN
+    """
+    if isinstance(model, LlamaPreTrainedModel):
+        model = model.model
+        
+    for name, mod in model.named_children():
+        new_mod = None
+        if isinstance(mod, torch.nn.LayerNorm):
+            new_mod = RMSN(config.hidden_size)
+        elif len(list(mod.children())) > 0:
+            replace_layernorms(mod, config)
+
+        if new_mod is not None:
+            setattr(model, name, new_mod)
  
 def fuse_modules(model):
     """
@@ -80,14 +97,10 @@ def fuse_modules(model):
         # Then we bake the mean substitution into the previous linear layers
         bake_mean_into_linear(get_attention_output(layer))
         bake_mean_into_linear(get_mlp_output(layer))
-
-        # substitute the layernorms for RMSN
-        layer.self_attn_layer_norm = RMSN(model.config.hidden_size)
-        layer.final_layer_norm = RMSN(model.config.hidden_size)
         
     fuse_ln_linear(get_pre_head_layernorm(model), [get_lm_head(model)])
-    model.model.decoder.final_layer_norm = RMSN(model.config.hidden_size)
 
+    replace_layernorms(model, model.config)
     print("done fusing Layernorm.")
 
 
@@ -95,7 +108,7 @@ def bake_mean_into_linear(linear: torch.nn.Linear) -> None:
     """
     This function takes a linear layer and subtracts the means from the
     weights and biases. This will result in the linear layer performing
-    the mean substitution.
+    the mean substitution which is usually done inside layernorm.
     """
     linear_dtype = linear.weight.dtype
     W_ = linear.weight.data.double()
