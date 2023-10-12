@@ -9,53 +9,15 @@ DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class OPTClass(BaseLM):
     def __init__(self, args):
-        # TODO: simplify args and add SliceGPT logic.
         super().__init__()
 
         self.model = OPTForCausalLM.from_pretrained(args.model, torch_dtype='auto')
-        self.model.eval()
         self.model.config.sparsity = args.sparsity
         self.model.config.model_name = args.model
         self.tokenizer = AutoTokenizer.from_pretrained(args.model, use_fast=False)
         self.vocab_size = self.tokenizer.vocab_size
-        print('OPT vocab size: ', self.vocab_size)    
-
-
-        """
-        class OPTArgs:
-            def __init__(self):
-                self.batch_size = 1
-                self.eval_dataset = 'wikitext2'
-                self.seed = 0
-                self.sparsity = None
-                self.cal_nsamples = 128
-                self.seqlen = None
-                self.compress_head = False
-                self.load_dir = None
-
         self.batch_size_per_gpu = args.batch_size
-        """
-
-        # apply slicegpt to model
-        self.model = self.model.to(DEV)
-        self.apply_slicegpt()
-
-    def apply_slicegpt(self):
-        layernorm_fusion.replace_modules(self.model, self.model.config)
-        self.model = self.model.cpu()
-        layernorm_fusion.fuse_modules(self.model)
-        print()
-        
-        
-        dataloader, _ = datautils.get_loaders(
-            "wikitext2", seed=42, model=self.model.config.model_name, seqlen=self.model.config.max_position_embeddings
-        )
-        
-        new_embedding_dimension = int((1 - self.model.config.sparsity) * self.model.config.hidden_size)
-        print(f"New embedding dimension: {new_embedding_dimension} (sparsity {self.model.config.sparsity})")
-
-        rotate.rotate_and_slice_opt(self.model, dataloader, new_embedding_dimension)
-        self.model.eval()
+        self.seqlen = self.model.config.max_position_embeddings
 
     @classmethod
     def create_from_arg_string(cls, args, kwargs):
@@ -87,7 +49,7 @@ class OPTClass(BaseLM):
     @property
     def device(self):
         # TODO: fix multi-gpu
-        return self._device
+        return self.model.device
 
     def tok_encode(self, string: str):
         return self.tokenizer.encode(string, add_special_tokens=False)
@@ -110,6 +72,20 @@ class OPTClass(BaseLM):
             context, max_length=max_length, eos_token_id=eos_token_id, do_sample=False
         )
 
+def apply_slicegpt(model, eval_dataset='wikitext2', seed=42):
+    layernorm_fusion.replace_modules(model.model, model.model.config)
+    model.model = model.model.cpu()
+    layernorm_fusion.fuse_modules(model.model)
+    print()
+    
+    dataloader, _ = datautils.get_loaders(
+        eval_dataset, seed=seed, model=model.model.config.model_name, seqlen=model.seqlen
+    )
+    
+    new_embedding_dimension = int((1 - model.model.config.sparsity) * model.model.config.hidden_size)
+    print(f"New embedding dimension: {new_embedding_dimension} (sparsity {model.model.config.sparsity})")
+
+    rotate.rotate_and_slice_opt(model.model, dataloader, new_embedding_dimension)
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -117,20 +93,19 @@ def parse_args():
     parser.add_argument(
         "--tasks", default=None, choices=utils.MultiChoice(tasks.ALL_TASKS)
     )
-    parser.add_argument("--num_fewshot", type=int, default=0)
     parser.add_argument("--no_cache", action="store_true")
     parser.add_argument('--sparsity', type=float, default=0.0)
+    parser.add_argument('--batch_size', type=float, default=1)
 
     return parser.parse_args()
 
 def main():
     args = parse_args()
-    
     print(f"Using dev: {DEV}.")
 
-    ### SliceGPT ###
-    my_model = OPTClass(args)
-    my_model.model = my_model.model.to(DEV)
+    # Initiate the model and apply
+    model = OPTClass(args)
+    apply_slicegpt(model)
 
     ### LM Eval Harness ###
     if args.tasks is None:
@@ -139,17 +114,15 @@ def main():
         task_names = utils.pattern_match(args.tasks.split(","), tasks.ALL_TASKS)
 
     print(f"Selected Tasks: {task_names}")
-
+    model.model = model.model.to(DEV)
+    model.model.eval()
     results = evaluator.simple_evaluate(
-        model=my_model,
+        model=model,
         tasks=task_names,
-        num_fewshot=args.num_fewshot,
         no_cache=args.no_cache
     )
-
     dumped = json.dumps(results, indent=2)
     print(dumped)
-
     print(evaluator.make_table(results))
 
 if __name__ == "__main__":
