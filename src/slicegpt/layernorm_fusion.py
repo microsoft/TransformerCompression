@@ -21,6 +21,7 @@ from transformers.models.llama.modeling_llama import (
     LlamaPreTrainedModel
 )
 
+
 def replace_modules(model, config):
     """
     Replace 
@@ -49,6 +50,7 @@ def replace_modules(model, config):
             new_mod.load_state_dict(mod.state_dict(), strict=True)
             setattr(model, name, new_mod)
 
+
 def replace_layernorms(model, config):
     """
     Replace 
@@ -67,6 +69,7 @@ def replace_layernorms(model, config):
         if new_mod is not None:
             setattr(model, name, new_mod)
  
+
 def fuse_modules(model):
     """
     This function fuses the linear and layernorm into each other inplace.
@@ -144,9 +147,3 @@ def fuse_ln_linear(
         # cast back
         linear.weight.data = linear.weight.data.to(linear_dtype)
         linear.bias.data = linear.bias.data.to(linear_dtype)
-
-
-
-
-
-
