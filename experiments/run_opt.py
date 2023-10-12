@@ -1,6 +1,6 @@
 import argparse
 import torch
-from slicegpt import layernorm_fusion, datautils, opt_utils, rotate, ln_fn_saleh
+from slicegpt import layernorm_fusion, datautils, hf_utils, rotate, opt_utils
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def opt_argparser():
@@ -10,6 +10,7 @@ def opt_argparser():
         type=str,
         help="OPT model to load; pass `facebook/opt-125m`.",
         choices=[
+            # OPT models
             "facebook/opt-125m",
             "facebook/opt-1.3b",
             "facebook/opt-2.7b",
@@ -17,6 +18,10 @@ def opt_argparser():
             "facebook/opt-13b",
             "facebook/opt-30b",
             "facebook/opt-66b",
+            # LLAMA 2 Models
+            'meta-llama/Llama-2-7b-hf',
+            'meta-llama/Llama-2-13b-hf',
+            'meta-llama/Llama-2-70b-hf',
         ],
         default="facebook/opt-125m",
     )
@@ -66,50 +71,22 @@ def opt_argparser():
         help="Benchmark the Baseline model.",
     )
     parser.add_argument("--compress_head", action="store_true")
+    
     parser.add_argument(
         "--save_dir", type=str, default=None, help="Path to save the model."
     )
     parser.add_argument(
         "--load_dir", type=str, default=None, help="Path to load the model."
     )
+    
+    parser.add_argument('--hf-token', type=str, default=None)
 
     parser.add_argument("--wandb", action="store_true")
-    parser.add_argument("--dp2_cache", action="store_true")
-
-    # SparseGPT args
-    parser.add_argument(
-        "--sparsegpt", action="store_true", help="Use SparseGPT on compressed model."
-    )
-    parser.add_argument(
-        "--sparsegpt_sp", type=float, default=0.0, help="Sparsity on SparseGPT."
-    )
-    parser.add_argument("--prunen", type=int, default=0, help="N for N:M pruning.")
-    parser.add_argument("--prunem", type=int, default=0, help="M for N:M pruning.")
 
     args = parser.parse_args()
     assert (
         args.sparsity >= 0 and args.sparsity <= 1
     ), "Sparsity should be in the range [0, 1]!"
-    if args.dp2_cache:
-        utils.deeplearn2_cache_dir()
-
-    if args.sparsegpt_sp > 0:
-        args.sparsegpt = True
-
-    if args.sparsegpt:
-        args.nsamples = args.cal_nsamples
-        args.minlayer = -1
-        args.maxlayer = 1000
-        args.percdamp = 0.01
-        args.blocksize = 128
-        args.gmp = False
-        args.wbits = 16
-        args.invert = False
-        args.log_wandb = False
-        args.prune_only = ""
-        assert (
-            args.sparsegpt_sp > 0 and args.sparsegpt_sp <= 1
-        ), "Sparsity should be in the range (0, 1]!"
 
     return args
 
@@ -119,9 +96,9 @@ def main():
     args = opt_argparser()
 
     # get model, data
-    model = opt_utils.get_opt(args.model)
+    model = hf_utils.get_model(args.model, args.hf_token)
     dataloader, testloader = datautils.get_loaders(
-        "wikitext2", seed=42, model=args.model, seqlen=model.seqlen
+        "wikitext2", seed=42, model=args.model, seqlen=model.seqlen, hf_token=args.hf_token
     )
 
     # original ppl
@@ -131,9 +108,6 @@ def main():
     # fuse layernorms, add shorcuts, check perplexity
     layernorm_fusion.replace_modules(model, model.config)
     model = model.cpu()
-    import copy
-    model2 = copy.deepcopy(model)
-    ln_fn_saleh.fuse_opt_modules(model2)
     layernorm_fusion.fuse_modules(model)
     
     dataset_ppl = opt_utils.evaluate_perplexity(model, testloader, DEV)
@@ -146,7 +120,7 @@ def main():
     rotate.rotate_and_slice_opt(model, dataloader, new_embedding_dimension)
     print()
     dataset_ppl = opt_utils.evaluate_perplexity(model, testloader, DEV)
-    print('\nRotate and slice', dataset_ppl)
+    print('\nAfter rotating and slicing', dataset_ppl)
 
 
 """
