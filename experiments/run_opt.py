@@ -1,10 +1,6 @@
 import argparse
 import torch
-<<<<<<< HEAD
-from slicegpt import layernorm_fusion, datautils, opt_utils, rotate, ln_fn_saleh
-=======
-from slicegpt import opt_utils, datautils, utils, opt
->>>>>>> c21c264 (Init lm eval harness expt)
+from slicegpt import layernorm_fusion, datautils, opt_utils, rotate
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def opt_argparser():
@@ -135,9 +131,6 @@ def main():
     # fuse layernorms, add shorcuts, check perplexity
     layernorm_fusion.replace_modules(model, model.config)
     model = model.cpu()
-    import copy
-    model2 = copy.deepcopy(model)
-    ln_fn_saleh.fuse_opt_modules(model2)
     layernorm_fusion.fuse_modules(model)
     
     dataset_ppl = opt_utils.evaluate_perplexity(model, testloader, DEV)
