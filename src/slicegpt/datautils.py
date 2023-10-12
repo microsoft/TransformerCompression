@@ -6,6 +6,10 @@ import transformers
 
 
 def get_wikitext2(nsamples, seed, seqlen, model, hf_token):
+    """
+    generate n_samples sequences from the wikitext 2 dataset, each of length seqlen. 
+    Additionally gather the test set (not sampled).
+    """
     traindata = datasets.load_dataset("wikitext", "wikitext-2-raw-v1", split="train")
     testdata = datasets.load_dataset("wikitext", "wikitext-2-raw-v1", split="test")
 
@@ -18,16 +22,21 @@ def get_wikitext2(nsamples, seed, seqlen, model, hf_token):
     trainenc = tokenizer("\n\n".join(traindata["text"]), return_tensors="pt")
     testenc = tokenizer("\n\n".join(testdata["text"]), return_tensors="pt")
 
+    # sample the train set
     random.seed(seed)
     trainloader = []
     for _ in range(nsamples):
         i = random.randint(0, trainenc.input_ids.shape[1] - seqlen - 1)
         j = i + seqlen
-        inp = trainenc.input_ids[:, i:j]
-        tar = inp.clone()
-        tar[:, :-1] = -100
-        trainloader.append((inp, tar))
-    return trainloader, testenc
+        input_ids = trainenc.input_ids[0, i:j]
+        trainloader.append(input_ids)
+        
+    # test set
+    n_test_samples = testenc.input_ids.numel() // seqlen
+    testloader = testenc.input_ids[0, :n_test_samples * seqlen].reshape(n_test_samples, seqlen)
+    testloader = [x for x in testloader]
+    
+    return trainloader, testloader
 
 
 def get_ptb(nsamples, seed, seqlen, model, hf_token):

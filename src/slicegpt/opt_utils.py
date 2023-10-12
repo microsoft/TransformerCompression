@@ -6,159 +6,64 @@ import tqdm
 import os
 import time
 
-
-def skip(*args, **kwargs):
-    pass
-
-
-def do_not_initialize(func):
-    """
-    A decorator that prevents initalization of torch.nn modules.
-    """
-
-    def wrapper(*args, **kwargs):
-        kiming_fn = torch.nn.init.kaiming_uniform_
-        uniform_fn = torch.nn.init.uniform_
-        normal_fn = torch.nn.init.normal_
-
-        torch.nn.init.kaiming_uniform_ = skip
-        torch.nn.init.uniform_ = skip
-        torch.nn.init.normal_ = skip
-
-        result = func(*args, **kwargs)
-
-        torch.nn.init.kaiming_uniform_ = kiming_fn
-        torch.nn.init.uniform_ = uniform_fn
-        torch.nn.init.normal_ = normal_fn
-        
-        return result
-
-    return wrapper
+from .model_utils import (
+    get_attention_inputs,
+    get_attention_output,
+    get_mlp_inputs,
+    get_mlp_output,
+    get_first_layernorm,
+    get_second_layernorm,
+    get_embeddings,
+    get_lm_head,
+    get_layers,
+    get_pre_head_layernorm,
+    get_layer0_inputs,
+    get_signals
+)
 
 
-@do_not_initialize
-def get_opt(model):
-    print("Loading {} Model...".format(model))
-
-    cache_dir = os.getenv("TRANSFORMERS_CACHE")
-    if cache_dir is not None:
-        print("----> Using cache dir: {}".format(cache_dir))
-        model = transformers.OPTForCausalLM.from_pretrained(
-            model, torch_dtype="auto", cache_dir=cache_dir
-        )
-    else:
-        print("----> Using default cache dir.")
-        model = transformers.OPTForCausalLM.from_pretrained(model, torch_dtype="auto")
-
-    model.seqlen = model.config.max_position_embeddings
-    
-    model.eval() # This switches off dropout.
-    model.config.use_cache = False # Do not cache attention key values.
-    
-    return model
 
 
 @torch.no_grad()
-def evaluate_perplexity(model, testenc, dev):
+def evaluate_perplexity(model, testloader, device):
     """
     evaluate the model's perplexity on the test set.
     This function loads each loayer onto the device one at a time,
     so that we can evaluate models that are too large to fit on a single GPU.
     """
     model.eval()
-    testenc = testenc.input_ids
-    nsamples = testenc.numel() // model.seqlen
 
     use_cache = model.config.use_cache
     model.config.use_cache = False
-    layers = model.model.decoder.layers
+    layers = get_layers(model)
 
-    model.model.decoder.embed_tokens = model.model.decoder.embed_tokens.to(dev)
-    model.model.decoder.embed_positions = model.model.decoder.embed_positions.to(dev)
-    if hasattr(model.model.decoder, "project_out") and model.model.decoder.project_out:
-        model.model.decoder.project_out = model.model.decoder.project_out.to(dev)
-    if hasattr(model.model.decoder, "project_in") and model.model.decoder.project_in:
-        model.model.decoder.project_in = model.model.decoder.project_in.to(dev)
-    layers[0] = layers[0].to(dev)
+    num_samples = len(testloader)
+    X, mask = get_layer0_inputs(model, testloader)
 
-    dtype = next(iter(model.parameters())).dtype
-    inps = []
-    cache = {"i": 0, "attention_mask": None}
-
-    class Catcher(torch.nn.Module):
-        def __init__(self, module):
-            super().__init__()
-            self.module = module
-
-        def forward(self, inp, **kwargs):
-            inps.append(inp)
-            cache["i"] += 1
-            cache["attention_mask"] = kwargs["attention_mask"]
-            raise ValueError
-
-    layers[0] = Catcher(layers[0])
-    for i in range(nsamples):
-        batch = testenc[:, (i * model.seqlen) : ((i + 1) * model.seqlen)].to(dev)
-        try:
-            model(batch)
-        except ValueError:
-            pass
-    layers[0] = layers[0].module
-    inps = torch.cat(inps)
-    layers[0] = layers[0].cpu()
-    model.model.decoder.embed_tokens = model.model.decoder.embed_tokens.cpu()
-    model.model.decoder.embed_positions = model.model.decoder.embed_positions.cpu()
-    if hasattr(model.model.decoder, "project_out") and model.model.decoder.project_out:
-        model.model.decoder.project_out = model.model.decoder.project_out.cpu()
-    if hasattr(model.model.decoder, "project_in") and model.model.decoder.project_in:
-        model.model.decoder.project_in = model.model.decoder.project_in.cpu()
-    torch.cuda.empty_cache()
-
-    outs = torch.zeros_like(inps)
-    attention_mask = cache["attention_mask"]
-
-    for i in range(len(layers)):
-        if i == 0:
-            print("(Eval) Layers: 0", end="", flush=True)
-        else:
-            print(f", {i}", end="", flush=True)
-        layer = layers[i].to(dev)
-
-        outs = []
-        for j in range(nsamples):
-            out = layer(inps[j].unsqueeze(0), attention_mask=attention_mask)[0]
-            outs.append(out)
-        layers[i] = layer.cpu()
+    print("(Eval) Layers: ", end="", flush=True)
+    for i, layer in enumerate(layers):
+        print(f", {i}", end="", flush=True)
+        layer = layer.to(device)
+        outs = [layer(X[j].unsqueeze(0), attention_mask=mask)[0] for j in range(num_samples)]
         del layer
         torch.cuda.empty_cache()
-        inps, outs = torch.cat(outs), inps
+        X = torch.cat(outs)
+    print("")
 
-    if model.model.decoder.final_layer_norm is not None:
-        model.model.decoder.final_layer_norm = model.model.decoder.final_layer_norm.to(
-            dev
-        )
-    if model.model.decoder.project_out is not None:
-        model.model.decoder.project_out = model.model.decoder.project_out.to(dev)
-    model.lm_head = model.lm_head.to(dev)
-
-    testenc = testenc.to(dev)
+    X = get_pre_head_layernorm(model).to(device)(X)
+    
+    lm_head = get_lm_head(model).to(device)
     nlls = []
-    for i in range(nsamples):
-        hidden_states = inps[i].unsqueeze(0)
-        if model.model.decoder.final_layer_norm is not None:
-            hidden_states = model.model.decoder.final_layer_norm(hidden_states)
-        if model.model.decoder.project_out is not None:
-            hidden_states = model.model.decoder.project_out(hidden_states)
-        lm_logits = model.lm_head(hidden_states)
+    for i, sample in enumerate(testloader):
+        x = X[i].unsqueeze(0)
+        lm_logits = lm_head(x)
         shift_logits = lm_logits[:, :-1, :].contiguous()
-        shift_labels = testenc[:, (i * model.seqlen) : ((i + 1) * model.seqlen)][:, 1:]
+        shift_labels = sample[1:].to(device)
         loss_fct = torch.nn.CrossEntropyLoss()
-        loss = loss_fct(
-            shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1)
-        )
-        neg_log_likelihood = loss.float() * model.seqlen
+        loss = loss_fct(shift_logits.squeeze(0), shift_labels.view(-1))
+        neg_log_likelihood = loss.float()
         nlls.append(neg_log_likelihood)
-    ppl = torch.exp(torch.stack(nlls).sum() / (nsamples * model.seqlen))
+    ppl = torch.exp(torch.stack(nlls).mean())
     model.config.use_cache = use_cache
     return ppl.item()
 

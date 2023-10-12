@@ -10,9 +10,11 @@ LLAMA_LAYER = transformers.models.llama.modeling_llama.LlamaDecoderLayer
 
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+
+
 def get_embeddings(model):
     if isinstance(model, OPT_MODEL):
-        return [model.model.decoder.embed_tokens,  model.model.decoder.embed_positions]
+        return [model.model.decoder.embed_tokens, model.model.decoder.embed_positions]
     elif isinstance(model, LLAMA_MODEL):
         return [model.model.embed_tokens]
     else:
@@ -94,7 +96,7 @@ def get_layer0_inputs(model, dataloader):
     """
     # Move embeddings to device.
     for W in get_embeddings(model):
-        W.weight.data = W.weight.data.to(DEV)
+        W.weight = torch.nn.Parameter(W.weight.to(DEV))
 
     layers = get_layers(model)
 
@@ -114,14 +116,14 @@ def get_layer0_inputs(model, dataloader):
     layers[0] = Catcher(layers[0])
     for batch in dataloader:
         try:
-            model(batch[0].to(DEV))
+            model(batch.unsqueeze(0).to(DEV))
         except ValueError:
             pass
     layers[0] = layers[0].module
 
     # Move embeddings back to cpu, and clear GPU cache.
     for W in get_embeddings(model):
-        W.weight.data = W.weight.data.to('cpu')
+        W.weight = torch.nn.Parameter(W.weight.to('cpu'))
     torch.cuda.empty_cache()
 
     return torch.cat(inps), attention_masks[-1]
