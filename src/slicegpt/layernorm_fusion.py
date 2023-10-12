@@ -116,10 +116,13 @@ def bake_mean_into_linear(linear: torch.nn.Linear) -> None:
     linear_dtype = linear.weight.dtype
     W_ = linear.weight.data.double()
     linear.weight.data =  W_ - W_.mean(dim=-2, keepdim=True)
-    b_ = linear.bias.data.double()
-    linear.bias.data = b_ - b_.mean()
     linear.weight.data = linear.weight.data.to(linear_dtype)
-    linear.bias.data = linear.bias.data.to(linear_dtype)
+    if linear.bias is not None:
+        b_ = linear.bias.data.double()
+        linear.bias.data = b_ - b_.mean()
+        linear.bias.data = linear.bias.data.to(linear_dtype)
+    
+    
 
 
 def fuse_ln_linear(
@@ -130,20 +133,15 @@ def fuse_ln_linear(
     fuse the linear operations in Layernorm into the adjacent linear blocks.
     """
     for linear in linear_layers:
-
-        # Check if linear layer has a bias, and if it doesn't we have to add one
-        if linear.bias is None:
-            linear.bias = torch.nn.Parameter(torch.zeros(linear.out_features, dtype=torch.float64))
-            
         linear_dtype = linear.weight.dtype
 
         # Calculating new weight and bias
         W_ = linear.weight.data.double()
-        D = torch.tensor(layernorm.weight.shape[-1], dtype=torch.float64)
-        b_ = linear.bias.data.double()
-        linear.bias.data = torch.matmul(W_, layernorm.bias.double()) + b_
-        linear.weight.data = W_ * layernorm.weight.double()
-
-        # cast back
-        linear.weight.data = linear.weight.data.to(linear_dtype)
-        linear.bias.data = linear.bias.data.to(linear_dtype)
+        linear.weight.data = (W_ * layernorm.weight.double()).to(linear_dtype)
+    
+        if hasattr(layernorm, 'bias'):
+            if linear.bias is None:
+                linear.bias = torch.nn.Parameter(torch.zeros(linear.out_features, dtype=torch.float64))
+            linear.bias.data = linear.bias.data.double() + torch.matmul(W_, layernorm.bias.double())
+            linear.bias.data = linear.bias.data.to(linear_dtype)
+        
