@@ -50,7 +50,7 @@ def slice_attention_output(layer, new_embedding_dimension):
     # Slice output matrix of the self-attention layer.
     W = get_attention_output(layer)
     W.weight.data = W.weight.data[:new_embedding_dimension, :]
-    if hasattr(W, 'bias'):
+    if W.bias is not None:
         W.bias.data = W.bias.data[:new_embedding_dimension]
     W.out_features = new_embedding_dimension
 
