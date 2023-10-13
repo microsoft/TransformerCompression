@@ -4,10 +4,9 @@
 import argparse
 
 import torch
-import wandb
-
-from slicegpt import datautils, hf_utils, layernorm_fusion, opt_utils, rotate
-
+from slicegpt import gpu_utils, layernorm_fusion, datautils, hf_utils, rotate
+import copy
+import time
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -104,6 +103,7 @@ def main():
         wandb.log({"post_fusion_ppl": dataset_ppl})
 
     # run slicegpt sparsity
+    print()
     new_embedding_dimension = int((1 - args.sparsity) * model.config.hidden_size)
     print(f"New embedding dimension: {new_embedding_dimension} (sparsity {args.sparsity})")
 
@@ -113,6 +113,18 @@ def main():
     print('\nAfter rotating and slicing', dataset_ppl)
     wandb.log({"sliced_ppl": dataset_ppl})
 
+    # run slicegpt alternative way
+    print()
+    rotate.rotate_opt(cloned_model, dataloader)
+    rotate.slice_rotated_OPT_model(cloned_model, new_embedding_dimension)
+    dataset_ppl_rot_then_sli = gpu_utils.evaluate_perplexity(cloned_model, testloader, DEV)
+    print('After rotating then slicing (sequential)', dataset_ppl_rot_then_sli)
+
+    print("\nSummary:")
+    print(f"Original:\t\t{dataset_ppl_orig}")
+    print(f"Post-fuse:\t\t{dataset_ppl_post_fusion}")
+    print(f"Rot and sli:\t{dataset_ppl_rot_and_sli}")
+    print(f"Rot then sli:\t{dataset_ppl_rot_then_sli}")
 
 """
 def old_main():

@@ -291,7 +291,7 @@ def slice_rotated_OPT_model(model, new_embedding_dimension, do_slice_head=False)
         # optionally slice the mlp/head connection in the last layer
         dim = new_embedding_dimension
         if layer is layers[-1]:
-            if not slice_head:
+            if not do_slice_head:
                 dim = model.config.hidden_size
 
         slice_mlp_output(layer, dim)
