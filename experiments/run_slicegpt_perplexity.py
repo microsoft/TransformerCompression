@@ -1,6 +1,7 @@
 import argparse
 import torch
 from slicegpt import layernorm_fusion, datautils, hf_utils, rotate, opt_utils
+
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def argparser():
@@ -95,6 +96,7 @@ def main():
     
     # fuse layernorms, add shorcuts, check perplexity
     layernorm_fusion.replace_modules(model, model.config)
+    model = model.cpu()
     layernorm_fusion.fuse_modules(model)
     
     if args.debug:
