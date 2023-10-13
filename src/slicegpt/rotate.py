@@ -66,7 +66,7 @@ def rotate_mlp_input(layer, Q):
 def slice_mlp_input(layer, new_embedding_dimension):
     # Slice the MLP input weights.
     for W in get_mlp_inputs(layer):
-        W.weight.data = layer.fc1.weight.data[:, :new_embedding_dimension]
+        W.weight.data = W.weight.data[:, :new_embedding_dimension]
         W.in_features = new_embedding_dimension
         
     # slice shortcut
@@ -89,7 +89,7 @@ def slice_mlp_output(layer, new_embedding_dimension):
     # Slice the MLP output weights and bias.
     W = get_mlp_output(layer)
     W.weight.data = W.weight.data[:new_embedding_dimension, :]
-    if hasattr(W, 'bias'):
+    if W.bias is not None:
         W.bias.data = W.bias.data[:new_embedding_dimension]
     W.out_features = new_embedding_dimension
     
