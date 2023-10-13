@@ -18,7 +18,8 @@ from transformers.models.opt.modeling_opt import (
 )
 from transformers.models.llama.modeling_llama import (
     LlamaDecoderLayer,
-    LlamaPreTrainedModel
+    LlamaPreTrainedModel,
+    LlamaRMSNorm
 )
 
 def replace_modules(model, config):
@@ -49,7 +50,26 @@ def replace_modules(model, config):
             new_mod.load_state_dict(mod.state_dict(), strict=True)
             setattr(model, name, new_mod)
 
+
+def replace_layernorms(model, config):
+    """
+    Replace 
+       nn.LayerNorm with slicegpt.modules.RMSN
+    """
+    if isinstance(model, LlamaPreTrainedModel):
+        model = model.model
+        
+    for name, mod in model.named_children():
+        new_mod = None
+        if isinstance(mod, (torch.nn.LayerNorm, LlamaRMSNorm)):
+            new_mod = RMSN(config.hidden_size)
+        elif len(list(mod.children())) > 0:
+            replace_layernorms(mod, config)
+
+        if new_mod is not None:
+            setattr(model, name, new_mod)
  
+
 def fuse_modules(model):
     """
     This function fuses the linear and layernorm into each other inplace.
@@ -80,14 +100,10 @@ def fuse_modules(model):
         # Then we bake the mean substitution into the previous linear layers
         bake_mean_into_linear(get_attention_output(layer))
         bake_mean_into_linear(get_mlp_output(layer))
-
-        # substitute the layernorms for RMSN
-        layer.self_attn_layer_norm = RMSN(model.config.hidden_size)
-        layer.final_layer_norm = RMSN(model.config.hidden_size)
         
     fuse_ln_linear(get_pre_head_layernorm(model), [get_lm_head(model)])
-    model.model.decoder.final_layer_norm = RMSN(model.config.hidden_size)
 
+    replace_layernorms(model, model.config)
     print("done fusing Layernorm.")
 
 
@@ -95,15 +111,18 @@ def bake_mean_into_linear(linear: torch.nn.Linear) -> None:
     """
     This function takes a linear layer and subtracts the means from the
     weights and biases. This will result in the linear layer performing
-    the mean substitution.
+    the mean substitution which is usually done inside layernorm.
     """
     linear_dtype = linear.weight.dtype
     W_ = linear.weight.data.double()
     linear.weight.data =  W_ - W_.mean(dim=-2, keepdim=True)
-    b_ = linear.bias.data.double()
-    linear.bias.data = b_ - b_.mean()
     linear.weight.data = linear.weight.data.to(linear_dtype)
-    linear.bias.data = linear.bias.data.to(linear_dtype)
+    if linear.bias is not None:
+        b_ = linear.bias.data.double()
+        linear.bias.data = b_ - b_.mean()
+        linear.bias.data = linear.bias.data.to(linear_dtype)
+    
+    
 
 
 def fuse_ln_linear(
@@ -114,26 +133,15 @@ def fuse_ln_linear(
     fuse the linear operations in Layernorm into the adjacent linear blocks.
     """
     for linear in linear_layers:
-
-        # Check if linear layer has a bias, and if it doesn't we have to add one
-        if linear.bias is None:
-            linear.bias = torch.nn.Parameter(torch.zeros(linear.out_features, dtype=torch.float64))
-            
         linear_dtype = linear.weight.dtype
 
         # Calculating new weight and bias
         W_ = linear.weight.data.double()
-        D = torch.tensor(layernorm.weight.shape[-1], dtype=torch.float64)
-        b_ = linear.bias.data.double()
-        linear.bias.data = torch.matmul(W_, layernorm.bias.double()) + b_
-        linear.weight.data = W_ * layernorm.weight.double()
-
-        # cast back
-        linear.weight.data = linear.weight.data.to(linear_dtype)
-        linear.bias.data = linear.bias.data.to(linear_dtype)
-
-
-
-
-
-
+        linear.weight.data = (W_ * layernorm.weight.double()).to(linear_dtype)
+    
+        if hasattr(layernorm, 'bias'):
+            if linear.bias is None:
+                linear.bias = torch.nn.Parameter(torch.zeros(linear.out_features, dtype=torch.float64))
+            linear.bias.data = linear.bias.data.double() + torch.matmul(W_, layernorm.bias.double())
+            linear.bias.data = linear.bias.data.to(linear_dtype)
+        
