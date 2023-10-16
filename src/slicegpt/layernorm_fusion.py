@@ -1,30 +1,25 @@
 import torch
-from .modules import CompressedOPTDecoderLayer, CompressedLlamaDecoderLayer, RMSN
+from transformers.models.llama.modeling_llama import LlamaDecoderLayer, LlamaPreTrainedModel, LlamaRMSNorm
+from transformers.models.opt.modeling_opt import OPTDecoderLayer
+
 from .model_utils import (
     get_attention_inputs,
     get_attention_output,
+    get_embeddings,
+    get_first_layernorm,
+    get_layers,
+    get_lm_head,
     get_mlp_inputs,
     get_mlp_output,
-    get_first_layernorm,
+    get_pre_head_layernorm,
     get_second_layernorm,
-    get_embeddings,
-    get_lm_head,
-    get_layers,
-    get_pre_head_layernorm
 )
+from .modules import RMSN, CompressedLlamaDecoderLayer, CompressedOPTDecoderLayer
 
-from transformers.models.opt.modeling_opt import (
-    OPTDecoderLayer
-)
-from transformers.models.llama.modeling_llama import (
-    LlamaDecoderLayer,
-    LlamaPreTrainedModel,
-    LlamaRMSNorm
-)
 
 def replace_modules(model, config):
     """
-    Replace 
+    Replace
        OPTDecoder with CompressedOPTDecoderLayer,
        LLAMADecoderLayer with CompressedLlamaDecoderLayer
     This adds a 'shortcut operation' to each block.
@@ -32,17 +27,13 @@ def replace_modules(model, config):
     """
     if isinstance(model, LlamaPreTrainedModel):
         model = model.model
-        
+
     for name, mod in model.named_children():
         new_mod = None
         if isinstance(mod, OPTDecoderLayer):
-            new_mod = CompressedOPTDecoderLayer(config).to(
-                config.torch_dtype
-            )
+            new_mod = CompressedOPTDecoderLayer(config).to(config.torch_dtype)
         elif isinstance(mod, LlamaDecoderLayer):
-            new_mod = CompressedLlamaDecoderLayer(config).to(
-                config.torch_dtype
-            )
+            new_mod = CompressedLlamaDecoderLayer(config).to(config.torch_dtype)
         elif len(list(mod.children())) > 0:
             replace_modules(mod, config)
 
@@ -53,12 +44,12 @@ def replace_modules(model, config):
 
 def replace_layernorms(model, config):
     """
-    Replace 
+    Replace
        nn.LayerNorm with slicegpt.modules.RMSN
     """
     if isinstance(model, LlamaPreTrainedModel):
         model = model.model
-        
+
     for name, mod in model.named_children():
         new_mod = None
         if isinstance(mod, (torch.nn.LayerNorm, LlamaRMSNorm)):
@@ -68,7 +59,7 @@ def replace_layernorms(model, config):
 
         if new_mod is not None:
             setattr(model, name, new_mod)
- 
+
 
 def fuse_modules(model):
     """
@@ -100,7 +91,7 @@ def fuse_modules(model):
         # Then we bake the mean substitution into the previous linear layers
         bake_mean_into_linear(get_attention_output(layer))
         bake_mean_into_linear(get_mlp_output(layer))
-        
+
     fuse_ln_linear(get_pre_head_layernorm(model), [get_lm_head(model)])
 
     replace_layernorms(model, model.config)
@@ -115,20 +106,15 @@ def bake_mean_into_linear(linear: torch.nn.Linear) -> None:
     """
     linear_dtype = linear.weight.dtype
     W_ = linear.weight.data.double()
-    linear.weight.data =  W_ - W_.mean(dim=-2, keepdim=True)
+    linear.weight.data = W_ - W_.mean(dim=-2, keepdim=True)
     linear.weight.data = linear.weight.data.to(linear_dtype)
     if linear.bias is not None:
         b_ = linear.bias.data.double()
         linear.bias.data = b_ - b_.mean()
         linear.bias.data = linear.bias.data.to(linear_dtype)
-    
-    
 
 
-def fuse_ln_linear(
-    layernorm: torch.nn.LayerNorm,
-    linear_layers: list
-):
+def fuse_ln_linear(layernorm: torch.nn.LayerNorm, linear_layers: list):
     """
     fuse the linear operations in Layernorm into the adjacent linear blocks.
     """
@@ -138,10 +124,9 @@ def fuse_ln_linear(
         # Calculating new weight and bias
         W_ = linear.weight.data.double()
         linear.weight.data = (W_ * layernorm.weight.double()).to(linear_dtype)
-    
+
         if hasattr(layernorm, 'bias'):
             if linear.bias is None:
                 linear.bias = torch.nn.Parameter(torch.zeros(linear.out_features, dtype=torch.float64))
             linear.bias.data = linear.bias.data.double() + torch.matmul(W_, layernorm.bias.double())
             linear.bias.data = linear.bias.data.to(linear_dtype)
-        

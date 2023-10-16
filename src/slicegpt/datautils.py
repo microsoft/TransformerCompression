@@ -1,13 +1,14 @@
-import torch
 import random
+
 import datasets
 import numpy as np
+import torch
 import transformers
 
 
 def get_wikitext2(nsamples, seed, seqlen, model, hf_token):
     """
-    generate n_samples sequences from the wikitext 2 dataset, each of length seqlen. 
+    generate n_samples sequences from the wikitext 2 dataset, each of length seqlen.
     Additionally gather the test set (not sampled).
     """
     traindata = datasets.load_dataset("wikitext", "wikitext-2-raw-v1", split="train")
@@ -16,9 +17,7 @@ def get_wikitext2(nsamples, seed, seqlen, model, hf_token):
     if hf_token == None:
         tokenizer = transformers.AutoTokenizer.from_pretrained(model, use_fast=False)
     else:
-        tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model, use_fast=False, use_auth_token=hf_token
-        )
+        tokenizer = transformers.AutoTokenizer.from_pretrained(model, use_fast=False, use_auth_token=hf_token)
     trainenc = tokenizer("\n\n".join(traindata["text"]), return_tensors="pt")
     testenc = tokenizer("\n\n".join(testdata["text"]), return_tensors="pt")
 
@@ -30,27 +29,23 @@ def get_wikitext2(nsamples, seed, seqlen, model, hf_token):
         j = i + seqlen
         input_ids = trainenc.input_ids[0, i:j]
         trainloader.append(input_ids)
-        
+
     # test set
     n_test_samples = testenc.input_ids.numel() // seqlen
-    testloader = testenc.input_ids[0, :n_test_samples * seqlen].reshape(n_test_samples, seqlen)
+    testloader = testenc.input_ids[0, : n_test_samples * seqlen].reshape(n_test_samples, seqlen)
     testloader = [x for x in testloader]
-    
+
     return trainloader, testloader
 
 
 def get_ptb(nsamples, seed, seqlen, model, hf_token):
     traindata = datasets.load_dataset("ptb_text_only", "penn_treebank", split="train")
-    valdata = datasets.load_dataset(
-        "ptb_text_only", "penn_treebank", split="validation"
-    )
+    valdata = datasets.load_dataset("ptb_text_only", "penn_treebank", split="validation")
 
     if hf_token == None:
         tokenizer = transformers.AutoTokenizer.from_pretrained(model, use_fast=False)
     else:
-        tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model, use_fast=False, use_auth_token=hf_token
-        )
+        tokenizer = transformers.AutoTokenizer.from_pretrained(model, use_fast=False, use_auth_token=hf_token)
     trainenc = tokenizer("\n\n".join(traindata["sentence"]), return_tensors="pt")
     testenc = tokenizer("\n\n".join(valdata["sentence"]), return_tensors="pt")
 
@@ -83,9 +78,7 @@ def get_c4(nsamples, seed, seqlen, model, hf_token):
     if hf_token == None:
         tokenizer = transformers.AutoTokenizer.from_pretrained(model, use_fast=False)
     else:
-        tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model, use_fast=False, use_auth_token=hf_token
-        )
+        tokenizer = transformers.AutoTokenizer.from_pretrained(model, use_fast=False, use_auth_token=hf_token)
 
     random.seed(seed)
     trainloader = []
@@ -132,9 +125,7 @@ def get_ptb_new(nsamples, seed, seqlen, model, hf_token):
     if hf_token == None:
         tokenizer = transformers.AutoTokenizer.from_pretrained(model, use_fast=False)
     else:
-        tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model, use_fast=False, use_auth_token=hf_token
-        )
+        tokenizer = transformers.AutoTokenizer.from_pretrained(model, use_fast=False, use_auth_token=hf_token)
     trainenc = tokenizer(" ".join(traindata["sentence"]), return_tensors="pt")
     testenc = tokenizer(" ".join(testdata["sentence"]), return_tensors="pt")
 
@@ -167,9 +158,7 @@ def get_c4_new(nsamples, seed, seqlen, model, hf_token):
     if hf_token == None:
         tokenizer = transformers.AutoTokenizer.from_pretrained(model, use_fast=False)
     else:
-        tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model, use_fast=False, use_auth_token=hf_token
-        )
+        tokenizer = transformers.AutoTokenizer.from_pretrained(model, use_fast=False, use_auth_token=hf_token)
 
     import random
 

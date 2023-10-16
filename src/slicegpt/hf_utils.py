@@ -1,6 +1,7 @@
-import transformers
-import torch
 import os
+
+import torch
+import transformers
 
 
 def skip(*args, **kwargs):
@@ -26,7 +27,7 @@ def do_not_initialize(func):
         torch.nn.init.kaiming_uniform_ = kiming_fn
         torch.nn.init.uniform_ = uniform_fn
         torch.nn.init.normal_ = normal_fn
-        
+
         return result
 
     return wrapper
@@ -37,17 +38,14 @@ def get_model(model_name, hf_token=None):
     print("Loading {} Model...".format(model_name))
 
     if 'facebook/opt' in model_name:
-        model = transformers.OPTForCausalLM.from_pretrained(
-            model_name, torch_dtype="auto"
-        )
+        model = transformers.OPTForCausalLM.from_pretrained(model_name, torch_dtype="auto")
     elif 'meta-llama/Llama-2' in model_name:
         model = transformers.LlamaForCausalLM.from_pretrained(model_name, torch_dtype='auto', use_auth_token=hf_token)
     else:
         raise NotImplementedError
 
-
     model.seqlen = model.config.max_position_embeddings
-    model.eval() # This switches off dropout.
-    model.config.use_cache = False # Do not cache attention key values.
-    
+    model.eval()  # This switches off dropout.
+    model.config.use_cache = False  # Do not cache attention key values.
+
     return model
