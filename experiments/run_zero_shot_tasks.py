@@ -2,6 +2,7 @@ import argparse
 import json
 import torch
 from slicegpt import layernorm_fusion, datautils, utils, rotate
+import wandb
 from lm_eval import tasks, evaluator, utils
 from lm_eval.base import BaseLM
 from transformers import OPTForCausalLM, AutoTokenizer
@@ -102,6 +103,8 @@ def parse_args():
 def main():
     args = parse_args()
     print(f"Using dev: {DEV}.")
+    
+    wandb.init('slicegpt-zeroshot', config=args)
 
     # Initiate the model and apply
     model = OPTClass(args)
@@ -121,9 +124,10 @@ def main():
         tasks=task_names,
         no_cache=args.no_cache
     )
-    dumped = json.dumps(results, indent=2)
-    print(dumped)
+    wandb.log(results['results'])
+    print(json.dumps(results, indent=2))
     print(evaluator.make_table(results))
+    
 
 if __name__ == "__main__":
     main()
