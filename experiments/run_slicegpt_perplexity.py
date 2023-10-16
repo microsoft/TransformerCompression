@@ -1,5 +1,6 @@
 import argparse
 import torch
+import wandb
 from slicegpt import layernorm_fusion, datautils, hf_utils, rotate, opt_utils
 
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -69,8 +70,6 @@ def argparser():
     
     parser.add_argument('--hf-token', type=str, default=None)
 
-    parser.add_argument("--wandb", action="store_true")
-
     args = parser.parse_args()
     assert (
         args.sparsity >= 0 and args.sparsity <= 1
@@ -82,6 +81,8 @@ def main():
     print("Running OPT experiment.")
 
     args = argparser()
+    
+    wandb.init(project="slicegpt", config=args)
 
     # get model, data
     model = hf_utils.get_model(args.model, args.hf_token)
@@ -93,6 +94,7 @@ def main():
     if args.eval_baseline:
         dataset_ppl = opt_utils.evaluate_perplexity(model, testloader, DEV)
         print('\noriginal ppl:', dataset_ppl)
+        wandb.log({"original_ppl": dataset_ppl})
     
     # fuse layernorms, add shorcuts, check perplexity
     layernorm_fusion.replace_modules(model, model.config)
@@ -102,6 +104,7 @@ def main():
     if args.debug:
         dataset_ppl = opt_utils.evaluate_perplexity(model, testloader, DEV)
         print('\npost-fusion:', dataset_ppl)
+        wandb.log({"post_fusion_ppl": dataset_ppl})
     
     # run slicegpt sparsity
     new_embedding_dimension = int((1 - args.sparsity) * model.config.hidden_size)
@@ -111,6 +114,7 @@ def main():
     print()
     dataset_ppl = opt_utils.evaluate_perplexity(model, testloader, DEV)
     print('\nAfter rotating and slicing', dataset_ppl)
+    wandb.log({"sliced_ppl": dataset_ppl})
 
 
 """
@@ -229,7 +233,7 @@ def old_main():
         print(f"Loading the model from {args.load_dir}...")
         model = slice_OPT_model(model, args) # this just makes an empty model!
         model.load_state_dict(
-            torch.load(args.load_dir, map_location=torch.device("cpu"))
+            torch.load(args.load_dir, map_location=torch.device("cpu"))\
         )
 
     if args.benchmark and args.ppl_check:
