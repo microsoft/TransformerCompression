@@ -44,6 +44,9 @@ def evaluate_perplexity(model, testloader, device):
         print(f", {i}", end="", flush=True)
         layer = layer.to(device)
         outs = [layer(X[j].unsqueeze(0), attention_mask=mask)[0] for j in range(num_samples)]
+        
+        # Remove reference to layer from the list
+        layers[i] = None
         del layer
         torch.cuda.empty_cache()
         X = torch.cat(outs)
