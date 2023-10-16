@@ -70,8 +70,6 @@ def argparser():
     
     parser.add_argument('--hf-token', type=str, default=None)
 
-    parser.add_argument("--wandb", action="store_true")
-
     args = parser.parse_args()
     assert (
         args.sparsity >= 0 and args.sparsity <= 1
