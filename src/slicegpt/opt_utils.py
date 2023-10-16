@@ -1,27 +1,26 @@
-import torch
-import numpy as np
 import math
-import transformers
-import tqdm
 import os
 import time
+
+import numpy as np
+import torch
+import tqdm
+import transformers
 
 from .model_utils import (
     get_attention_inputs,
     get_attention_output,
+    get_embeddings,
+    get_first_layernorm,
+    get_layer0_inputs,
+    get_layers,
+    get_lm_head,
     get_mlp_inputs,
     get_mlp_output,
-    get_first_layernorm,
-    get_second_layernorm,
-    get_embeddings,
-    get_lm_head,
-    get_layers,
     get_pre_head_layernorm,
-    get_layer0_inputs,
-    get_signals
+    get_second_layernorm,
+    get_signals,
 )
-
-
 
 
 @torch.no_grad()
@@ -51,7 +50,7 @@ def evaluate_perplexity(model, testloader, device):
     print("")
 
     X = get_pre_head_layernorm(model).to(device)(X)
-    
+
     lm_head = get_lm_head(model).to(device)
     nlls = []
     for i, sample in enumerate(testloader):
@@ -73,20 +72,13 @@ def opt_multigpu(model, gpus):
     Split the OPT model across multiple GPUs.
     """
     model.model.decoder.embed_tokens = model.model.decoder.embed_tokens.to(gpus[0])
-    model.model.decoder.embed_positions = model.model.decoder.embed_positions.to(
-        gpus[0]
-    )
+    model.model.decoder.embed_positions = model.model.decoder.embed_positions.to(gpus[0])
     if hasattr(model.model.decoder, "project_in") and model.model.decoder.project_in:
         model.model.decoder.project_in = model.model.decoder.project_in.to(gpus[0])
     if hasattr(model.model.decoder, "project_out") and model.model.decoder.project_out:
         model.model.decoder.project_out = model.model.decoder.project_out.to(gpus[-1])
-    if (
-        hasattr(model.model.decoder, "final_layer_norm")
-        and model.model.decoder.final_layer_norm
-    ):
-        model.model.decoder.final_layer_norm = model.model.decoder.final_layer_norm.to(
-            gpus[-1]
-        )
+    if hasattr(model.model.decoder, "final_layer_norm") and model.model.decoder.final_layer_norm:
+        model.model.decoder.final_layer_norm = model.model.decoder.final_layer_norm.to(gpus[-1])
     import copy
 
     model.lm_head = copy.deepcopy(model.lm_head).to(gpus[-1])
@@ -161,9 +153,7 @@ def opt_benchmark(model, input_ids, dev, check=False):
             sync()
             times.append(time.time() - tick)
             if check and i != input_ids.numel() - 1:
-                tot += loss(
-                    out.logits[0].to(DEV), input_ids[:, (i + 1)].to(DEV)
-                ).float()
+                tot += loss(out.logits[0].to(DEV), input_ids[:, (i + 1)].to(DEV)).float()
             cache["past"] = list(out.past_key_values)
             del out
         sync()
