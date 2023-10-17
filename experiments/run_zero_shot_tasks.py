@@ -10,7 +10,7 @@ from lm_eval.base import BaseLM
 from transformers import AutoTokenizer, OPTForCausalLM
 
 import wandb
-from slicegpt import datautils, layernorm_fusion, rotate, utils
+from slicegpt import data_utils, layernorm_fusion, rotate, utils
 
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -85,7 +85,7 @@ def apply_slicegpt(model, eval_dataset='wikitext2', seed=42):
     layernorm_fusion.fuse_modules(model.model)
     print()
 
-    dataloader, _ = datautils.get_loaders(
+    dataloader, _ = data_utils.get_loaders(
         eval_dataset, seed=seed, model=model.model.config.model_name, seqlen=model.seqlen
     )
 
