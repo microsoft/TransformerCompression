@@ -42,7 +42,7 @@ def get_model(model_path, hf_token=None):
 
     if "facebook/opt" in model_path:
         model = transformers.OPTForCausalLM.from_pretrained(model_path, torch_dtype="auto")
-    elif "meta-llama/llama" in model_path:
+    elif "meta-llama" in model_path:
         model = transformers.LlamaForCausalLM.from_pretrained(model_path, torch_dtype='auto', use_auth_token=hf_token)
     else:
         raise NotImplementedError
