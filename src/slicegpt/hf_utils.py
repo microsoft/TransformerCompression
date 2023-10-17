@@ -37,24 +37,21 @@ def do_not_initialize(func):
 
 
 @do_not_initialize
-def get_model(model_name, model_path=None, hf_token=None):
-    print("Loading {} Model...".format(model_name))
+def get_model(model_path, hf_token=None):
+    print("Loading model from {} ...".format(model_path))
 
-    if model_name == 'custom':
-        model_name = model_path
-
-    if model_name.startswith('facebook/opt'):
-        model = transformers.OPTForCausalLM.from_pretrained(model_name, torch_dtype="auto")
-    elif model_name.startswith('meta-llama/Llama-2') or model_path != None:
-        model = transformers.LlamaForCausalLM.from_pretrained(model_name, torch_dtype='auto', use_auth_token=hf_token)
+    if "facebook/opt" in model_path:
+        model = transformers.OPTForCausalLM.from_pretrained(model_path, torch_dtype="auto")
+    elif "meta-llama/llama" in model_path:
+        model = transformers.LlamaForCausalLM.from_pretrained(model_path, torch_dtype='auto', use_auth_token=hf_token)
     else:
         raise NotImplementedError
 
     if hf_token == None:
-        tokenizer = transformers.AutoTokenizer.from_pretrained(model_name, use_fast=False)
+        tokenizer = transformers.AutoTokenizer.from_pretrained(model_path, use_fast=False)
     else:
         tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model_name, use_fast=False, use_auth_token=hf_token
+            model_path, use_fast=False, use_auth_token=hf_token
         )
 
     model.seqlen = model.config.max_position_embeddings

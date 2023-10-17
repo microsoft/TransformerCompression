@@ -76,7 +76,7 @@ def main():
     wandb.init(project="slicegpt", config=args)
 
     # get model, data
-    model, tokenizer = hf_utils.get_model(args.model, None, args.hf_token)
+    model, tokenizer = hf_utils.get_model(args.model, args.hf_token)
     dataloader, testloader = datautils.get_loaders(
         "wikitext2", seed=args.seed, tokenizer=tokenizer, seqlen=model.seqlen
     )
