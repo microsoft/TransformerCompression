@@ -1,3 +1,6 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
 import torch
 from transformers.models.llama.modeling_llama import LlamaDecoderLayer, LlamaPreTrainedModel, LlamaRMSNorm
 from transformers.models.opt.modeling_opt import OPTDecoderLayer
