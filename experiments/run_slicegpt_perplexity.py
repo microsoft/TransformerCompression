@@ -5,6 +5,7 @@ from slicegpt import layernorm_fusion, datautils, hf_utils, rotate, opt_utils
 
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+
 def argparser():
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -24,8 +25,17 @@ def argparser():
             'meta-llama/Llama-2-7b-hf',
             'meta-llama/Llama-2-13b-hf',
             'meta-llama/Llama-2-70b-hf',
+            # Custom model. Currently support custom Llama models.
+            # TODO: add support for custom OPT models.
+            # Model path must be provided.
+            'custom'
         ],
         default="facebook/opt-125m",
+    )
+    parser.add_argument(
+        "--model_path",
+        type=str,
+        help="Path to custom llama or OPT model",
     )
     parser.add_argument(
         "--cal_dataset",
@@ -68,7 +78,7 @@ def argparser():
         "--load_dir", type=str, default=None, help="Path to load the model."
     )
     
-    parser.add_argument('--hf-token', type=str, default=None)
+    parser.add_argument('--hf_token', type=str, default=None)
 
     args = parser.parse_args()
     assert (
@@ -78,16 +88,19 @@ def argparser():
     return args
 
 def main():
-    print("Running OPT experiment.")
+    print("Running slicing experiment.")
 
     args = argparser()
     
     wandb.init(project="slicegpt", config=args)
 
+    if args.model == 'custom' and args.model_path == None:
+        raise ValueError('Custom model path must be provided.')
+
     # get model, data
-    model = hf_utils.get_model(args.model, args.hf_token)
+    model, tokenizer = hf_utils.get_model(args.model, args.model_path, args.hf_token)
     dataloader, testloader = datautils.get_loaders(
-        "wikitext2", seed=42, model=args.model, seqlen=model.seqlen, hf_token=args.hf_token
+        "wikitext2", seed=42, tokenizer=tokenizer, seqlen=model.seqlen
     )
 
     # original ppl

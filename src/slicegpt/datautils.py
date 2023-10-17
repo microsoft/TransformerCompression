@@ -5,7 +5,7 @@ import numpy as np
 import transformers
 
 
-def get_wikitext2(nsamples, seed, seqlen, model, hf_token):
+def get_wikitext2(nsamples, seed, seqlen, tokenizer):
     """
     generate n_samples sequences from the wikitext 2 dataset, each of length seqlen. 
     Additionally gather the test set (not sampled).
@@ -13,12 +13,6 @@ def get_wikitext2(nsamples, seed, seqlen, model, hf_token):
     traindata = datasets.load_dataset("wikitext", "wikitext-2-raw-v1", split="train")
     testdata = datasets.load_dataset("wikitext", "wikitext-2-raw-v1", split="test")
 
-    if hf_token == None:
-        tokenizer = transformers.AutoTokenizer.from_pretrained(model, use_fast=False)
-    else:
-        tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model, use_fast=False, use_auth_token=hf_token
-        )
     trainenc = tokenizer("\n\n".join(traindata["text"]), return_tensors="pt")
     testenc = tokenizer("\n\n".join(testdata["text"]), return_tensors="pt")
 
@@ -39,18 +33,12 @@ def get_wikitext2(nsamples, seed, seqlen, model, hf_token):
     return trainloader, testloader
 
 
-def get_ptb(nsamples, seed, seqlen, model, hf_token):
+def get_ptb(nsamples, seed, seqlen, tokenizer):
     traindata = datasets.load_dataset("ptb_text_only", "penn_treebank", split="train")
     valdata = datasets.load_dataset(
         "ptb_text_only", "penn_treebank", split="validation"
     )
 
-    if hf_token == None:
-        tokenizer = transformers.AutoTokenizer.from_pretrained(model, use_fast=False)
-    else:
-        tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model, use_fast=False, use_auth_token=hf_token
-        )
     trainenc = tokenizer("\n\n".join(traindata["sentence"]), return_tensors="pt")
     testenc = tokenizer("\n\n".join(valdata["sentence"]), return_tensors="pt")
 
@@ -66,7 +54,7 @@ def get_ptb(nsamples, seed, seqlen, model, hf_token):
     return trainloader, testenc
 
 
-def get_c4(nsamples, seed, seqlen, model, hf_token):
+def get_c4(nsamples, seed, seqlen, tokenizer):
     traindata = datasets.load_dataset(
         "allenai/c4",
         "allenai--c4",
@@ -79,13 +67,6 @@ def get_c4(nsamples, seed, seqlen, model, hf_token):
         data_files={"validation": "en/c4-validation.00000-of-00008.json.gz"},
         split="validation",
     )
-
-    if hf_token == None:
-        tokenizer = transformers.AutoTokenizer.from_pretrained(model, use_fast=False)
-    else:
-        tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model, use_fast=False, use_auth_token=hf_token
-        )
 
     random.seed(seed)
     trainloader = []
@@ -124,17 +105,11 @@ def get_c4(nsamples, seed, seqlen, model, hf_token):
     return trainloader, valenc
 
 
-def get_ptb_new(nsamples, seed, seqlen, model, hf_token):
+def get_ptb_new(nsamples, seed, seqlen, tokenizer):
 
     traindata = datasets.load_dataset("ptb_text_only", "penn_treebank", split="train")
     testdata = datasets.load_dataset("ptb_text_only", "penn_treebank", split="test")
 
-    if hf_token == None:
-        tokenizer = transformers.AutoTokenizer.from_pretrained(model, use_fast=False)
-    else:
-        tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model, use_fast=False, use_auth_token=hf_token
-        )
     trainenc = tokenizer(" ".join(traindata["sentence"]), return_tensors="pt")
     testenc = tokenizer(" ".join(testdata["sentence"]), return_tensors="pt")
 
@@ -150,7 +125,7 @@ def get_ptb_new(nsamples, seed, seqlen, model, hf_token):
     return trainloader, testenc
 
 
-def get_c4_new(nsamples, seed, seqlen, model, hf_token):
+def get_c4_new(nsamples, seed, seqlen, tokenizer):
     traindata = datasets.load_dataset(
         "allenai/c4",
         "allenai--c4",
@@ -163,13 +138,6 @@ def get_c4_new(nsamples, seed, seqlen, model, hf_token):
         data_files={"validation": "en/c4-validation.00000-of-00008.json.gz"},
         split="validation",
     )
-
-    if hf_token == None:
-        tokenizer = transformers.AutoTokenizer.from_pretrained(model, use_fast=False)
-    else:
-        tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model, use_fast=False, use_auth_token=hf_token
-        )
 
     import random
 
@@ -200,14 +168,14 @@ def get_c4_new(nsamples, seed, seqlen, model, hf_token):
     return trainloader, valenc
 
 
-def get_loaders(name, nsamples=128, seed=0, seqlen=2048, model="", hf_token=None):
+def get_loaders(name, nsamples=128, seed=0, seqlen=2048, tokenizer=None):
     if "wikitext2" in name:
-        return get_wikitext2(nsamples, seed, seqlen, model, hf_token)
+        return get_wikitext2(nsamples, seed, seqlen, tokenizer)
     if "ptb" in name:
         if "new" in name:
-            return get_ptb_new(nsamples, seed, seqlen, model, hf_token)
-        return get_ptb(nsamples, seed, seqlen, model, hf_token)
+            return get_ptb_new(nsamples, seed, seqlen, tokenizer)
+        return get_ptb(nsamples, seed, seqlen, tokenizer)
     if "c4" in name:
         if "new" in name:
-            return get_c4_new(nsamples, seed, seqlen, model, hf_token)
-        return get_c4(nsamples, seed, seqlen, model, hf_token)
+            return get_c4_new(nsamples, seed, seqlen, tokenizer)
+        return get_c4(nsamples, seed, seqlen, tokenizer)

@@ -33,21 +33,30 @@ def do_not_initialize(func):
 
 
 @do_not_initialize
-def get_model(model_name, hf_token=None):
+def get_model(model_name, model_path=None, hf_token=None):
     print("Loading {} Model...".format(model_name))
 
-    if 'facebook/opt' in model_name:
+    if model_name == 'custom':
+        model_name = model_path
+
+    if model_name.startswith('facebook/opt'):
         model = transformers.OPTForCausalLM.from_pretrained(
             model_name, torch_dtype="auto"
         )
-    elif 'meta-llama/Llama-2' in model_name:
+    elif model_name.startswith('meta-llama/Llama-2') or model_path != None:
         model = transformers.LlamaForCausalLM.from_pretrained(model_name, torch_dtype='auto', use_auth_token=hf_token)
     else:
         raise NotImplementedError
 
+    if hf_token == None:
+        tokenizer = transformers.AutoTokenizer.from_pretrained(model_name, use_fast=False)
+    else:
+        tokenizer = transformers.AutoTokenizer.from_pretrained(
+            model_name, use_fast=False, use_auth_token=hf_token
+        )
 
     model.seqlen = model.config.max_position_embeddings
     model.eval() # This switches off dropout.
     model.config.use_cache = False # Do not cache attention key values.
     
-    return model
+    return model, tokenizer
