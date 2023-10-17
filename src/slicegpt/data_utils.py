@@ -4,9 +4,9 @@
 import random
 
 import datasets
-import numpy as np
 import torch
 import transformers
+from torch.utils.data import DataLoader
 
 
 def get_wikitext2(nsamples, seed, seqlen, tokenizer):
@@ -33,6 +33,10 @@ def get_wikitext2(nsamples, seed, seqlen, tokenizer):
     n_test_samples = testenc.input_ids.numel() // seqlen
     testloader = testenc.input_ids[0, : n_test_samples * seqlen].reshape(n_test_samples, seqlen)
     testloader = [x for x in testloader]
+
+    # convert to torch dataloaders
+    trainloader = DataLoader(trainloader, batch_size=batch_size)
+    testloader = DataLoader(testloader, batch_size=batch_size)
 
     return trainloader, testloader
 
