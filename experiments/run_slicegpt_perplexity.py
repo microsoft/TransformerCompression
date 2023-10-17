@@ -91,7 +91,7 @@ def main():
 
     # original ppl
     if args.eval_baseline:
-        dataset_ppl = opt_utils.evaluate_perplexity(model, testloader, DEV)
+        dataset_ppl = opt_utils.layerwise_eval(model, testloader, DEV)
         print('\noriginal ppl:', dataset_ppl)
         wandb.log({"original_ppl": dataset_ppl})
 
@@ -101,7 +101,7 @@ def main():
     layernorm_fusion.fuse_modules(model)
 
     if args.debug:
-        dataset_ppl = opt_utils.evaluate_perplexity(model, testloader, DEV)
+        dataset_ppl = opt_utils.layerwise_eval(model, testloader, DEV)
         print('\npost-fusion:', dataset_ppl)
         wandb.log({"post_fusion_ppl": dataset_ppl})
 
@@ -111,7 +111,7 @@ def main():
 
     rotate.rotate_and_slice_opt(model, dataloader, new_embedding_dimension)
     print()
-    dataset_ppl = opt_utils.evaluate_perplexity(model, testloader, DEV)
+    dataset_ppl = gpu_utils.layerwise_eval(model, testloader, DEV)
     print('\nAfter rotating and slicing', dataset_ppl)
     wandb.log({"sliced_ppl": dataset_ppl})
 

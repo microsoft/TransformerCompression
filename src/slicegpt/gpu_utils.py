@@ -32,9 +32,13 @@ def evaluate_ppl(model, testloader, device, batch_size=1):
 
         logits = model(input_ids=input_ids).logits
 
-        logits = logits[:, :-1, :].contiguous()
+        # Shift outputs and labels autoregressively.
+        logits = logits[:, :-1, :]
         shift_labels = input_ids[:, 1:]
+
+        # CrossEntropyLoss demands data dimension is dimension 1. 
         nll = loss_fct(logits.permute(0,2,1), shift_labels).mean(dim=1)
+
         nlls.append(nll)
 
     ppl = torch.exp(torch.stack(nlls).mean())
@@ -45,7 +49,7 @@ def evaluate_ppl(model, testloader, device, batch_size=1):
 
 
 @torch.no_grad()
-def evaluate_perplexity(model, testloader, device):
+def layerwise_eval(model, testloader, device):
     """
     Evaluate the model's perplexity on the test set.
     This function loads each layer onto the device one at a time,
