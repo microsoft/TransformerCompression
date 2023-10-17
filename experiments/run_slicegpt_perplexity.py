@@ -2,9 +2,11 @@
 # Licensed under the MIT license.
 
 import argparse
-import wandb
+
 import torch
-from slicegpt import layernorm_fusion, datautils, hf_utils, rotate, gpu_utils
+
+import wandb
+from slicegpt import datautils, gpu_utils, hf_utils, layernorm_fusion, rotate
 
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
