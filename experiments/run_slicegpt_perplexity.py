@@ -30,17 +30,8 @@ def argparser():
             'meta-llama/Llama-2-7b-hf',
             'meta-llama/Llama-2-13b-hf',
             'meta-llama/Llama-2-70b-hf',
-            # Custom model. Currently support custom Llama models.
-            # TODO: add support for custom OPT models.
-            # Model path must be provided.
-            'custom'
         ],
         default="facebook/opt-125m",
-    )
-    parser.add_argument(
-        "--model_path",
-        type=str,
-        help="Path to custom llama or OPT model",
     )
     parser.add_argument(
         "--cal_dataset",
@@ -62,17 +53,14 @@ def argparser():
         choices=["wikitext2", "ptb", "c4"],
         default="wikitext2",
     )
-    parser.add_argument("--seed", type=int, default=0, help="Seed for sampling the calibration data.")
+    parser.add_argument("--seed", type=int, default=42, help="Seed for sampling the calibration data.")
     parser.add_argument("--sparsity", type=float, default=0.0, help="Sparsity of the calibration data.")
     parser.add_argument("--eval_baseline", action="store_true", help="Evaluate the baseline model.")
     parser.add_argument("--debug", action="store_true", help="Evaluate the fused model.")
-    parser.add_argument("--compress_head", action="store_true")
     
     parser.add_argument("--save_dir", type=str, default=None, help="Path to save the model.")
     
-    parser.add_argument("--load_dir", type=str, default=None, help="Path to load the model.")
-    
-    parser.add_argument('--hf-token', type=str, default=None)
+    parser.add_argument('--hf_token', type=str, default=None)
 
     args = parser.parse_args()
     assert args.sparsity >= 0 and args.sparsity <= 1, "Sparsity should be in the range [0, 1]!"
@@ -87,13 +75,10 @@ def main():
 
     wandb.init(project="slicegpt", config=args)
 
-    if args.model == 'custom' and args.model_path == None:
-        raise ValueError('Custom model path must be provided.')
-
     # get model, data
-    model, tokenizer = hf_utils.get_model(args.model, args.model_path, args.hf_token)
+    model, tokenizer = hf_utils.get_model(args.model, None, args.hf_token)
     dataloader, testloader = datautils.get_loaders(
-        "wikitext2", seed=42, tokenizer=tokenizer, seqlen=model.seqlen
+        "wikitext2", seed=args.seed, tokenizer=tokenizer, seqlen=model.seqlen
     )
 
     # original ppl

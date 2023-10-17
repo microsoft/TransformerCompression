@@ -40,7 +40,6 @@ def do_not_initialize(func):
 def get_model(model_name, model_path=None, hf_token=None):
     print("Loading {} Model...".format(model_name))
 
-
     if model_name == 'custom':
         model_name = model_path
 
