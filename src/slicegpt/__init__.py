@@ -1,1 +1,4 @@
-from . import opt_utils, datautils, rotate
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
+from . import datautils, opt_utils, rotate

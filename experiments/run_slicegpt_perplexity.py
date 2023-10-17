@@ -1,7 +1,12 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
 import argparse
+
 import torch
+
 import wandb
-from slicegpt import layernorm_fusion, datautils, hf_utils, rotate, opt_utils
+from slicegpt import datautils, hf_utils, layernorm_fusion, opt_utils, rotate
 
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -57,41 +62,29 @@ def argparser():
         choices=["wikitext2", "ptb", "c4"],
         default="wikitext2",
     )
-    parser.add_argument(
-        "--seed", type=int, default=0, help="Seed for sampling the calibration data."
-    )
-    parser.add_argument(
-        "--sparsity", type=float, default=0.0, help="Sparsity of the calibration data."
-    )
-    parser.add_argument(
-        "--eval_baseline", action="store_true", help="Evaluate the baseline model."
-    )
-    parser.add_argument(
-        "--debug", action="store_true", help="Evaluate the fused model."
-    )
+    parser.add_argument("--seed", type=int, default=0, help="Seed for sampling the calibration data.")
+    parser.add_argument("--sparsity", type=float, default=0.0, help="Sparsity of the calibration data.")
+    parser.add_argument("--eval_baseline", action="store_true", help="Evaluate the baseline model.")
+    parser.add_argument("--debug", action="store_true", help="Evaluate the fused model.")
     parser.add_argument("--compress_head", action="store_true")
     
-    parser.add_argument(
-        "--save_dir", type=str, default=None, help="Path to save the model."
-    )
-    parser.add_argument(
-        "--load_dir", type=str, default=None, help="Path to load the model."
-    )
+    parser.add_argument("--save_dir", type=str, default=None, help="Path to save the model.")
     
-    parser.add_argument('--hf_token', type=str, default=None)
+    parser.add_argument("--load_dir", type=str, default=None, help="Path to load the model.")
+    
+    parser.add_argument('--hf-token', type=str, default=None)
 
     args = parser.parse_args()
-    assert (
-        args.sparsity >= 0 and args.sparsity <= 1
-    ), "Sparsity should be in the range [0, 1]!"
+    assert args.sparsity >= 0 and args.sparsity <= 1, "Sparsity should be in the range [0, 1]!"
 
     return args
+
 
 def main():
     print("Running slicing experiment.")
 
     args = argparser()
-    
+
     wandb.init(project="slicegpt", config=args)
 
     if args.model == 'custom' and args.model_path == None:
@@ -108,17 +101,17 @@ def main():
         dataset_ppl = opt_utils.evaluate_perplexity(model, testloader, DEV)
         print('\noriginal ppl:', dataset_ppl)
         wandb.log({"original_ppl": dataset_ppl})
-    
+
     # fuse layernorms, add shorcuts, check perplexity
     layernorm_fusion.replace_modules(model, model.config)
     model = model.cpu()
     layernorm_fusion.fuse_modules(model)
-    
+
     if args.debug:
         dataset_ppl = opt_utils.evaluate_perplexity(model, testloader, DEV)
         print('\npost-fusion:', dataset_ppl)
         wandb.log({"post_fusion_ppl": dataset_ppl})
-    
+
     # run slicegpt sparsity
     new_embedding_dimension = int((1 - args.sparsity) * model.config.hidden_size)
     print(f"New embedding dimension: {new_embedding_dimension} (sparsity {args.sparsity})")

@@ -1,10 +1,14 @@
-import torch
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
 from typing import List, Optional, Tuple, Union
-from transformers.models.opt import OPTConfig
+
+import torch
 from transformers.modeling_outputs import BaseModelOutputWithPast
-from transformers.models.opt.modeling_opt import logger, OPTDecoder, OPTDecoderLayer
 from transformers.models.llama.configuration_llama import LlamaConfig
 from transformers.models.llama.modeling_llama import LlamaDecoderLayer
+from transformers.models.opt import OPTConfig
+from transformers.models.opt.modeling_opt import OPTDecoder, OPTDecoderLayer, logger
 
 
 class CompressedOPTDecoderLayer(OPTDecoderLayer):
@@ -27,9 +31,7 @@ class CompressedOPTDecoderLayer(OPTDecoderLayer):
         past_key_value: Optional[Tuple[torch.Tensor]] = None,
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
-    ) -> Tuple[
-        torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]
-    ]:
+    ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
         Args:
             hidden_states (`torch.FloatTensor`): input to the layer of shape `(batch, seq_len, embed_dim)`
@@ -61,9 +63,7 @@ class CompressedOPTDecoderLayer(OPTDecoderLayer):
             output_attentions=output_attentions,
         )
 
-        hidden_states = torch.nn.functional.dropout(
-            hidden_states, p=self.dropout, training=self.training
-        )
+        hidden_states = torch.nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
         if self.attn_shortcut_Q is not None:
             rotated_shortcut = torch.matmul(residual, self.attn_shortcut_Q)
             hidden_states = rotated_shortcut + hidden_states
@@ -72,9 +72,7 @@ class CompressedOPTDecoderLayer(OPTDecoderLayer):
 
         # 350m applies layer norm AFTER attention
         if not self.do_layer_norm_before:
-            raise NotImplementedError(
-                "Layer norm after attention is not implemented yet!"
-            )
+            raise NotImplementedError("Layer norm after attention is not implemented yet!")
             hidden_states = self.self_attn_layer_norm(hidden_states)
 
         # Fully Connected
@@ -90,13 +88,9 @@ class CompressedOPTDecoderLayer(OPTDecoderLayer):
         hidden_states = self.activation_fn(hidden_states)
 
         hidden_states = self.fc2(hidden_states)
-        hidden_states = torch.nn.functional.dropout(
-            hidden_states, p=self.dropout, training=self.training
-        )
+        hidden_states = torch.nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
 
-        hidden_states_shape[
-            -1
-        ] = self.fc2.out_features  # to make sure the shape is correct
+        hidden_states_shape[-1] = self.fc2.out_features  # to make sure the shape is correct
 
         if self.mlp_shortcut_Q is not None:
             rotated_shortcut = torch.matmul(residual, self.mlp_shortcut_Q)
@@ -126,6 +120,7 @@ class CompressedLlamaDecoderLayer(LlamaDecoderLayer):
     (https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py#L376)
     but with the addition of a shortcut_Q attribute. This attribute is used to rotate the residual tensors.
     '''
+
     def __init__(self, config: LlamaConfig):
         super().__init__(config)
         self.register_buffer('mlp_shortcut_Q', None)
@@ -193,7 +188,8 @@ class CompressedLlamaDecoderLayer(LlamaDecoderLayer):
             outputs += (present_key_value,)
 
         return outputs
-    
+
+
 class RMSN(torch.nn.Module):
     """
     This class implements the Root Mean Square Normalization (RMSN) layer.

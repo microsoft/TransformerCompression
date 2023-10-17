@@ -1,12 +1,19 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
 import argparse
 import json
+
 import torch
-from slicegpt import layernorm_fusion, datautils, utils, rotate
-import wandb
-from lm_eval import tasks, evaluator, utils
+from lm_eval import evaluator, tasks, utils
 from lm_eval.base import BaseLM
-from transformers import OPTForCausalLM, AutoTokenizer
+from transformers import AutoTokenizer, OPTForCausalLM
+
+import wandb
+from slicegpt import datautils, layernorm_fusion, rotate, utils
+
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
 class OPTClass(BaseLM):
     def __init__(self, args):
@@ -36,7 +43,7 @@ class OPTClass(BaseLM):
         except AttributeError:
             # gptneoconfig doesn't have n_ctx apparently
             return self.model.config.max_position_embeddings
-    
+
     @property
     def max_gen_toks(self):
         print('max_gen_toks fn')
@@ -67,43 +74,42 @@ class OPTClass(BaseLM):
         """
         with torch.no_grad():
             return self.model(inps)[0][:, :, :50272]
-        
+
     def _model_generate(self, context, max_length, eos_token_id):
-        return self.model.generate(
-            context, max_length=max_length, eos_token_id=eos_token_id, do_sample=False
-        )
+        return self.model.generate(context, max_length=max_length, eos_token_id=eos_token_id, do_sample=False)
+
 
 def apply_slicegpt(model, eval_dataset='wikitext2', seed=42):
     layernorm_fusion.replace_modules(model.model, model.model.config)
     model.model = model.model.cpu()
     layernorm_fusion.fuse_modules(model.model)
     print()
-    
+
     dataloader, _ = datautils.get_loaders(
         eval_dataset, seed=seed, model=model.model.config.model_name, seqlen=model.seqlen
     )
-    
+
     new_embedding_dimension = int((1 - model.model.config.sparsity) * model.model.config.hidden_size)
     print(f"New embedding dimension: {new_embedding_dimension} (sparsity {model.model.config.sparsity})")
 
     rotate.rotate_and_slice_opt(model.model, dataloader, new_embedding_dimension)
 
+
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", required=True)
-    parser.add_argument(
-        "--tasks", default=None, choices=utils.MultiChoice(tasks.ALL_TASKS)
-    )
+    parser.add_argument("--tasks", default=None, choices=utils.MultiChoice(tasks.ALL_TASKS))
     parser.add_argument("--no_cache", action="store_true")
     parser.add_argument('--sparsity', type=float, default=0.0)
     parser.add_argument('--batch_size', type=float, default=1)
 
     return parser.parse_args()
 
+
 def main():
     args = parse_args()
     print(f"Using dev: {DEV}.")
-    
+
     wandb.init('slicegpt-zeroshot', config=args)
 
     # Initiate the model and apply
@@ -119,15 +125,11 @@ def main():
     print(f"Selected Tasks: {task_names}")
     model.model = model.model.to(DEV)
     model.model.eval()
-    results = evaluator.simple_evaluate(
-        model=model,
-        tasks=task_names,
-        no_cache=args.no_cache
-    )
+    results = evaluator.simple_evaluate(model=model, tasks=task_names, no_cache=args.no_cache)
     wandb.log(results['results'])
     print(json.dumps(results, indent=2))
     print(evaluator.make_table(results))
-    
+
 
 if __name__ == "__main__":
     main()

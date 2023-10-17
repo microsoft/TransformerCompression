@@ -1,6 +1,10 @@
-import transformers
-import torch
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
 import os
+
+import torch
+import transformers
 
 
 def skip(*args, **kwargs):
@@ -26,7 +30,7 @@ def do_not_initialize(func):
         torch.nn.init.kaiming_uniform_ = kiming_fn
         torch.nn.init.uniform_ = uniform_fn
         torch.nn.init.normal_ = normal_fn
-        
+
         return result
 
     return wrapper
@@ -36,13 +40,12 @@ def do_not_initialize(func):
 def get_model(model_name, model_path=None, hf_token=None):
     print("Loading {} Model...".format(model_name))
 
+
     if model_name == 'custom':
         model_name = model_path
 
     if model_name.startswith('facebook/opt'):
-        model = transformers.OPTForCausalLM.from_pretrained(
-            model_name, torch_dtype="auto"
-        )
+        model = transformers.OPTForCausalLM.from_pretrained(model_name, torch_dtype="auto")
     elif model_name.startswith('meta-llama/Llama-2') or model_path != None:
         model = transformers.LlamaForCausalLM.from_pretrained(model_name, torch_dtype='auto', use_auth_token=hf_token)
     else:

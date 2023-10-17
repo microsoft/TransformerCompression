@@ -1,13 +1,17 @@
-import torch
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
 import random
+
 import datasets
 import numpy as np
+import torch
 import transformers
 
 
 def get_wikitext2(nsamples, seed, seqlen, tokenizer):
     """
-    generate n_samples sequences from the wikitext 2 dataset, each of length seqlen. 
+    generate n_samples sequences from the wikitext 2 dataset, each of length seqlen.
     Additionally gather the test set (not sampled).
     """
     traindata = datasets.load_dataset("wikitext", "wikitext-2-raw-v1", split="train")
@@ -24,20 +28,18 @@ def get_wikitext2(nsamples, seed, seqlen, tokenizer):
         j = i + seqlen
         input_ids = trainenc.input_ids[0, i:j]
         trainloader.append(input_ids)
-        
+
     # test set
     n_test_samples = testenc.input_ids.numel() // seqlen
-    testloader = testenc.input_ids[0, :n_test_samples * seqlen].reshape(n_test_samples, seqlen)
+    testloader = testenc.input_ids[0, : n_test_samples * seqlen].reshape(n_test_samples, seqlen)
     testloader = [x for x in testloader]
-    
+
     return trainloader, testloader
 
 
 def get_ptb(nsamples, seed, seqlen, tokenizer):
     traindata = datasets.load_dataset("ptb_text_only", "penn_treebank", split="train")
-    valdata = datasets.load_dataset(
-        "ptb_text_only", "penn_treebank", split="validation"
-    )
+    valdata = datasets.load_dataset("ptb_text_only", "penn_treebank", split="validation")
 
     trainenc = tokenizer("\n\n".join(traindata["sentence"]), return_tensors="pt")
     testenc = tokenizer("\n\n".join(valdata["sentence"]), return_tensors="pt")

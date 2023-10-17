@@ -1,4 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
 import torch
+
 
 @torch.no_grad()
 def pca_calc(X):
