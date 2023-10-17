@@ -23,7 +23,8 @@ dependencies = [
     "transformers",
     "numpy",
     "wandb",
-    "huggingface-hub>=0.16.4,<0.18"
+    "huggingface-hub>=0.16.4,<0.18",
+    "lm-eval @ git+https://github.com/EleutherAI/lm-evaluation-harness.git"
 ]
 
 [project.optional-dependencies]
