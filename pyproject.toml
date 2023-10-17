@@ -1,0 +1,61 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
+[build-system]
+requires = ["setuptools>=42.0.0", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "transformercompression"
+version = "0.0.1"
+description= "Implementation of methods for compressing transformers"
+authors = [
+    {name = "James Hensman"},
+    {name = "Max Croci"},
+    {name = "Saleh Ashkboos"},
+    {name = "Marcelo Gennari do Nascimento"}
+]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "torch",
+    "datasets",
+    "transformers",
+    "numpy",
+    "wandb",
+    "huggingface-hub>=0.16.4,<0.18"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pre-commit",
+    "pytest>=7.4.2",
+    "mypy>=1.5.1",
+    "pylint>=3.0.0"
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+exclude = ["*_test.py", "tests/*"]
+
+[tool.setuptools.package-data]
+"*" = ["py.typed"]
+
+[tool.black]
+line-length = 120
+skip-string-normalization = true
+
+[tool.isort]
+profile = "black"
+line_length = 120
+
+[tool.mypy]  
+disallow_untyped_defs = true
+
+[tool.pylint.'MASTER']
+max-line-length = 120
+suggestion-mode = true
+
+[tool.pylint.'MESSAGES CONTROL']
+# Disable the message, report, category or checker with the given id(s).
+disable = []
