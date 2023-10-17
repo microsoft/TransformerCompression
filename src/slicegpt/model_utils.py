@@ -128,7 +128,7 @@ def get_layer0_inputs(model, dataloader):
     layers[0] = Catcher(layers[0])
     for batch in dataloader:
         try:
-            model(batch.unsqueeze(0).to(DEV))
+            model(batch.to(DEV))
         except ValueError:
             pass
     layers[0] = layers[0].module

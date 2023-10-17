@@ -143,9 +143,9 @@ def rotate_and_slice_opt(model, dataloader, new_embedding_dimension, do_slice_he
     """
     Rotate and slice an OPT model, with interleaved slicing and PCA calculations
     """
-    dtype = next(iter(model.parameters())).dtype  # Get the dtype of the model.
+    dtype = next(iter(model.parameters())).dtype
 
-    # Get the input of the first layer norm and calculate the Q_1
+    # Get the input of the first layer norm and calculate Q_1
     inps, attention_mask = get_layer0_inputs(model, dataloader)
     _, Q = utils.pca_calc(inps.reshape(-1, model.config.hidden_size))
     Q = Q.to(device=DEV)

@@ -4,13 +4,10 @@ import time
 import numpy as np
 import torch
 import tqdm
-from torch.utils.data import DataLoader
-
-from .model_utils import get_layer0_inputs, get_layers, get_lm_head, get_pre_head_layernorm
 
 
 @torch.no_grad()
-def evaluate_ppl(model, testloader, device, batch_size=1):
+def evaluate_ppl(model, testloader, device):
     """
     Evaluate the model's perplexity on the test set using batch processing.
     """
@@ -22,7 +19,6 @@ def evaluate_ppl(model, testloader, device, batch_size=1):
     loss_fct = torch.nn.CrossEntropyLoss(reduction="none")
 
     nlls = []
-    testloader = DataLoader(testloader, batch_size=batch_size, shuffle=False)
 
     for batch in testloader:
         input_ids = batch.to(device)
@@ -42,50 +38,6 @@ def evaluate_ppl(model, testloader, device, batch_size=1):
 
     model.config.use_cache = use_cache
     model = model.to(model_device)
-    return ppl.item()
-
-
-@torch.no_grad()
-def layerwise_eval(model, testloader, device):
-    """
-    Evaluate the model's perplexity on the test set.
-    This function loads each layer onto the device one at a time,
-    so that we can evaluate models that are too large to fit on a single GPU.
-    """
-    model.eval()
-
-    use_cache = model.config.use_cache
-    model.config.use_cache = False
-    layers = get_layers(model)
-
-    num_samples = len(testloader)
-    X, mask = get_layer0_inputs(model, testloader)
-
-    print("(Eval) Layers: ", end="", flush=True)
-    for i, layer in enumerate(layers):
-        print(f", {i}", end="", flush=True)
-        layer = layer.to(device)
-        outs = [layer(X[j].unsqueeze(0), attention_mask=mask)[0] for j in range(num_samples)]
-        del layer
-        torch.cuda.empty_cache()
-        X = torch.cat(outs)
-    print("")
-
-    X = get_pre_head_layernorm(model).to(device)(X)
-
-    lm_head = get_lm_head(model).to(device)
-    nlls = []
-    for i, sample in enumerate(testloader):
-        x = X[i].unsqueeze(0)
-        lm_logits = lm_head(x)
-        shift_logits = lm_logits[:, :-1, :].contiguous()
-        shift_labels = sample[1:].to(device)
-        loss_fct = torch.nn.CrossEntropyLoss()
-        loss = loss_fct(shift_logits.squeeze(0), shift_labels.view(-1))
-        neg_log_likelihood = loss.float()
-        nlls.append(neg_log_likelihood)
-    ppl = torch.exp(torch.stack(nlls).mean())
-    model.config.use_cache = use_cache
     return ppl.item()
 
 
