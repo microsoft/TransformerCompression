@@ -4,7 +4,10 @@ This repository contains the code for the paper [SliceGPT](link made available o
 
 Slice GPT makes LLMs smaller by first applying orthogonal transformations to each layer that leave the model unchanged, and then slicing off rows and columns of the weight matrices.
 
-The code is arranged as follows:
+The code is arranged as a package 'slicegpt' in /src, and script to replicate experiments from the paper are in /experiments. To install the sliceGPT package, we recommend
+
+`pip install -e .`
+
 
 ## Contributing
 
