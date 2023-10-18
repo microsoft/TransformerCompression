@@ -1,12 +1,31 @@
 repos:
--   repo: https://github.com/psf/black
-    rev: 22.10.0
-    hooks:
-    -   id: black
-        args: ["--skip-string-normalization", "--line-length", "120"]
+- repo: https://github.com/psf/black
+  rev: 22.10.0
+  hooks:
+  - id: black
+    types_or: [python]
+    args: ["--config=./pyproject.toml"]
 
 - repo: https://github.com/pycqa/isort
   rev: 5.12.0
   hooks:
   - id: isort
-    args: ["--profile", "black", "--line-length", "120"]
+    args: ["--settings-file=./pyproject.toml"]
+
+- repo: local
+  hooks:
+  - id: mypy
+    stages: [manual]
+    name: mypy
+    entry: bash -c 'pylint $@ || true'  # Show suggestions but don't fail
+    language: system
+    args: ["--config-file=pyproject.toml", "."]
+
+- repo: local
+  hooks:
+  - id: pylint
+    stages: [manual]
+    name: pylint
+    entry: bash -c 'pylint $@ || true' # Show suggestions but don't fail
+    language: system
+    args: [".", "--rcfile=./pyproject.toml"]

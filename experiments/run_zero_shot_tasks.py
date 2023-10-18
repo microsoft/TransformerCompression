@@ -5,11 +5,11 @@ import argparse
 import json
 
 import torch
+import wandb
 from lm_eval import evaluator, tasks, utils
 from lm_eval.base import BaseLM
 from transformers import AutoTokenizer, OPTForCausalLM
 
-import wandb
 from slicegpt import datautils, layernorm_fusion, rotate, utils
 
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
