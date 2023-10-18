@@ -37,18 +37,25 @@ def do_not_initialize(func):
 
 
 @do_not_initialize
-def get_model(model_name, hf_token=None):
-    print("Loading {} Model...".format(model_name))
+def get_model(model_path, hf_token=None):
+    print("Loading model from {} ...".format(model_path))
 
-    if 'facebook/opt' in model_name:
-        model = transformers.OPTForCausalLM.from_pretrained(model_name, torch_dtype="auto")
-    elif 'meta-llama/Llama-2' in model_name:
-        model = transformers.LlamaForCausalLM.from_pretrained(model_name, torch_dtype='auto', use_auth_token=hf_token)
+    if "facebook/opt" in model_path:
+        model = transformers.OPTForCausalLM.from_pretrained(model_path, torch_dtype="auto")
+    elif "meta-llama" in model_path:
+        model = transformers.LlamaForCausalLM.from_pretrained(model_path, torch_dtype='auto', use_auth_token=hf_token)
     else:
         raise NotImplementedError
 
-    model.seqlen = model.config.max_position_embeddings
-    model.eval()  # This switches off dropout.
-    model.config.use_cache = False  # Do not cache attention key values.
+    if hf_token == None:
+        tokenizer = transformers.AutoTokenizer.from_pretrained(model_path, use_fast=False)
+    else:
+        tokenizer = transformers.AutoTokenizer.from_pretrained(
+            model_path, use_fast=False, use_auth_token=hf_token
+        )
 
-    return model
+    model.seqlen = model.config.max_position_embeddings
+    model.eval() # This switches off dropout.
+    model.config.use_cache = False # Do not cache attention key values.
+    
+    return model, tokenizer
