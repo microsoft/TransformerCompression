@@ -75,7 +75,13 @@ def main():
 
     args = argparser()
 
-    wandb.init(project="slicegpt", config=args)
+    try:
+        wandb.init(project="slicegpt", config=args)
+    except wandb.UsageError as e:
+        # wandb.init will throw an error if the user is not logged in and the process is running in a non-shell
+        # environment, e.g. notebook, IDE, no-shell process, etc. In this case, we want to continue without wandb.
+        print(f'Failed to initialize wandb: {e}, continuing without wandb.')
+        wandb.init(project="slicegpt", mode='disabled')
 
     # get model, data
     model = hf_utils.get_model(args.model, args.hf_token)
