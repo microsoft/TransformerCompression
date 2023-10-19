@@ -21,6 +21,7 @@ def evaluate_ppl(model, testloader, device):
     nlls = []
 
     for batch in testloader:
+
         input_ids = batch.to(device)
 
         logits = model(input_ids=input_ids).logits
@@ -30,11 +31,12 @@ def evaluate_ppl(model, testloader, device):
         shift_labels = input_ids[:, 1:]
 
         # CrossEntropyLoss demands data dimension is dimension 1.
-        nll = loss_fct(logits.permute(0, 2, 1), shift_labels).mean(dim=1)
+        nll = loss_fct(logits.permute(0, 2, 1), shift_labels).float().sum(dim=1) / model.seqlen
 
         nlls.append(nll)
 
-    ppl = torch.exp(torch.stack(nlls).mean())
+    nlls = torch.stack(nlls)
+    ppl = torch.exp(nlls.sum() / nlls.numel())
 
     model.config.use_cache = use_cache
     model = model.to(model_device)

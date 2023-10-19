@@ -101,7 +101,7 @@ def get_lm_head(model):
         raise NotImplementedError
 
 
-def get_layer0_inputs(model, dataloader):
+def get_layer0_inputs(model, batch):
     """
     Returns the inputs to the first layer of the model (after embeddings).
     NB: this won't work from OPT 350m.
@@ -112,33 +112,37 @@ def get_layer0_inputs(model, dataloader):
 
     layers = get_layers(model)
 
-    inps = []
-    attention_masks = []
-
     class Catcher(torch.nn.Module):
         def __init__(self, module):
             super().__init__()
             self.module = module
+            self.saved_inps = None
+            self.saved_attention_mask = None
 
         def forward(self, inp, **kwargs):
-            inps.append(inp)
-            attention_masks.append(kwargs["attention_mask"])
+            self.saved_inps = inp
+            self.saved_attention_masks = kwargs["attention_mask"]
             raise ValueError
 
     layers[0] = Catcher(layers[0])
-    for batch in dataloader:
-        try:
-            model(batch.to(DEV))
-        except ValueError:
-            pass
+
+    try:
+        model(batch.to(DEV))
+    except ValueError:
+        pass
+
+    inps = layers[0].saved_inps
+    attention_mask = layers[0].saved_attention_masks[-1].unsqueeze(0)
+
     layers[0] = layers[0].module
 
     # Move embeddings back to cpu, and clear GPU cache.
     for W in get_embeddings(model):
         W.weight = torch.nn.Parameter(W.weight.to('cpu'))
+
     torch.cuda.empty_cache()
 
-    return torch.cat(inps), attention_masks[-1]
+    return inps, attention_mask
 
 
 def get_signals(layer, inputs, attention_mask):
