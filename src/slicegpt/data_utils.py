@@ -9,7 +9,7 @@ import transformers
 from torch.utils.data import DataLoader
 
 
-def get_wikitext2(nsamples, seed, seqlen, tokenizer):
+def get_wikitext2(nsamples, seed, seqlen, tokenizer, batch_size):
     """
     generate n_samples sequences from the wikitext 2 dataset, each of length seqlen.
     Additionally gather the test set (not sampled).
@@ -174,9 +174,9 @@ def get_c4_new(nsamples, seed, seqlen, tokenizer):
     return trainloader, valenc
 
 
-def get_loaders(name, nsamples=128, seed=0, seqlen=2048, tokenizer=None):
+def get_loaders(name, nsamples=128, seed=0, seqlen=2048, tokenizer=None, batch_size=1):
     if "wikitext2" in name:
-        return get_wikitext2(nsamples, seed, seqlen, tokenizer)
+        return get_wikitext2(nsamples, seed, seqlen, tokenizer, batch_size)
     if "ptb" in name:
         if "new" in name:
             return get_ptb_new(nsamples, seed, seqlen, tokenizer)

@@ -53,17 +53,14 @@ def argparser():
         choices=["wikitext2", "ptb", "c4"],
         default="wikitext2",
     )
-<<<<<<< HEAD
-=======
     parser.add_argument("--batch_size", type=int, default=1, help="Batch size of the calibration data.")
->>>>>>> e60e722 (Add dataloaders for wikitext.)
     parser.add_argument("--seed", type=int, default=42, help="Seed for sampling the calibration data.")
     parser.add_argument("--sparsity", type=float, default=0.0, help="Sparsity of the calibration data.")
     parser.add_argument("--eval_baseline", action="store_true", help="Evaluate the baseline model.")
     parser.add_argument("--debug", action="store_true", help="Evaluate the fused model.")
-    
+
     parser.add_argument("--save_dir", type=str, default=None, help="Path to save the model.")
-    
+
     parser.add_argument('--hf_token', type=str, default=None)
 
     args = parser.parse_args()
@@ -73,11 +70,7 @@ def argparser():
 
 
 def main():
-<<<<<<< HEAD
     print("Running slicing experiment.")
-=======
-    print("Running perplexity experiment.")
->>>>>>> 5cd6b41 (Clean up perplexity script.)
 
     args = argparser()
 
@@ -90,20 +83,13 @@ def main():
         wandb.init(project="slicegpt", mode='disabled')
 
     # get model, data
-<<<<<<< HEAD
     model, tokenizer = hf_utils.get_model(args.model, args.hf_token)
-    dataloader, testloader = datautils.get_loaders(
-        "wikitext2", seed=args.seed, tokenizer=tokenizer, seqlen=model.seqlen
-=======
-    model = hf_utils.get_model(args.model, args.hf_token)
     dataloader, testloader = data_utils.get_loaders(
         "wikitext2",
         seqlen=model.seqlen,
-        model=args.model,
         batch_size=args.batch_size,
         seed=args.seed,
-        hf_token=args.hf_token,
->>>>>>> e60e722 (Add dataloaders for wikitext.)
+        tokenizer=tokenizer,
     )
 
     # original ppl
