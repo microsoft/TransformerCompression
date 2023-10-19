@@ -145,8 +145,20 @@ def rotate_and_slice_opt(model, dataloader, new_embedding_dimension, do_slice_he
     """
     dtype = next(iter(model.parameters())).dtype
 
-    # Get the input of the first layer norm and calculate Q_1
-    inps, attention_mask = get_layer0_inputs(model, dataloader)
+    inps = []
+
+    # Process the first batch separately to get the attention mask
+    first_batch = next(iter(dataloader))
+    inp, attention_mask = get_layer0_inputs(model, first_batch)
+    inps.append(inp)
+
+    # Process the remaining batches
+    for batch in dataloader:
+        inp, _ = get_layer0_inputs(model, batch)
+        inps.append(inp)
+
+    inps = torch.cat(inps)
+
     _, Q = utils.pca_calc(inps.reshape(-1, model.config.hidden_size))
     Q = Q.to(device=DEV)
 

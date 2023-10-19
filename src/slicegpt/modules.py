@@ -73,7 +73,6 @@ class CompressedOPTDecoderLayer(OPTDecoderLayer):
         # 350m applies layer norm AFTER attention
         if not self.do_layer_norm_before:
             raise NotImplementedError("Layer norm after attention is not implemented yet!")
-            hidden_states = self.self_attn_layer_norm(hidden_states)
 
         # Fully Connected
         hidden_states_shape = list(hidden_states.shape)
@@ -94,7 +93,7 @@ class CompressedOPTDecoderLayer(OPTDecoderLayer):
 
         if self.mlp_shortcut_Q is not None:
             rotated_shortcut = torch.matmul(residual, self.mlp_shortcut_Q)
-            hidden_states = rotated_shortcut + hidden_states.view(hidden_states_shape)
+            hidden_states = rotated_shortcut.view(hidden_states_shape) + hidden_states.view(hidden_states_shape)
         else:
             hidden_states = (residual + hidden_states).view(hidden_states_shape)
 
