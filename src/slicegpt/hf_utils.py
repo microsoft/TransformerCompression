@@ -50,12 +50,10 @@ def get_model(model_path, hf_token=None):
     if hf_token == None:
         tokenizer = transformers.AutoTokenizer.from_pretrained(model_path, use_fast=False)
     else:
-        tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model_path, use_fast=False, use_auth_token=hf_token
-        )
+        tokenizer = transformers.AutoTokenizer.from_pretrained(model_path, use_fast=False, use_auth_token=hf_token)
 
     model.seqlen = model.config.max_position_embeddings
-    model.eval() # This switches off dropout.
-    model.config.use_cache = False # Do not cache attention key values.
-    
+    model.eval()  # This switches off dropout.
+    model.config.use_cache = False  # Do not cache attention key values.
+
     return model, tokenizer
