@@ -74,7 +74,7 @@ def main():
     args = argparser()
 
     try:
-        wandb.init(project="slicegpt", config=args)
+        wandb.init(project="slicegpt", mode='disabled', config=args)
     except wandb.UsageError as e:
         # wandb.init will throw an error if the user is not logged in and the process is running in a non-shell
         # environment, e.g. notebook, IDE, no-shell process, etc. In this case, we want to continue without wandb.
@@ -91,7 +91,7 @@ def main():
             tokenizer=tokenizer,
             nsamples=args.cal_nsamples,
             seqlen=model.seqlen,
-            batch_size=args.batch_size,
+            batch_size=args.batch_size, #  * torch.cuda.device_count(),
             seed=args.seed,
         )
 

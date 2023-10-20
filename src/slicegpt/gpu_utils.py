@@ -14,6 +14,14 @@ def evaluate_ppl(model, testloader, device):
     model.eval()
     model_orig_device = model.device
     model.to(device)
+
+    if (torch.cuda.device_count() > 1):
+        opt_multigpu(model, [torch.device("cuda:%d" % i) for i in range(torch.cuda.device_count())])
+    model = model.to(device)
+    model_seqlen = model.seqlen
+    
+    # model = torch.nn.DataParallel(model)
+
     loss_fct = torch.nn.CrossEntropyLoss(reduction="none")
 
     nlls = []
@@ -29,7 +37,7 @@ def evaluate_ppl(model, testloader, device):
         shift_labels = input_ids[:, 1:]
 
         # CrossEntropyLoss demands data dimension is dimension 1.
-        nll = loss_fct(logits.permute(0, 2, 1), shift_labels).float().sum(dim=1) / model.seqlen
+        nll = loss_fct(logits.permute(0, 2, 1), shift_labels).float().sum(dim=1) / model_seqlen
 
         nlls.append(nll)
 
