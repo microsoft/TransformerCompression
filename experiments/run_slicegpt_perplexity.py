@@ -7,9 +7,14 @@ import os
 os.environ["WANDB__SERVICE_WAIT"] = "300"
 
 import torch
+import torch.distributed as dist
 
 import wandb
 from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate
+from accelerate import infer_auto_device_map, init_empty_weights, dispatch_model
+from accelerate.utils import get_balanced_memory
+import deepspeed
+import gc
 
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -23,12 +28,14 @@ def argparser():
         choices=[
             # OPT models
             "facebook/opt-125m",
+            # "facebook/opt-350m",
             "facebook/opt-1.3b",
             "facebook/opt-2.7b",
             "facebook/opt-6.7b",
             "facebook/opt-13b",
             "facebook/opt-30b",
             "facebook/opt-66b",
+            # "facebook/opt-175b",
             # LLAMA 2 Models
             'meta-llama/Llama-2-7b-hf',
             'meta-llama/Llama-2-13b-hf',
@@ -61,6 +68,8 @@ def argparser():
     parser.add_argument("--load_model_path", type=str, default=None, help="Path to load the sliced model from.")
 
     parser.add_argument('--hf_token', type=str, default=None)
+
+    parser.add_argument('--local_rank', required=False, type=int, help="Local rank for deepspeed.")
 
     args = parser.parse_args()
     assert args.sparsity >= 0 and args.sparsity <= 1, "Sparsity should be in the range [0, 1]!"

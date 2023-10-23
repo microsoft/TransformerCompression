@@ -4,7 +4,7 @@ import time
 import numpy as np
 import torch
 import tqdm
-
+import deepspeed
 
 @torch.no_grad()
 def evaluate_ppl(model, testloader, device):
@@ -19,17 +19,23 @@ def evaluate_ppl(model, testloader, device):
         opt_multigpu(model, [torch.device("cuda:%d" % i) for i in range(torch.cuda.device_count())])
     model = model.to(device)
     model_seqlen = model.seqlen
-    
-    # model = torch.nn.DataParallel(model)
 
+    # if (torch.cuda.device_count() > 1):
+    #     opt_multigpu(model, [torch.device("cuda:%d" % i) for i in range(torch.cuda.device_count())])
+    
+    # model = model.to(device)
+    # model = torch.nn.DataParallel(model)
+    model.eval()
+    
     loss_fct = torch.nn.CrossEntropyLoss(reduction="none")
 
     nlls = []
 
     for batch in testloader:
-
-        input_ids = batch.to(device)
-
+        print(f'current device: {torch.cuda.current_device()}')
+        input_ids = batch.to(torch.cuda.current_device()) # .to(device)
+        print(f'input_ids device: {input_ids.device}, model device: {model.device}')
+        # logits = model(input_ids=input_ids).logits
         logits = model(input_ids=input_ids).logits
 
         # Shift outputs and labels autoregressively.

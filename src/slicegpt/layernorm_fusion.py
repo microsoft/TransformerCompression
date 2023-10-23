@@ -34,19 +34,20 @@ def replace_modules(model, config, verbose=True):
     if isinstance(model, LlamaPreTrainedModel):
         model = model.model
 
-    for name, mod in model.named_children():
-        new_mod = None
+    for name, module in model.named_children():
+        new_module = None
 
-        if isinstance(mod, OPTDecoderLayer):
-            new_mod = CompressedOPTDecoderLayer(config).to(config.torch_dtype)
-        elif isinstance(mod, LlamaDecoderLayer):
-            new_mod = CompressedLlamaDecoderLayer(config).to(config.torch_dtype)
-        elif len(list(mod.children())) > 0:
-            replace_modules(mod, config, verbose=False)
+        if isinstance(module, OPTDecoderLayer):
+            new_module = CompressedOPTDecoderLayer(config).to(config.torch_dtype)
+        elif isinstance(module, LlamaDecoderLayer):
+            new_module = CompressedLlamaDecoderLayer(config).to(config.torch_dtype)
+        elif len(list(module.children())) > 0:
+            replace_modules(module, config, verbose=False)
 
-        if new_mod is not None:
-            new_mod.load_state_dict(mod.state_dict(), strict=True)
-            setattr(model, name, new_mod)
+        if new_module is not None:
+            new_module.to(next(module.parameters()).device)
+            new_module.load_state_dict(module.state_dict(), strict=True)
+            setattr(model, name, new_module)
 
     if verbose:
         print("Done.")
@@ -60,15 +61,16 @@ def replace_layernorms(model, config):
     if isinstance(model, LlamaPreTrainedModel):
         model = model.model
 
-    for name, mod in model.named_children():
-        new_mod = None
-        if isinstance(mod, (torch.nn.LayerNorm, LlamaRMSNorm)):
-            new_mod = RMSN(config.hidden_size)
-        elif len(list(mod.children())) > 0:
-            replace_layernorms(mod, config)
+    for name, module in model.named_children():
+        new_module = None
+        if isinstance(module, (torch.nn.LayerNorm, LlamaRMSNorm)):
+            new_module = RMSN(config.hidden_size)
+        elif len(list(module.children())) > 0:
+            replace_layernorms(module, config)
 
-        if new_mod is not None:
-            setattr(model, name, new_mod)
+        if new_module is not None:
+            setattr(model, name, new_module)
+            getattr(model, name).to(module.weight.device)
 
 
 def fuse_modules(model):
@@ -84,13 +86,12 @@ def fuse_modules(model):
 
     # make a copy of the weights in the lm head, which are shared with embeddings...
     head = get_lm_head(model)
-    head.weight = torch.nn.Parameter(head.weight.clone())
+    head.weight = torch.nn.Parameter(head.weight.clone()).to(head.weight.device)
 
     # We add the mean subtraction to the first embeddings
     for W in get_embeddings(model):
-        W_ = W.weight.data.double()
+        W_ = W.weight.data.double() # .to(W.weight.device)
         W.weight.data = (W_ - W_.mean(dim=-1, keepdim=True)).to(W.weight.data.dtype)
-
     layers = get_layers(model)
 
     # First we modify the layernorms to fold their weights
@@ -130,13 +131,12 @@ def fuse_ln_linear(layernorm: torch.nn.LayerNorm, linear_layers: list):
     """
     for linear in linear_layers:
         linear_dtype = linear.weight.dtype
-
         # Calculating new weight and bias
-        W_ = linear.weight.data.double()
+        device = linear.weight.device
+        W_ = linear.weight.data.double().to(device)
         linear.weight.data = (W_ * layernorm.weight.double()).to(linear_dtype)
-
         if hasattr(layernorm, 'bias'):
             if linear.bias is None:
-                linear.bias = torch.nn.Parameter(torch.zeros(linear.out_features, dtype=torch.float64))
+                linear.bias = torch.nn.Parameter(torch.zeros(linear.out_features, dtype=torch.float64).to(device))
             linear.bias.data = linear.bias.data.double() + torch.matmul(W_, layernorm.bias.double())
             linear.bias.data = linear.bias.data.to(linear_dtype)
