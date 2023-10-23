@@ -1,4 +1,4 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
-from . import datautils, opt_utils, rotate
+from . import data_utils, gpu_utils, rotate

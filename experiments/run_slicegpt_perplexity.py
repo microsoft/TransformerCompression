@@ -4,9 +4,9 @@
 import argparse
 
 import torch
-import wandb
 
-from slicegpt import datautils, hf_utils, layernorm_fusion, opt_utils, rotate
+import wandb
+from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate
 
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -53,13 +53,14 @@ def argparser():
         choices=["wikitext2", "ptb", "c4"],
         default="wikitext2",
     )
+    parser.add_argument("--batch_size", type=int, default=1, help="Batch size of the calibration data.")
     parser.add_argument("--seed", type=int, default=42, help="Seed for sampling the calibration data.")
     parser.add_argument("--sparsity", type=float, default=0.0, help="Sparsity of the calibration data.")
     parser.add_argument("--eval_baseline", action="store_true", help="Evaluate the baseline model.")
     parser.add_argument("--debug", action="store_true", help="Evaluate the fused model.")
-    
+
     parser.add_argument("--save_dir", type=str, default=None, help="Path to save the model.")
-    
+
     parser.add_argument('--hf_token', type=str, default=None)
 
     args = parser.parse_args()
@@ -83,14 +84,18 @@ def main():
 
     # get model, data
     model, tokenizer = hf_utils.get_model(args.model, args.hf_token)
-    dataloader, testloader = datautils.get_loaders(
-        "wikitext2", seed=args.seed, tokenizer=tokenizer, seqlen=model.seqlen
+    dataloader, testloader = data_utils.get_loaders(
+        "wikitext2",
+        seqlen=model.seqlen,
+        batch_size=args.batch_size,
+        seed=args.seed,
+        tokenizer=tokenizer,
     )
 
     # original ppl
     if args.eval_baseline:
-        dataset_ppl = opt_utils.evaluate_perplexity(model, testloader, DEV)
-        print('\noriginal ppl:', dataset_ppl)
+        dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
+        print('Original ppl:', dataset_ppl)
         wandb.log({"original_ppl": dataset_ppl})
 
     # fuse layernorms, add shorcuts, check perplexity
@@ -99,8 +104,8 @@ def main():
     layernorm_fusion.fuse_modules(model)
 
     if args.debug:
-        dataset_ppl = opt_utils.evaluate_perplexity(model, testloader, DEV)
-        print('\npost-fusion:', dataset_ppl)
+        dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
+        print('Post-fusion:', dataset_ppl)
         wandb.log({"post_fusion_ppl": dataset_ppl})
 
     # run slicegpt sparsity
@@ -109,8 +114,8 @@ def main():
 
     rotate.rotate_and_slice_opt(model, dataloader, new_embedding_dimension)
     print()
-    dataset_ppl = opt_utils.evaluate_perplexity(model, testloader, DEV)
-    print('\nAfter rotating and slicing', dataset_ppl)
+    dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
+    print('After rotating and slicing', dataset_ppl)
     wandb.log({"sliced_ppl": dataset_ppl})
 
 
