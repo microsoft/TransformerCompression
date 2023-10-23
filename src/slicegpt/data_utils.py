@@ -4,12 +4,11 @@
 import random
 
 import datasets
-import numpy as np
 import torch
-import transformers
+from torch.utils.data import DataLoader
 
 
-def get_wikitext2(nsamples, seed, seqlen, tokenizer):
+def get_wikitext2(nsamples, seed, seqlen, tokenizer, batch_size):
     """
     generate n_samples sequences from the wikitext 2 dataset, each of length seqlen.
     Additionally gather the test set (not sampled).
@@ -32,7 +31,10 @@ def get_wikitext2(nsamples, seed, seqlen, tokenizer):
     # test set
     n_test_samples = testenc.input_ids.numel() // seqlen
     testloader = testenc.input_ids[0, : n_test_samples * seqlen].reshape(n_test_samples, seqlen)
-    testloader = [x for x in testloader]
+
+    # convert to torch dataloaders
+    trainloader = DataLoader(trainloader, batch_size=batch_size)
+    testloader = DataLoader(testloader, batch_size=batch_size)
 
     return trainloader, testloader
 
@@ -170,9 +172,9 @@ def get_c4_new(nsamples, seed, seqlen, tokenizer):
     return trainloader, valenc
 
 
-def get_loaders(name, nsamples=128, seed=0, seqlen=2048, tokenizer=None):
+def get_loaders(name, nsamples=128, seed=0, seqlen=2048, tokenizer=None, batch_size=1):
     if "wikitext2" in name:
-        return get_wikitext2(nsamples, seed, seqlen, tokenizer)
+        return get_wikitext2(nsamples, seed, seqlen, tokenizer, batch_size)
     if "ptb" in name:
         if "new" in name:
             return get_ptb_new(nsamples, seed, seqlen, tokenizer)
