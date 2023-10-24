@@ -13,7 +13,6 @@ def evaluate_ppl(model, testloader, device):
     """
     model.eval()
     use_cache = model.config.use_cache
-    model_device = model.device
     model.config.use_cache = False
     model = model.to(device)
     loss_fct = torch.nn.CrossEntropyLoss(reduction="none")
@@ -37,9 +36,6 @@ def evaluate_ppl(model, testloader, device):
 
     nlls = torch.stack(nlls)
     ppl = torch.exp(nlls.sum() / nlls.numel())
-
-    model.config.use_cache = use_cache
-    model = model.to(model_device)
     return ppl.item()
 
 

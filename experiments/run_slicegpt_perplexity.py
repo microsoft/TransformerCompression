@@ -36,28 +36,21 @@ def argparser():
     parser.add_argument(
         "--cal_dataset",
         type=str,
-        help="Dataset to calibrate.",
+        help="Dataset to calibrate on.",
         choices=["wikitext2", "ptb", "c4"],
         default="wikitext2",
     )
     parser.add_argument(
         "--cal_nsamples",
         type=int,
-        help="Number of samples to calibrate on.",
+        help="Number of samples of the calibration data to load.",
         default=128,
     )
-    parser.add_argument(
-        "--eval_dataset",
-        type=str,
-        help="Dataset to evaluate.",
-        choices=["wikitext2", "ptb", "c4"],
-        default="wikitext2",
-    )
-    parser.add_argument("--batch_size", type=int, default=1, help="Batch size of the calibration data.")
+    parser.add_argument("--batch_size", type=int, default=1, help="Batch size for loading the calibration data.")
     parser.add_argument("--seed", type=int, default=42, help="Seed for sampling the calibration data.")
-    parser.add_argument("--sparsity", type=float, default=0.0, help="Sparsity of the calibration data.")
+    parser.add_argument("--sparsity", type=float, default=0.0, help="A measure of how much slicing is applied (in the range [0, 1])")
     parser.add_argument("--eval_baseline", action="store_true", help="Evaluate the baseline model.")
-    parser.add_argument("--debug", action="store_true", help="Evaluate the fused model.")
+    parser.add_argument("--eval_fuse_model", action="store_true", help="Evaluate the fused model.")
 
     parser.add_argument("--save_dir", type=str, default=None, help="Path to save the model.")
 
@@ -85,11 +78,12 @@ def main():
     # get model, data
     model, tokenizer = hf_utils.get_model(args.model, args.hf_token)
     dataloader, testloader = data_utils.get_loaders(
-        "wikitext2",
+        dataset_name=args.cal_dataset,
+        tokenizer=tokenizer,
+        nsamples=args.cal_nsamples,
         seqlen=model.seqlen,
         batch_size=args.batch_size,
         seed=args.seed,
-        tokenizer=tokenizer,
     )
 
     # original ppl
@@ -103,19 +97,19 @@ def main():
     model = model.cpu()
     layernorm_fusion.fuse_modules(model)
 
-    if args.debug:
+    if args.eval_baseline:
         dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
         print('Post-fusion:', dataset_ppl)
         wandb.log({"post_fusion_ppl": dataset_ppl})
 
-    # run slicegpt sparsity
+    # compute new embedding dimension given the slicegpt sparsity
     new_embedding_dimension = int((1 - args.sparsity) * model.config.hidden_size)
     print(f"New embedding dimension: {new_embedding_dimension} (sparsity {args.sparsity})")
 
     rotate.rotate_and_slice_opt(model, dataloader, new_embedding_dimension)
-    print()
+
     dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
-    print('After rotating and slicing', dataset_ppl)
+    print('\nAfter rotating and slicing', dataset_ppl)
     wandb.log({"sliced_ppl": dataset_ppl})
 
 
