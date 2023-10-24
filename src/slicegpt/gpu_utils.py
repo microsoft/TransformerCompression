@@ -12,9 +12,8 @@ def evaluate_ppl(model, testloader, device):
     Evaluate the model's perplexity on the test set using batch processing.
     """
     model.eval()
-    use_cache = model.config.use_cache
-    model.config.use_cache = False
-    model = model.to(device)
+    model_orig_device = model.device
+    model.to(device)
     loss_fct = torch.nn.CrossEntropyLoss(reduction="none")
 
     nlls = []
@@ -34,6 +33,8 @@ def evaluate_ppl(model, testloader, device):
 
         nlls.append(nll)
 
+    model.to(model_orig_device)
+    
     nlls = torch.stack(nlls)
     ppl = torch.exp(nlls.sum() / nlls.numel())
     return ppl.item()
