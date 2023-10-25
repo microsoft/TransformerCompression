@@ -77,6 +77,7 @@ def main():
 
     # get model, data
     model, tokenizer = hf_utils.get_model(args.model, args.hf_token)
+
     dataloader, testloader = data_utils.get_loaders(
         dataset_name=args.cal_dataset,
         tokenizer=tokenizer,
@@ -85,15 +86,15 @@ def main():
         batch_size=args.batch_size,
         seed=args.seed,
     )
-
+    
     # original ppl
     if args.eval_baseline:
         dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
         print('Original ppl:', dataset_ppl)
         wandb.log({"original_ppl": dataset_ppl})
-
     # fuse layernorms, add shorcuts, check perplexity
     layernorm_fusion.replace_modules(model, model.config)
+
     model = model.cpu()
     layernorm_fusion.fuse_modules(model)
 
@@ -101,7 +102,6 @@ def main():
         dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
         print('Post-fusion:', dataset_ppl)
         wandb.log({"post_fusion_ppl": dataset_ppl})
-
     # compute new embedding dimension given the slicegpt sparsity
     new_embedding_dimension = int((1 - args.sparsity) * model.config.hidden_size)
     print(f"New embedding dimension: {new_embedding_dimension} (sparsity {args.sparsity})")
@@ -112,6 +112,10 @@ def main():
     print('\nAfter rotating and slicing', dataset_ppl)
     wandb.log({"sliced_ppl": dataset_ppl})
 
+    if args.save_dir:
+        torch.save(model.state_dict(), args.save_dir)
+        tokenizer.save_pretrained(args.save_dir)
+        print("Saved sliced model to {}".format(save_dir))
 
 """
 def old_main():
