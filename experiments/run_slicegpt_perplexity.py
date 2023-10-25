@@ -50,7 +50,7 @@ def argparser():
     parser.add_argument("--seed", type=int, default=42, help="Seed for sampling the calibration data.")
     parser.add_argument("--sparsity", type=float, default=0.0, help="A measure of how much slicing is applied (in the range [0, 1])")
     parser.add_argument("--eval_baseline", action="store_true", help="Evaluate the baseline model.")
-    parser.add_argument("--eval_fuse_model", action="store_true", help="Evaluate the fused model.")
+    parser.add_argument("--eval_fused_model", action="store_true", help="Evaluate the fused model.")
 
     parser.add_argument("--save_dir", type=str, default=None, help="Path to save the model.")
 
@@ -97,7 +97,7 @@ def main():
     model = model.cpu()
     layernorm_fusion.fuse_modules(model)
 
-    if args.eval_baseline:
+    if args.eval_fused_model:
         dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
         print('Post-fusion:', dataset_ppl)
         wandb.log({"post_fusion_ppl": dataset_ppl})
