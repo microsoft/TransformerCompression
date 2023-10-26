@@ -11,10 +11,12 @@ import torch.distributed as dist
 
 import wandb
 from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate
-from accelerate import infer_auto_device_map, init_empty_weights, dispatch_model
+from accelerate import Accelerator, infer_auto_device_map, init_empty_weights, dispatch_model
 from accelerate.utils import get_balanced_memory
 import deepspeed
 import gc
+import time
+import os
 
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -70,6 +72,7 @@ def argparser():
     parser.add_argument('--hf_token', type=str, default=None)
 
     parser.add_argument('--local_rank', required=False, type=int, help="Local rank for deepspeed.")
+    parser.add_argument('--deepspeed', action="store_true", help="Local rank for deepspeed.")
 
     args = parser.parse_args()
     assert args.sparsity >= 0 and args.sparsity <= 1, "Sparsity should be in the range [0, 1]!"

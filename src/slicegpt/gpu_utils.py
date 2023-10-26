@@ -5,38 +5,34 @@ import numpy as np
 import torch
 import tqdm
 import deepspeed
+import gc
 
 @torch.no_grad()
-def evaluate_ppl(model, testloader, device):
+def evaluate_ppl(model, testloader, device, move_model=False):
     """
     Evaluate the model's perplexity on the test set using batch processing.
     """
     model.eval()
-    model_orig_device = model.device
-    model.to(device)
 
-    if (torch.cuda.device_count() > 1):
-        opt_multigpu(model, [torch.device("cuda:%d" % i) for i in range(torch.cuda.device_count())])
-    model = model.to(device)
+    if move_model:
+        model_orig_device = model.device
+    
+        gpus = [torch.device("cuda:%d" % i) for i in range(torch.cuda.device_count())]
+        if len(gpus) > 1:
+            opt_multigpu(model, gpus)
+        else:
+            model.to(device)
+
     model_seqlen = model.seqlen
 
-    # if (torch.cuda.device_count() > 1):
-    #     opt_multigpu(model, [torch.device("cuda:%d" % i) for i in range(torch.cuda.device_count())])
-    
-    # model = model.to(device)
-    # model = torch.nn.DataParallel(model)
     model.eval()
     
-    loss_fct = torch.nn.CrossEntropyLoss(reduction="none")
-
+    loss_fct = torch.nn.CrossEntropyLoss(reduction="none").to(torch.cuda.current_device())
     nlls = []
 
     for batch in testloader:
-        print(f'current device: {torch.cuda.current_device()}')
-        input_ids = batch.to(torch.cuda.current_device()) # .to(device)
-        print(f'input_ids device: {input_ids.device}, model device: {model.device}')
-        # logits = model(input_ids=input_ids).logits
-        logits = model(input_ids=input_ids).logits
+        input_ids = batch.to(model.device)
+        logits = model(input_ids=input_ids).logits.to(model.device)
 
         # Shift outputs and labels autoregressively.
         logits = logits[:, :-1, :]
@@ -49,8 +45,8 @@ def evaluate_ppl(model, testloader, device):
 
     model.to(model_orig_device)
 
-    nlls = torch.cat(nlls)
     ppl = torch.exp(nlls.sum() / nlls.numel())
+
     return ppl.item()
 
 
@@ -90,7 +86,9 @@ def opt_multigpu(model, gpus):
 
     layers = model.model.decoder.layers
     pergpu = math.ceil(len(layers) / len(gpus))
+    print(f'per gpu: {pergpu}')
     for i in range(len(layers)):
+        print(f'layer {i} to gpu {gpus[i // pergpu]}')
         layers[i] = MoveModule(layers[i].to(gpus[i // pergpu]))
 
     model.gpus = gpus

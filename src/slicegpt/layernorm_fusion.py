@@ -45,8 +45,8 @@ def replace_modules(model, config, verbose=True):
             replace_modules(module, config, verbose=False)
 
         if new_module is not None:
-            new_module.to(next(module.parameters()).device)
             new_module.load_state_dict(module.state_dict(), strict=True)
+            new_module.to(original_module_device)
             setattr(model, name, new_module)
 
     if verbose:

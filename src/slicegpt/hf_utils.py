@@ -9,6 +9,7 @@ from slicegpt import layernorm_fusion, model_utils, rotate
 
 from accelerate import infer_auto_device_map, init_empty_weights, dispatch_model
 from accelerate.utils import get_balanced_memory
+from .model_utils import get_layers
 
 class UninitializedOPTForCausalLM(OPTForCausalLM):
     def _init_weights(self, module):
@@ -58,7 +59,6 @@ def get_model(model_path, uninitialized=False, dtype=torch.float16, token=None):
 
     model.seqlen = model.config.max_position_embeddings
     model.eval()  # This switches off dropout.
-    # model.config.use_cache = False  # Do not cache attention key values.
 
     print("Done.")
     return model, tokenizer

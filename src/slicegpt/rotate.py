@@ -213,7 +213,7 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
 
         inps = torch.matmul(outputs, Q.to(dtype=dtype))[:, :, :dim]
 
-        layer = layer.to('cpu')
+        # layer = layer.to('cpu')
 
         # Clear GPU cache.
         torch.cuda.empty_cache()
