@@ -136,7 +136,7 @@ def main():
         if args.save_dir:
             torch.save(model.state_dict(), args.save_dir)
             tokenizer.save_pretrained(args.save_dir)
-            print("Saved sliced model to {}".format(save_dir))
+            print("Saved sliced model to {}".format(args.save_dir))
 
 """
 def old_main():
