@@ -77,7 +77,7 @@ def main():
         wandb.init(project="slicegpt", mode='disabled')
 
     if args.load_dir:
-        # load the model from load_dir to compute perplexty and skipping rotation and slicing
+        # load the model from load_dir to compute perplexity and skipping rotation and slicing
         print(f"Loading sliced {args.model} model from {args.load_dir} with sparsity {args.sparsity}")
         model, tokenizer = hf_utils.load_sliced_model(args.model, args.hf_token, args.load_dir, args.sparsity, DEV)
 
