@@ -67,13 +67,14 @@ def load_sliced_model(model_name, hf_token, model_path, sparsity, device):
     new_embedding_dimension = int((1 - sparsity) * model.config.hidden_size)
 
     for layer in model_utils.get_layers(model):
-        layer.register_buffer("mlp_shortcut_Q", torch.zeros(model.config.hidden_size, model.config.hidden_size))
-        layer.register_buffer("attn_shortcut_Q", torch.zeros(model.config.hidden_size, model.config.hidden_size))
+        mlp_shortcut_Q = torch.zeros(model.config.hidden_size, model.config.hidden_size).to(dtype=torch.float16)
+        attn_shortcut_Q = torch.zeros(model.config.hidden_size, model.config.hidden_size).to(dtype=torch.float16)
+        layer.register_buffer("mlp_shortcut_Q", mlp_shortcut_Q)
+        layer.register_buffer("attn_shortcut_Q", attn_shortcut_Q)
 
     rotate.slice_rotated_model(model, new_embedding_dimension)
 
     model.load_state_dict(torch.load(model_path, map_location=device))
-    model.to(dtype=torch.float32)
     model.eval()
 
     return model, tokenizer
