@@ -129,14 +129,14 @@ def main():
 
         rotate.rotate_and_slice(model, dataloader, new_embedding_dimension)
 
-        dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
-        print('\nAfter rotating and slicing', dataset_ppl)
-        wandb.log({"sliced_ppl": dataset_ppl})
-
         if args.save_dir:
             torch.save(model.state_dict(), args.save_dir)
             tokenizer.save_pretrained(args.save_dir)
             print("Saved sliced model to {}".format(args.save_dir))
+
+        dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
+        print('\nAfter rotating and slicing', dataset_ppl)
+        wandb.log({"sliced_ppl": dataset_ppl})
 
 """
 def old_main():
