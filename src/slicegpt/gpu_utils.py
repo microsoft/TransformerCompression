@@ -6,33 +6,25 @@ import torch
 import tqdm
 import deepspeed
 import gc
+import time
+
 
 @torch.no_grad()
-def evaluate_ppl(model, testloader, device, move_model=False):
+def evaluate_ppl(model, testloader, device):
     """
     Evaluate the model's perplexity on the test set using batch processing.
     """
-    model.eval()
-
-    if move_model:
-        model_orig_device = model.device
+    start_time = time.time()
     
-        gpus = [torch.device("cuda:%d" % i) for i in range(torch.cuda.device_count())]
-        if len(gpus) > 1:
-            opt_multigpu(model, gpus)
-        else:
-            model.to(device)
-
+    model.eval()
     model_seqlen = model.seqlen
-
-    model.eval()
     
-    loss_fct = torch.nn.CrossEntropyLoss(reduction="none").to(torch.cuda.current_device())
+    loss_fct = torch.nn.CrossEntropyLoss(reduction="none")
     nlls = []
 
     for batch in testloader:
-        input_ids = batch.to(model.device)
-        logits = model(input_ids=input_ids).logits.to(model.device)
+        input_ids = batch.to(device)
+        logits = model(input_ids=input_ids).logits
 
         # Shift outputs and labels autoregressively.
         logits = logits[:, :-1, :]
@@ -47,6 +39,8 @@ def evaluate_ppl(model, testloader, device, move_model=False):
 
     ppl = torch.exp(nlls.sum() / nlls.numel())
 
+    elapsed = time.time() - start_time 
+    print("Time spent on evaluation: ", time.strftime("%H:%M:%S.{}".format(str(elapsed % 1)[2:])[:13], time.gmtime(elapsed)))
     return ppl.item()
 
 

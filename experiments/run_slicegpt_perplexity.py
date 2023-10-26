@@ -15,7 +15,6 @@ from accelerate import Accelerator, infer_auto_device_map, init_empty_weights, d
 from accelerate.utils import get_balanced_memory
 import deepspeed
 import gc
-import time
 import os
 
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -82,6 +81,7 @@ def argparser():
 
 def main():
     print("Running SliceGPT perplexity experiment.")
+    print(f"Number of avaialble cuda devices: {torch.cuda.device_count()}")
 
     args = argparser()
 
@@ -110,17 +110,19 @@ def main():
         dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
         print('\nPerplexity after rotating and slicing', dataset_ppl)
         wandb.log({"sliced_ppl": dataset_ppl})
-
     else:
         # get model, data
         model, tokenizer = hf_utils.get_model(args.model, token=args.hf_token)
 
+        hf_utils.infer_device_map(model)
+        # model = model.to(DEV)
+        
         dataloader, testloader = data_utils.get_loaders(
             dataset_name=args.cal_dataset,
             tokenizer=tokenizer,
             nsamples=args.cal_nsamples,
             seqlen=model.seqlen,
-            batch_size=args.batch_size,
+            batch_size=args.batch_size, # * torch.cuda.device_count(),
             seed=args.seed,
         )
 
@@ -129,22 +131,28 @@ def main():
             dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
             print('Original ppl:', dataset_ppl)
             wandb.log({"original_ppl": dataset_ppl})
+
         # fuse layernorms, add shorcuts, check perplexity
         layernorm_fusion.replace_modules(model, model.config)
-
-        model = model.cpu()
         layernorm_fusion.fuse_modules(model)
 
         if args.eval_fused_model:
+            hf_utils.infer_device_map(model)
+            torch.cuda.empty_cache()
+
             dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
             print('Post-fusion:', dataset_ppl)
             wandb.log({"post_fusion_ppl": dataset_ppl})
+
+
+        model = model.cpu()
 
         # compute new embedding dimension given the slicegpt sparsity
         new_embedding_dimension = int((1 - args.sparsity) * model.config.hidden_size)
         print(f"New embedding dimension: {new_embedding_dimension} (sparsity {args.sparsity})")
 
         rotate.rotate_and_slice(model, dataloader, new_embedding_dimension)
+        print()
 
         if args.save_dir:
             if not os.path.exists(args.save_dir):
@@ -153,6 +161,9 @@ def main():
             model_file = os.path.join(args.save_dir, os.path.basename(args.model) + "_" + str(args.sparsity) + ".pt")
             torch.save(model.state_dict(), model_file)
             print("Saved sliced model to {}".format(args.save_dir))
+
+        hf_utils.infer_device_map(model)
+        torch.cuda.empty_cache()
 
         dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
         print('After rotating and slicing', dataset_ppl)

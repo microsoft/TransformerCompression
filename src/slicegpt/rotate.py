@@ -29,6 +29,8 @@ def rotate_attention_inputs(layer, Q):
         dtype = W.weight.dtype
         W_ = W.weight.to(device=DEV, dtype=torch.float64)
         W.weight.data = torch.matmul(W_, Q).to(device="cpu", dtype=dtype)
+        # W_ = W.weight.to(device=DEV, dtype=torch.float64)
+        # W.weight.data = torch.matmul(W_, Q).to(dtype=dtype)
 
 
 def slice_attention_inputs(layer, new_embedding_dimension):
@@ -114,6 +116,8 @@ def rotate_embeddings(model, Q):
         dtype = W.weight.data.dtype
         W_ = W.weight.data.to(device=DEV, dtype=torch.float64)
         W.weight.data = torch.matmul(W_, Q).to(device="cpu", dtype=dtype)
+        # W_ = W.weight.data.to(dtype=torch.float64)
+        # W.weight.data = torch.matmul(W_, Q).to(dtype=dtype)
 
     torch.cuda.empty_cache()
 
@@ -153,6 +157,7 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
     inp, attention_mask = get_layer0_inputs(model, first_batch)
     inps.append(inp)
 
+    print(model.device)
     # Process the remaining batches
     for batch in dataloader:
         inp, _ = get_layer0_inputs(model, batch)
@@ -162,7 +167,7 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
 
     _, Q = utils.pca_calc(inps.reshape(-1, model.config.hidden_size))
     Q = Q.to(device=DEV)
-
+    
     rotate_embeddings(model, Q)
     slice_embeddings(model, new_embedding_dimension)
 
@@ -181,6 +186,7 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
         slice_attention_inputs(layer, new_embedding_dimension)
 
         # get signal between attention and mlp, rotate and slice
+        # print(f'devices, layer:, model: {model.device}, inps: {inps.device}, attention_mask: {attention_mask.device}')
         mlp_ln_inputs, _ = get_signals(layer, inps, attention_mask)
         _, Q = utils.pca_calc(mlp_ln_inputs.reshape(-1, mlp_ln_inputs.shape[-1]))
         Q = Q.to(device=DEV, dtype=torch.float64)
@@ -213,7 +219,7 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
 
         inps = torch.matmul(outputs, Q.to(dtype=dtype))[:, :, :dim]
 
-        # layer = layer.to('cpu')
+        layer = layer.to('cpu')
 
         # Clear GPU cache.
         torch.cuda.empty_cache()

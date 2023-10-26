@@ -5,11 +5,12 @@ import torch
 import transformers
 from transformers import LlamaConfig, LlamaForCausalLM, OPTConfig, OPTForCausalLM
 
-from slicegpt import layernorm_fusion, model_utils, rotate
+from . import rotate, layernorm_fusion, model_utils
 
-from accelerate import infer_auto_device_map, init_empty_weights, dispatch_model
-from accelerate.utils import get_balanced_memory
 from .model_utils import get_layers
+from accelerate import infer_auto_device_map, dispatch_model
+from accelerate.utils import get_balanced_memory
+
 
 class UninitializedOPTForCausalLM(OPTForCausalLM):
     def _init_weights(self, module):
@@ -32,10 +33,10 @@ def get_model(model_path, uninitialized=False, dtype=torch.float16, token=None):
 
     print(f"Loading {model_type} {model_path} model...", end=" ")
 
-    # if "facebook/opt" in model_path:
-    #     model = transformers.OPTForCausalLM.from_pretrained(model_path, torch_dtype="auto")
-    # elif "meta-llama" in model_path:
-    #     model = transformers.LlamaForCausalLM.from_pretrained(model_path, torch_dtype='auto', use_auth_token=hf_token)
+    if "facebook/opt" in model_path:
+        model = transformers.OPTForCausalLM.from_pretrained(model_path, torch_dtype="auto")
+    elif "meta-llama" in model_path:
+        model = transformers.LlamaForCausalLM.from_pretrained(model_path, torch_dtype='auto', use_auth_token=hf_token)
     # dtype = torch.float16
     # with deepspeed.OnDevice(dtype=dtype, device="meta"):
     if "facebook/opt" in model_path:
@@ -83,3 +84,20 @@ def load_sliced_model(model_name, model_path, sparsity, device):
     model.eval()
 
     return model, tokenizer
+
+def infer_device_map(model):
+    no_split_modules = ["OPTDecoderLayer", "CompressedOPTDecoderLayer"]
+    max_memory = get_balanced_memory(
+        model,
+        max_memory=None,
+        no_split_module_classes=no_split_modules,
+    )
+
+    device_map = infer_auto_device_map(
+        model,
+        max_memory=max_memory,
+        no_split_module_classes=no_split_modules
+    )
+
+    print(device_map)
+    dispatch_model(model, device_map=device_map)
