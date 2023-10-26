@@ -60,7 +60,7 @@ def get_model(model_path, hf_token=None):
     return model, tokenizer
 
 def load_sliced_model(model_name, hf_token, model_path, sparsity, device):
-    """ Lods the sliced model and the tokenzer from the given path. """
+    """ Loads the sliced model and the tokenzer from the given path. """
     model, tokenizer = get_model(model_name, hf_token)
     layernorm_fusion.replace_modules(model, model.config)
     layernorm_fusion.fuse_modules(model)
@@ -73,6 +73,7 @@ def load_sliced_model(model_name, hf_token, model_path, sparsity, device):
     rotate.slice_rotated_model(model, new_embedding_dimension)
 
     model.load_state_dict(torch.load(model_path, map_location=device))
+    model.to(dtype=torch.float32)
     model.eval()
 
     return model, tokenizer
