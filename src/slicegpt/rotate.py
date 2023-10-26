@@ -139,9 +139,9 @@ def slice_head(model, new_embedding_dimension):
 
 
 @torch.no_grad()
-def rotate_and_slice_opt(model, dataloader, new_embedding_dimension, do_slice_head=False):
+def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=False):
     """
-    Rotate and slice an OPT model, with interleaved slicing and PCA calculations
+    Rotate and slice a model, with interleaved slicing and PCA calculations
     """
     dtype = next(iter(model.parameters())).dtype
 
@@ -224,9 +224,9 @@ def rotate_and_slice_opt(model, dataloader, new_embedding_dimension, do_slice_he
 
 
 @torch.no_grad()
-def rotate_opt(model, dataloader):
+def rotate(model, dataloader):
     """
-    Rotate an OPT model.
+    Rotate a model.
     """
     dtype = next(iter(model.parameters())).dtype  # Get the dtype of the model.
 
@@ -282,7 +282,7 @@ def rotate_opt(model, dataloader):
     print(" Done rotating!")
 
 
-def slice_rotated_OPT_model(model, new_embedding_dimension, do_slice_head=False):
+def slice_rotated_model(model, new_embedding_dimension, do_slice_head=False):
 
     # slice embeddings
     slice_embeddings(model, new_embedding_dimension)

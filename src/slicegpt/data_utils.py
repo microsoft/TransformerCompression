@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 
 def get_wikitext2(nsamples, seed, seqlen, tokenizer, batch_size):
     """
-    generate n_samples sequences from the wikitext 2 dataset, each of length seqlen.
+    generate nsamples sequences from the wikitext 2 dataset, each of length seqlen.
     Additionally gather the test set (not sampled).
     """
     traindata = datasets.load_dataset("wikitext", "wikitext-2-raw-v1", split="train")
@@ -172,14 +172,16 @@ def get_c4_new(nsamples, seed, seqlen, tokenizer):
     return trainloader, valenc
 
 
-def get_loaders(name, nsamples=128, seed=0, seqlen=2048, tokenizer=None, batch_size=1):
-    if "wikitext2" in name:
+def get_loaders(dataset_name, tokenizer, nsamples=128, seed=0, seqlen=2048, batch_size=1):
+    if dataset_name == "wikitext2":
         return get_wikitext2(nsamples, seed, seqlen, tokenizer, batch_size)
-    if "ptb" in name:
-        if "new" in name:
+    if "ptb" in dataset_name:
+        if "new" in dataset_name:
             return get_ptb_new(nsamples, seed, seqlen, tokenizer)
         return get_ptb(nsamples, seed, seqlen, tokenizer)
-    if "c4" in name:
-        if "new" in name:
+    if "c4" in dataset_name:
+        if "new" in dataset_name:
             return get_c4_new(nsamples, seed, seqlen, tokenizer)
         return get_c4(nsamples, seed, seqlen, tokenizer)
+    else:
+        raise NotImplementedError("The provided dataset is not supported")
