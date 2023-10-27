@@ -51,6 +51,7 @@ def replace_modules(model, config, is_first_call=True):
     if is_first_call:
         print("Done.")
 
+
 def replace_layernorms(model, config):
     """
     Replace

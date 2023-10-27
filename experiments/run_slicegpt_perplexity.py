@@ -49,7 +49,9 @@ def argparser():
     )
     parser.add_argument("--batch_size", type=int, default=1, help="Batch size for loading the calibration data.")
     parser.add_argument("--seed", type=int, default=42, help="Seed for sampling the calibration data.")
-    parser.add_argument("--sparsity", type=float, default=0.0, help="A measure of how much slicing is applied (in the range [0, 1])")
+    parser.add_argument(
+        "--sparsity", type=float, default=0.0, help="A measure of how much slicing is applied (in the range [0, 1])"
+    )
     parser.add_argument("--eval_baseline", action="store_true", help="Evaluate the baseline model.")
     parser.add_argument("--eval_fused_model", action="store_true", help="Evaluate the fused model.")
 
@@ -80,7 +82,7 @@ def main():
     if args.load_model_path:
         # load the model from load_model_path to compute perplexity and skip rotation and slicing
         print(f"Loading sliced {args.model} model from {args.load_model_path} with sparsity {args.sparsity}")
-        model, tokenizer = hf_utils.load_sliced_model(args.model, args.hf_token, args.load_model_path, args.sparsity, DEV)
+        model, tokenizer = hf_utils.load_sliced_model(args.model, args.load_model_path, args.sparsity, DEV)
 
         dataloader, testloader = data_utils.get_loaders(
             dataset_name=args.cal_dataset,
@@ -97,7 +99,7 @@ def main():
 
     else:
         # get model, data
-        model, tokenizer = hf_utils.get_model(args.model, args.hf_token)
+        model, tokenizer = hf_utils.get_model(args.model)
 
         dataloader, testloader = data_utils.get_loaders(
             dataset_name=args.cal_dataset,
@@ -107,7 +109,7 @@ def main():
             batch_size=args.batch_size,
             seed=args.seed,
         )
-        
+
         # original ppl
         if args.eval_baseline:
             dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
@@ -142,164 +144,6 @@ def main():
         print('After rotating and slicing', dataset_ppl)
         wandb.log({"sliced_ppl": dataset_ppl})
 
-"""
-def old_main():
-    args = opt_argparser()
-    if args.dp2_cache:
-        utils.deeplearn2_cache_dir()
-
-    if args.wandb:
-        wandb.init(
-            project="llm_rotation",
-            entity="saleh_ashkboos",
-            tags=["FP16", "static_sparsification", "fp64_pca"],
-        )
-        wandb.config.update(args)
-
-    utils.set_seed(args.seed)
-
-    model = opt_utils.get_opt(args.model)
-
-    if args.benchmark_baseline:
-        gpus = [torch.device("cuda:%d" % i) for i in range(torch.cuda.device_count())]
-        print("Using GPUs:", gpus)
-        torch.cuda.empty_cache()
-        dataloader, testloader = datautils.get_loaders(
-            args.eval_dataset, seed=args.seed, model=args.model, seqlen=model.seqlen
-        )
-        if len(gpus) > 1:
-            opt_utils.opt_multigpu(model, gpus)
-        else:
-            model = model.to(DEV)
-        input_ids = next(iter(dataloader))[0][:, :128]  # benchmark over 128 tokens
-        baseline_token_per_sec = opt_utils.opt_benchmark(
-            model, input_ids, dev=DEV, check=True
-        )
-        print(
-            f"\nBaseline Model ({args.eval_dataset.upper()}) (real) Sec/Token: {baseline_token_per_sec:.4f} ({len(gpus)} GPUs)"
-        )
-        if args.wandb:
-            wandb.log(
-                {
-                    "token_per_sec_baseline/{}".format(
-                        args.eval_dataset
-                    ): baseline_token_per_sec
-                }
-            )
-        exit(2)
-
-    if args.eval_baseline:
-        model.eval()
-        dataloader, testloader = datautils.get_loaders(
-            args.eval_dataset, seed=args.seed, model=args.model, seqlen=model.seqlen
-        )
-        tick = time.time()
-        dataset_ppl = opt_utils.opt_eval(model, testloader, DEV)
-        tock = time.time()
-        print(
-            f"\nBaseline Model ({args.eval_dataset.upper()}) PPL: {dataset_ppl:.3f} \n (simulate) Time: {tock-tick:.4f}"
-        )
-        print(40 * "-")
-        model = model.cpu()
-        if args.wandb:
-            wandb.log({"ppl_baseline/{}".format(args.eval_dataset): dataset_ppl})
-            wandb.log(
-                {"(simulate) time_baseline/{}".format(args.eval_dataset): tock - tick}
-            )
-
-    if args.sparsity > 0:
-        # The order of calling these functions is important!
-        opt_utils.replace_opt_modules(model, model.config)
-        opt_utils.fuse_opt_modules(model)
-        model = model.cpu()
-
-    if args.benchmark and not args.ppl_check:
-        model = slice_OPT_model(model, args)
-        torch.cuda.empty_cache()
-        dataloader, testloader = datautils.get_loaders(
-            args.eval_dataset, seed=args.seed, model=args.model, seqlen=model.seqlen
-        )
-        gpus = [torch.device("cuda:%d" % i) for i in range(torch.cuda.device_count())]
-        print("Using GPUs:", gpus)
-
-        if len(gpus) > 1:
-            opt_utils.opt_multigpu(model, gpus)
-        else:
-            model = model.to(DEV)
-        input_ids = next(iter(dataloader))[0][:, :128]  # benchmark over 128 tokens
-        baseline_token_per_sec = opt_utils.opt_benchmark(
-            model, input_ids, dev=DEV, check=False
-        )
-        print(
-            f"\nCompressed Model with {args.sparsity} ({args.eval_dataset.upper()}) (Compressed Real) Sec/Token: {baseline_token_per_sec:.4f} ({len(gpus)} GPUs)"
-        )
-        if args.wandb:
-            wandb.log(
-                {"sec_per_token/{}".format(args.eval_dataset): baseline_token_per_sec}
-            )
-        exit(2)
-
-    if args.load_dir is None and args.sparsity > 0:
-        dataloader, testloader = datautils.get_loaders(
-            args.cal_dataset,
-            nsamples=args.cal_nsamples,
-            seed=args.seed,
-            model=args.model,
-            seqlen=model.seqlen,
-        )
-
-        rotate_opt(model, dataloader, DEV)
-        model = model.cpu()
-        if args.save_dir is not None:
-            save_rotated_model(model, args.model, args.save_dir)
-
-    elif args.sparsity > 0:
-        # load the model from load_dir
-        print(f"Loading the model from {args.load_dir}...")
-        model = slice_OPT_model(model, args) # this just makes an empty model!
-        model.load_state_dict(
-            torch.load(args.load_dir, map_location=torch.device("cpu"))\
-        )
-
-    if args.benchmark and args.ppl_check:
-        gpus = [torch.device("cuda:%d" % i) for i in range(torch.cuda.device_count())]
-        print("Using GPUs:", gpus)
-        torch.cuda.empty_cache()
-
-        if len(gpus) > 1:
-            opt_utils.opt_multigpu(model, gpus)
-        else:
-            model = model.to(DEV)
-        
-        input_ids = next(iter(dataloader))[0][:, :128]  # benchmark over 128 tokens
-        baseline_token_per_sec = opt_utils.opt_benchmark(
-            model, input_ids, dev=DEV, check=True
-        )
-        print(
-            f"\nRotated Model with {args.sparsity} ({args.eval_dataset.upper()}) (Compressed Real) Sec/Token: {baseline_token_per_sec:.4f} ({len(gpus)} GPUs)"
-        )
-        
-        if args.wandb:
-            wandb.log(
-                {
-                    "sec_per_token_sparsified/{}".format(
-                        args.eval_dataset
-                    ): baseline_token_per_sec
-                }
-            )
-        exit(2)
-
-    tick = time.time()
-    dataset_ppl = opt_utils.opt_eval(model, testloader, DEV)
-    tock = time.time()
-    print(
-        f"\nRotated Model with {args.sparsity} ({args.eval_dataset.upper()}) PPL: {dataset_ppl:.3f} \n (simulate) Time: {tock-tick:.4f}"
-    )
-    print(40 * "-")
-    if args.wandb:
-        wandb.log({"ppl/{}".format(args.eval_dataset): dataset_ppl})
-        wandb.log({"(simulate) time/{}".format(args.eval_dataset): tock - tick})
-"""
 
 if __name__ == "__main__":
     main()
