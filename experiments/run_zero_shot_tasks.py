@@ -19,7 +19,10 @@ class LMClass(BaseLM):
     def __init__(self, args):
         super().__init__()
 
-        model, tokenizer = hf_utils.get_model(args.model, args.hf_token)
+        if args.load_dir:
+            model, tokenizer = hf_utils.load_sliced_model(args.model, args.load_dir, args.sparsity, DEV)
+        else:
+            model, tokenizer = hf_utils.get_model(args.model)
 
         self.model = model
         self.model.config.sparsity = args.sparsity
@@ -108,6 +111,8 @@ def parse_args():
     )
     parser.add_argument("--batch_size", type=int, default=1, help="Batch size for loading the calibration data.")
 
+    parser.add_argument("--load_dir", type=str, default=None, help="Path to load the sliced model from.")
+
     parser.add_argument('--hf_token', type=str, default=None)
 
     return parser.parse_args()
@@ -115,7 +120,7 @@ def parse_args():
 
 def main():
     args = parse_args()
-    print(f"Using dev: {DEV}.")
+    print("Running SliceGPT zeroshot tasks experiment.")
 
     try:
         wandb.init(project="slicegpt", config=args)
@@ -125,9 +130,12 @@ def main():
         print(f'Failed to initialize wandb: {e}, continuing without wandb.')
         wandb.init(project="slicegpt", mode='disabled')
 
-    # Initiate the model and apply
+    # Initialize the model for use in LM Eval Harness.
     model = LMClass(args)
-    apply_slicegpt(model)
+
+    # Apply SliceGPT if the model is not a pre-sliced model.
+    if not args.load_dir:
+        apply_slicegpt(model)
 
     ### LM Eval Harness ###
     if args.tasks is None:
