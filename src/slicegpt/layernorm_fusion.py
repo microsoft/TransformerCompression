@@ -86,12 +86,13 @@ def fuse_modules(model):
 
     # make a copy of the weights in the lm head, which are shared with embeddings...
     head = get_lm_head(model)
-    head.weight = torch.nn.Parameter(head.weight.clone()).to(head.weight.device)
+    head.weight = torch.nn.Parameter(head.weight.clone())
 
     # We add the mean subtraction to the first embeddings
     for W in get_embeddings(model):
-        W_ = W.weight.data.double() # .to(W.weight.device)
+        W_ = W.weight.data.double()
         W.weight.data = (W_ - W_.mean(dim=-1, keepdim=True)).to(W.weight.data.dtype)
+
     layers = get_layers(model)
 
     # First we modify the layernorms to fold their weights
@@ -131,12 +132,13 @@ def fuse_ln_linear(layernorm: torch.nn.LayerNorm, linear_layers: list):
     """
     for linear in linear_layers:
         linear_dtype = linear.weight.dtype
+
         # Calculating new weight and bias
-        device = linear.weight.device
-        W_ = linear.weight.data.double().to(device)
+        W_ = linear.weight.data.double()
         linear.weight.data = (W_ * layernorm.weight.double()).to(linear_dtype)
+
         if hasattr(layernorm, 'bias'):
             if linear.bias is None:
-                linear.bias = torch.nn.Parameter(torch.zeros(linear.out_features, dtype=torch.float64).to(device))
+                linear.bias = torch.nn.Parameter(torch.zeros(linear.out_features, dtype=torch.float64))
             linear.bias.data = linear.bias.data.double() + torch.matmul(W_, layernorm.bias.double())
             linear.bias.data = linear.bias.data.to(linear_dtype)

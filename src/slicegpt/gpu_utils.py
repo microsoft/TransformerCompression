@@ -1,16 +1,15 @@
 import math
-import time
 
 import numpy as np
 import torch
 import tqdm
-import deepspeed
-import gc
 import time
+from accelerate import infer_auto_device_map, dispatch_model
+from accelerate.utils import get_balanced_memory
 
 
 @torch.no_grad()
-def evaluate_ppl(model, testloader, device):
+def evaluate_ppl(model, testloader, device, model_distributed=False):
     """
     Evaluate the model's perplexity on the test set using batch processing.
     """
@@ -19,11 +18,17 @@ def evaluate_ppl(model, testloader, device):
     model.eval()
     model_seqlen = model.seqlen
     
+    if not model_distributed:
+        model_orig_device = model.device
+        model.to(device)
+
     loss_fct = torch.nn.CrossEntropyLoss(reduction="none")
+
     nlls = []
 
     for batch in testloader:
         input_ids = batch.to(device)
+
         logits = model(input_ids=input_ids).logits
 
         # Shift outputs and labels autoregressively.
@@ -35,13 +40,30 @@ def evaluate_ppl(model, testloader, device):
 
         nlls.append(nll)
 
-    model.to(model_orig_device)
-
     ppl = torch.exp(nlls.sum() / nlls.numel())
 
     elapsed = time.time() - start_time 
     print("Time spent on evaluation: ", time.strftime("%H:%M:%S.{}".format(str(elapsed % 1)[2:])[:13], time.gmtime(elapsed)))
+    
     return ppl.item()
+
+
+def infer_device_map(model):
+    no_split_modules = ["OPTDecoderLayer", "CompressedOPTDecoderLayer"]
+    max_memory = get_balanced_memory(
+        model,
+        max_memory=None,
+        no_split_module_classes=no_split_modules,
+    )
+
+    device_map = infer_auto_device_map(
+        model,
+        max_memory=max_memory,
+        no_split_module_classes=no_split_modules
+    )
+
+    print(device_map)
+    dispatch_model(model, device_map=device_map, offload_buffers=True, offload_dir="offload", state_dict=model.state_dict())
 
 
 def opt_multigpu(model, gpus):
@@ -80,9 +102,7 @@ def opt_multigpu(model, gpus):
 
     layers = model.model.decoder.layers
     pergpu = math.ceil(len(layers) / len(gpus))
-    print(f'per gpu: {pergpu}')
     for i in range(len(layers)):
-        print(f'layer {i} to gpu {gpus[i // pergpu]}')
         layers[i] = MoveModule(layers[i].to(gpus[i // pergpu]))
 
     model.gpus = gpus
