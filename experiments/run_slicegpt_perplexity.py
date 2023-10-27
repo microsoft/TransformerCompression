@@ -92,7 +92,7 @@ def main():
         )
 
         dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
-        print('\nPerplexity After rotating and slicing', dataset_ppl)
+        print('\nPerplexity after rotating and slicing', dataset_ppl)
         wandb.log({"sliced_ppl": dataset_ppl})
 
     else:
@@ -139,7 +139,7 @@ def main():
             print("Saved sliced model to {}".format(args.save_dir))
 
         dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
-        print('\nAfter rotating and slicing', dataset_ppl)
+        print('After rotating and slicing', dataset_ppl)
         wandb.log({"sliced_ppl": dataset_ppl})
 
 """

@@ -173,15 +173,19 @@ def get_c4_new(nsamples, seed, seqlen, tokenizer):
 
 
 def get_loaders(dataset_name, tokenizer, nsamples=128, seed=0, seqlen=2048, batch_size=1):
+    print(f"Loading dataset: {dataset_name}...", end=" ")
     if dataset_name == "wikitext2":
-        return get_wikitext2(nsamples, seed, seqlen, tokenizer, batch_size)
-    if "ptb" in dataset_name:
+        result = get_wikitext2(nsamples, seed, seqlen, tokenizer, batch_size)
+    elif "ptb" in dataset_name:
         if "new" in dataset_name:
-            return get_ptb_new(nsamples, seed, seqlen, tokenizer)
-        return get_ptb(nsamples, seed, seqlen, tokenizer)
-    if "c4" in dataset_name:
+            result = get_ptb_new(nsamples, seed, seqlen, tokenizer)
+        result = get_ptb(nsamples, seed, seqlen, tokenizer)
+    elif "c4" in dataset_name:
         if "new" in dataset_name:
-            return get_c4_new(nsamples, seed, seqlen, tokenizer)
-        return get_c4(nsamples, seed, seqlen, tokenizer)
+            result = get_c4_new(nsamples, seed, seqlen, tokenizer)
+        result = get_c4(nsamples, seed, seqlen, tokenizer)
     else:
         raise NotImplementedError("The provided dataset is not supported")
+
+    print("Done.")
+    return result
