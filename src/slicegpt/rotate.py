@@ -168,10 +168,10 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
     # rotate and slice inputs
     inps = torch.matmul(inps, Q.to(dtype=dtype))[:, :, :new_embedding_dimension]
 
-    print("(Rotate and slice) layers:", end=" ", flush=True)
+    print("Rotate and slice layers:", end=" ", flush=True)
     layers = get_layers(model)
     for i, layer in enumerate(layers):
-        print(f" {i}", end="", flush=True)
+        print(i, end=" ", flush=True)
 
         layer.attn_shortcut_Q = Q.T.clone().to(dtype=dtype)
 
@@ -221,6 +221,8 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
     rotate_head(model, Q)
     if do_slice_head:
         slice_head(model, new_embedding_dimension)
+
+    print("Done.")
 
 
 @torch.no_grad()
