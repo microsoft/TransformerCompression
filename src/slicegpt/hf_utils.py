@@ -7,6 +7,7 @@ from transformers import LlamaConfig, LlamaForCausalLM, OPTConfig, OPTForCausalL
 
 from . import rotate, layernorm_fusion, model_utils
 
+from . import layernorm_fusion, model_utils, rotate
 from .model_utils import get_layers
 
 

@@ -1,10 +1,10 @@
 import math
+import time
 
 import numpy as np
 import torch
 import tqdm
-import time
-from accelerate import infer_auto_device_map, dispatch_model
+from accelerate import dispatch_model, infer_auto_device_map
 from accelerate.utils import get_balanced_memory
 
 
@@ -14,10 +14,10 @@ def evaluate_ppl(model, testloader, device, model_distributed=False):
     Evaluate the model's perplexity on the test set using batch processing.
     """
     start_time = time.time()
-    
+
     model.eval()
     model_seqlen = model.seqlen
-    
+
     if not model_distributed:
         model_orig_device = model.device
         model.to(device)
@@ -42,9 +42,12 @@ def evaluate_ppl(model, testloader, device, model_distributed=False):
 
     ppl = torch.exp(nlls.sum() / nlls.numel())
 
-    elapsed = time.time() - start_time 
-    print("Time spent on evaluation: ", time.strftime("%H:%M:%S.{}".format(str(elapsed % 1)[2:])[:13], time.gmtime(elapsed)))
-    
+    elapsed = time.time() - start_time
+    print(
+        "Time spent on evaluation: ",
+        time.strftime("%H:%M:%S.{}".format(str(elapsed % 1)[2:])[:13], time.gmtime(elapsed)),
+    )
+
     return ppl.item()
 
 
@@ -56,14 +59,12 @@ def infer_device_map(model):
         no_split_module_classes=no_split_modules,
     )
 
-    device_map = infer_auto_device_map(
-        model,
-        max_memory=max_memory,
-        no_split_module_classes=no_split_modules
-    )
+    device_map = infer_auto_device_map(model, max_memory=max_memory, no_split_module_classes=no_split_modules)
 
     print(device_map)
-    dispatch_model(model, device_map=device_map, offload_buffers=True, offload_dir="offload", state_dict=model.state_dict())
+    dispatch_model(
+        model, device_map=device_map, offload_buffers=True, offload_dir="offload", state_dict=model.state_dict()
+    )
 
 
 def opt_multigpu(model, gpus):

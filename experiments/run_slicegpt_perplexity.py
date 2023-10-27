@@ -9,6 +9,7 @@ os.environ["WANDB__SERVICE_WAIT"] = "300"
 import torch
 
 import wandb
+
 from . import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate
 
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -98,7 +99,7 @@ def main():
         tokenizer=tokenizer,
         nsamples=args.cal_nsamples,
         seqlen=model.seqlen,
-        batch_size=args.batch_size, # * torch.cuda.device_count(),
+        batch_size=args.batch_size,  # * torch.cuda.device_count(),
         seed=args.seed,
     )
 
@@ -128,7 +129,6 @@ def main():
         dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
         print('Post-fusion:', dataset_ppl)
         wandb.log({"post_fusion_ppl": dataset_ppl})
-
 
     # compute new embedding dimension given the slicegpt sparsity
     new_embedding_dimension = int((1 - args.sparsity) * model.config.hidden_size)
