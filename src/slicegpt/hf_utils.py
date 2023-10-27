@@ -100,4 +100,4 @@ def infer_device_map(model):
     )
 
     print(device_map)
-    dispatch_model(model, device_map=device_map)
+    dispatch_model(model, device_map=device_map, offload_buffers=True, offload_dir="offload", state_dict=model.state_dict())
