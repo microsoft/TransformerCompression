@@ -67,7 +67,7 @@ def argparser():
 
 
 def main():
-    print("Running slicing experiment.")
+    print("Running SliceGPT perplexity experiment.")
 
     args = argparser()
 
