@@ -21,6 +21,7 @@ dependencies = [
     "torch",
     "datasets",
     "transformers",
+    "sentencepiece",
     "numpy",
     "wandb",
     "huggingface-hub>=0.16.4,<0.18",

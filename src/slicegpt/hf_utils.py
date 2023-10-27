@@ -1,67 +1,64 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
-import os
-
 import torch
 import transformers
-from slicegpt import rotate, layernorm_fusion, model_utils
+from transformers import LlamaConfig, LlamaForCausalLM, OPTConfig, OPTForCausalLM
+
+from slicegpt import layernorm_fusion, model_utils, rotate
 
 
-def skip(*args, **kwargs):
-    pass
+class UninitializedOPTForCausalLM(OPTForCausalLM):
+    def _init_weights(self, module):
+        # Prevent weight initialization
+        pass
 
 
-def do_not_initialize(func):
-    """
-    A decorator that prevents initalization of torch.nn modules.
-    """
-
-    def wrapper(*args, **kwargs):
-        kiming_fn = torch.nn.init.kaiming_uniform_
-        uniform_fn = torch.nn.init.uniform_
-        normal_fn = torch.nn.init.normal_
-
-        torch.nn.init.kaiming_uniform_ = skip
-        torch.nn.init.uniform_ = skip
-        torch.nn.init.normal_ = skip
-
-        result = func(*args, **kwargs)
-
-        torch.nn.init.kaiming_uniform_ = kiming_fn
-        torch.nn.init.uniform_ = uniform_fn
-        torch.nn.init.normal_ = normal_fn
-
-        return result
-
-    return wrapper
+class UninitializedLlamaForCausalLM(LlamaForCausalLM):
+    def _init_weights(self, module):
+        # Prevent weight initialization
+        pass
 
 
-@do_not_initialize
-def get_model(model_path, hf_token=None):
-    print("Loading model from {} ...".format(model_path))
+def get_model(model_path, uninitialized=False):
+
+    if uninitialized:
+        model_type = "uninitialized"
+    else:
+        model_type = "pretrained"
+
+    print(f"Loading {model_type} {model_path} model...", end=" ")
 
     if "facebook/opt" in model_path:
-        model = transformers.OPTForCausalLM.from_pretrained(model_path, torch_dtype="auto")
+        if uninitialized:
+            config = OPTConfig.from_pretrained(model_path)
+            model = UninitializedOPTForCausalLM(config)
+            model = model.to(dtype=config.torch_dtype)
+        else:
+            model = transformers.OPTForCausalLM.from_pretrained(model_path, torch_dtype="auto")
     elif "meta-llama" in model_path:
-        model = transformers.LlamaForCausalLM.from_pretrained(model_path, torch_dtype='auto', use_auth_token=hf_token)
+        if uninitialized:
+            config = LlamaConfig.from_pretrained(model_path)
+            model = UninitializedLlamaForCausalLM(config)
+            model = model.to(dtype=config.torch_dtype)
+        else:
+            model = transformers.LlamaForCausalLM.from_pretrained(model_path, torch_dtype='auto')
     else:
         raise NotImplementedError
 
-    if hf_token == None:
-        tokenizer = transformers.AutoTokenizer.from_pretrained(model_path, use_fast=False)
-    else:
-        tokenizer = transformers.AutoTokenizer.from_pretrained(model_path, use_fast=False, use_auth_token=hf_token)
+    tokenizer = transformers.AutoTokenizer.from_pretrained(model_path, use_fast=False)
 
     model.seqlen = model.config.max_position_embeddings
     model.eval()  # This switches off dropout.
     model.config.use_cache = False  # Do not cache attention key values.
 
+    print("Done.")
     return model, tokenizer
 
-def load_sliced_model(model_name, hf_token, model_path, sparsity, device):
-    """ Loads the sliced model and the tokenzer from the given path. """
-    model, tokenizer = get_model(model_name, hf_token)
+
+def load_sliced_model(model_name, model_path, sparsity, device):
+    """Loads the sliced model and the tokenizer from the given path."""
+    model, tokenizer = get_model(model_name, uninitialized=True)
     layernorm_fusion.replace_modules(model, model.config)
     layernorm_fusion.fuse_modules(model)
     new_embedding_dimension = int((1 - sparsity) * model.config.hidden_size)

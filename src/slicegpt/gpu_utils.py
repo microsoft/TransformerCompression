@@ -34,7 +34,7 @@ def evaluate_ppl(model, testloader, device):
         nlls.append(nll)
 
     model.to(model_orig_device)
-    
+
     nlls = torch.stack(nlls)
     ppl = torch.exp(nlls.sum() / nlls.numel())
     return ppl.item()

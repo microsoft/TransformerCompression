@@ -10,7 +10,7 @@ from lm_eval import utils as lm_eval_utils
 from lm_eval.base import BaseLM
 
 import wandb
-from slicegpt import data_utils, layernorm_fusion, rotate, hf_utils
+from slicegpt import data_utils, hf_utils, layernorm_fusion, rotate
 
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -87,10 +87,10 @@ def apply_slicegpt(model, eval_dataset='wikitext2', seed=42):
     layernorm_fusion.fuse_modules(model.model)
 
     dataloader, _ = data_utils.get_loaders(
-            dataset_name=eval_dataset,
-            tokenizer=model.tokenizer,
-            seed=seed,
-        )
+        dataset_name=eval_dataset,
+        tokenizer=model.tokenizer,
+        seed=seed,
+    )
 
     new_embedding_dimension = int((1 - model.model.config.sparsity) * model.model.config.hidden_size)
     print(f"New embedding dimension: {new_embedding_dimension} (sparsity {model.model.config.sparsity})")
@@ -103,9 +103,11 @@ def parse_args():
     parser.add_argument("--model", required=True)
     parser.add_argument("--tasks", default=None, choices=lm_eval_utils.MultiChoice(tasks.ALL_TASKS))
     parser.add_argument("--no_cache", action="store_true")
-    parser.add_argument("--sparsity", type=float, default=0.0, help="A measure of how much slicing is applied (in the range [0, 1])")
+    parser.add_argument(
+        "--sparsity", type=float, default=0.0, help="A measure of how much slicing is applied (in the range [0, 1])"
+    )
     parser.add_argument("--batch_size", type=int, default=1, help="Batch size for loading the calibration data.")
-    
+
     parser.add_argument('--hf_token', type=str, default=None)
 
     return parser.parse_args()
