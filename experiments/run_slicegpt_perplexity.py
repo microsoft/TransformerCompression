@@ -2,6 +2,7 @@
 # Licensed under the MIT license.
 
 import argparse
+import os 
 
 import torch
 
@@ -53,7 +54,7 @@ def argparser():
     parser.add_argument("--eval_fused_model", action="store_true", help="Evaluate the fused model.")
 
     parser.add_argument("--save_dir", type=str, default=None, help="Path to save the model.")
-    parser.add_argument("--load_dir", type=str, default=None, help="Path to load the sliced model from.")
+    parser.add_argument("--load_model_path", type=str, default=None, help="Path to load the sliced model from.")
 
     parser.add_argument('--hf_token', type=str, default=None)
 
@@ -76,10 +77,10 @@ def main():
         print(f'Failed to initialize wandb: {e}, continuing without wandb.')
         wandb.init(project="slicegpt", mode='disabled')
 
-    if args.load_dir:
-        # load the model from load_dir to compute perplexity and skipping rotation and slicing
-        print(f"Loading sliced {args.model} model from {args.load_dir} with sparsity {args.sparsity}")
-        model, tokenizer = hf_utils.load_sliced_model(args.model, args.hf_token, args.load_dir, args.sparsity, DEV)
+    if args.load_model_path:
+        # load the model from load_model_path to compute perplexity and skip rotation and slicing
+        print(f"Loading sliced {args.model} model from {args.load_model_path} with sparsity {args.sparsity}")
+        model, tokenizer = hf_utils.load_sliced_model(args.model, args.hf_token, args.load_model_path, args.sparsity, DEV)
 
         dataloader, testloader = data_utils.get_loaders(
             dataset_name=args.cal_dataset,
@@ -130,8 +131,11 @@ def main():
         rotate.rotate_and_slice(model, dataloader, new_embedding_dimension)
 
         if args.save_dir:
-            torch.save(model.state_dict(), args.save_dir)
-            tokenizer.save_pretrained(args.save_dir)
+            if not os.path.exists(args.save_dir):
+                os.makedirs(args.save_dir)
+
+            model_file = os.path.join(args.save_dir, os.path.basename(args.model) +  "_" + str(args.sparsity) + ".pt")
+            torch.save(model.state_dict(), model_file)
             print("Saved sliced model to {}".format(args.save_dir))
 
         dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
