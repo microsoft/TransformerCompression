@@ -146,6 +146,8 @@ def main():
     print(f"Selected Tasks: {task_names}")
     model.model = model.model.to(DEV)
     model.model.eval()
+
+    # Run the evaluation.
     results = evaluator.simple_evaluate(model=model, tasks=task_names, no_cache=args.no_cache)
     wandb.log(results['results'])
     print(json.dumps(results, indent=2))

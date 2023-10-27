@@ -80,7 +80,7 @@ def fuse_modules(model):
         model: the model to be fused
     """
 
-    print("Fusing layernorm modules...", end=" ")
+    print("Fusing layernorm modules...", end=" ", flush=True)
 
     # make a copy of the weights in the lm head, which are shared with embeddings...
     head = get_lm_head(model)
