@@ -6,7 +6,7 @@ import torch
 import tqdm
 from accelerate import dispatch_model, infer_auto_device_map
 from accelerate.utils import get_balanced_memory
-
+import gc
 
 @torch.no_grad()
 def evaluate_ppl(model, testloader, device, model_distributed=False):
@@ -28,7 +28,6 @@ def evaluate_ppl(model, testloader, device, model_distributed=False):
 
     for batch in testloader:
         input_ids = batch.to(device)
-
         logits = model(input_ids=input_ids).logits
 
         # Shift outputs and labels autoregressively.
@@ -55,16 +54,23 @@ def infer_device_map(model):
     no_split_modules = ["OPTDecoderLayer", "CompressedOPTDecoderLayer"]
     max_memory = get_balanced_memory(
         model,
-        max_memory=None,
+        max_memory=None, # {0:"40GB", 1:"40GB","cpu":"200GB"}, # None,
         no_split_module_classes=no_split_modules,
     )
 
-    device_map = infer_auto_device_map(model, max_memory=max_memory, no_split_module_classes=no_split_modules)
+    device_map = infer_auto_device_map(
+        model,
+        max_memory=max_memory,
+        no_split_module_classes=no_split_modules)
 
     print(device_map)
     dispatch_model(
         model, device_map=device_map, offload_buffers=True, offload_dir="offload", state_dict=model.state_dict()
     )
+
+    # gc.collect and empty cache are necessary to clean up GPU memory
+    gc.collect()
+    torch.cuda.empty_cache()
 
 
 def opt_multigpu(model, gpus):

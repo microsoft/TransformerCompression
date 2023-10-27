@@ -46,7 +46,7 @@ def replace_modules(model, config, verbose=True):
 
         if new_module is not None:
             new_module.load_state_dict(module.state_dict(), strict=True)
-            new_module.to(original_module_device)
+            # new_module.to(original_module_device)
             setattr(model, name, new_module)
 
     if verbose:
@@ -134,11 +134,12 @@ def fuse_ln_linear(layernorm: torch.nn.LayerNorm, linear_layers: list):
         linear_dtype = linear.weight.dtype
 
         # Calculating new weight and bias
+        device = linear.weight.device
         W_ = linear.weight.data.double()
         linear.weight.data = (W_ * layernorm.weight.double()).to(linear_dtype)
 
         if hasattr(layernorm, 'bias'):
             if linear.bias is None:
-                linear.bias = torch.nn.Parameter(torch.zeros(linear.out_features, dtype=torch.float64))
+                linear.bias = torch.nn.Parameter(torch.zeros(linear.out_features, dtype=torch.float64).to(device))
             linear.bias.data = linear.bias.data.double() + torch.matmul(W_, layernorm.bias.double())
             linear.bias.data = linear.bias.data.to(linear_dtype)

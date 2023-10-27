@@ -9,8 +9,9 @@ os.environ["WANDB__SERVICE_WAIT"] = "300"
 import torch
 
 import wandb
-
-from . import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate
+from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate
+import os
+import gc
 
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -58,8 +59,9 @@ def argparser():
         "--sparsity", type=float, default=0.0, help="A measure of how much slicing is applied (in the range [0, 1])"
     )
     parser.add_argument("--eval_baseline", action="store_true", help="Evaluate the baseline model.")
-    parser.add_argument("--eval_fused_model", action="store_true", help="Evaluate the fused model.")
+    parser.add_argument("--eval_fused_model", action="store_true", help="Evaluate the fused model. Don't use it for large models and with distribute_model flag")
     parser.add_argument("--ppl_only", action="store_true", help="Evaluate the loaded model without doing compression.")
+    parser.add_argument("--distribute_model", action="store_true", help="Use accelerate to put the model on multiple GPUs for slicing and rotation.")
 
     parser.add_argument("--save_dir", type=str, default=None, help="Path to save the model.")
     parser.add_argument("--load_model_path", type=str, default=None, help="Path to load the sliced model from.")
@@ -99,33 +101,46 @@ def main():
         tokenizer=tokenizer,
         nsamples=args.cal_nsamples,
         seqlen=model.seqlen,
-        batch_size=args.batch_size,  # * torch.cuda.device_count(),
+        batch_size=args.batch_size,
         seed=args.seed,
     )
 
     # evaluate perplexity and exit if sliced model is loaded or if ppl_only is set
     if args.load_dir or args.ppl_only:
+        # distribute model across available GPUs
         gpu_utils.infer_device_map(model)
         torch.cuda.empty_cache()
+
         dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV, model_distributed=True)
+
         print('Loaded model perplexity:', dataset_ppl)
         wandb.log({"original_ppl": dataset_ppl})
         return
 
     # do slicing and rotation of the loaded model
-    model = model.to(DEV)
+    if args.distribute_model:
+        gpu_utils.infer_device_map(model)
+    else:
+        model = model.to(DEV)
+    
     # original ppl
     if args.eval_baseline:
-        dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
+        dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV, args.distribute_model)
         print('Original ppl:', dataset_ppl)
         wandb.log({"original_ppl": dataset_ppl})
 
     # fuse layernorms, add shorcuts, check perplexity
     layernorm_fusion.replace_modules(model, model.config)
+    
+    # gc.collect and empty cache are necessary to clean up GPU memory
     model = model.cpu()
+    gc.collect()
+    torch.cuda.empty_cache()
+    
     layernorm_fusion.fuse_modules(model)
 
-    if args.eval_fused_model:
+    if args.eval_fused_model and not args.distribute_model:
+        # don't run this on large and/or distributed models
         dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
         print('Post-fusion:', dataset_ppl)
         wandb.log({"post_fusion_ppl": dataset_ppl})
@@ -145,7 +160,13 @@ def main():
         torch.save(model.state_dict(), model_file)
         print("Saved sliced model to {}".format(args.save_dir))
 
-    dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
+
+    if args.distribute_model:
+        gpu_utils.infer_device_map(model)
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV, model_distributed=args.distribute_model)
     print('After rotating and slicing', dataset_ppl)
     wandb.log({"sliced_ppl": dataset_ppl})
 
