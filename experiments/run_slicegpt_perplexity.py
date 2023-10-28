@@ -138,7 +138,8 @@ def main():
     torch.cuda.empty_cache()
     
     layernorm_fusion.fuse_modules(model)
-
+    model.eval()
+    
     if args.eval_fused_model and not args.distribute_model:
         # don't run this on large and/or distributed models
         dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
