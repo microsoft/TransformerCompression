@@ -142,7 +142,8 @@ def slice_head(model, new_embedding_dimension):
 def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=False):
     """
     Rotate and slice a model, with interleaved slicing and PCA calculations
-    """
+    """ 
+    model.eval()
     dtype = next(iter(model.parameters())).dtype
 
     inps = []
@@ -228,6 +229,7 @@ def rotate(model, dataloader):
     """
     Rotate a model.
     """
+    model.eval()
     dtype = next(iter(model.parameters())).dtype  # Get the dtype of the model.
 
     # List of layers to rotate.
@@ -283,6 +285,7 @@ def rotate(model, dataloader):
 
 
 def slice_rotated_model(model, new_embedding_dimension, do_slice_head=False):
+    model.eval()
 
     # slice embeddings
     slice_embeddings(model, new_embedding_dimension)
