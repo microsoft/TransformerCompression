@@ -8,19 +8,16 @@ from accelerate import dispatch_model, infer_auto_device_map
 from accelerate.utils import get_balanced_memory
 import gc
 
+
 @torch.no_grad()
-def evaluate_ppl(model, testloader, device, model_distributed=False):
+def evaluate_ppl(model, testloader, device):
     """
     Evaluate the model's perplexity on the test set using batch processing.
+    It is expected that model is already on the correct device.
     """
     start_time = time.time()
 
     model.eval()
-    model_seqlen = model.seqlen
-
-    if not model_distributed:
-        model_orig_device = model.device
-        model.to(device)
 
     loss_fct = torch.nn.CrossEntropyLoss(reduction="none")
 
@@ -35,7 +32,7 @@ def evaluate_ppl(model, testloader, device, model_distributed=False):
         shift_labels = input_ids[:, 1:]
 
         # CrossEntropyLoss demands data dimension is dimension 1.
-        nll = loss_fct(logits.permute(0, 2, 1), shift_labels).float().sum(dim=1) / model_seqlen
+        nll = loss_fct(logits.permute(0, 2, 1), shift_labels).float().sum(dim=1) / model.seqlen
 
         nlls.append(nll)
 
@@ -50,11 +47,12 @@ def evaluate_ppl(model, testloader, device, model_distributed=False):
     return ppl.item()
 
 
-def infer_device_map(model):
-    no_split_modules = ["OPTDecoderLayer", "CompressedOPTDecoderLayer"]
+def distribute_model(model):
+    # infer device map, make sure each layer is not split across multiple GPUs
+    no_split_modules = ["OPTDecoderLayer", "CompressedOPTDecoderLayer", "LlamaDecoderLayer", "CompressedLlamaDecoderLayer"]
     max_memory = get_balanced_memory(
         model,
-        max_memory=None, # {0:"40GB", 1:"40GB","cpu":"200GB"}, # None,
+        max_memory=None,
         no_split_module_classes=no_split_modules,
     )
 
