@@ -2,16 +2,15 @@
 # Licensed under the MIT license.
 
 import argparse
+import gc
 import os
-
-os.environ["WANDB__SERVICE_WAIT"] = "300"
 
 import torch
 
 import wandb
 from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate
-import gc
 
+os.environ["WANDB__SERVICE_WAIT"] = "300"
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -30,7 +29,6 @@ def argparser():
             "facebook/opt-13b",
             "facebook/opt-30b",
             "facebook/opt-66b",
-            # "facebook/opt-175b",
             # LLAMA 2 Models
             'meta-llama/Llama-2-7b-hf',
             'meta-llama/Llama-2-13b-hf',
@@ -57,9 +55,13 @@ def argparser():
         "--sparsity", type=float, default=0.0, help="A measure of how much slicing is applied (in the range [0, 1])"
     )
     parser.add_argument("--eval_baseline", action="store_true", help="Evaluate the baseline model.")
-    parser.add_argument("--eval_fused_model", action="store_true", help="Evaluate the fused model. Don't use it for large models and with distribute_model flag")
+    parser.add_argument("--eval_fused_model", action="store_true", help="Evaluate the fused model.")
     parser.add_argument("--ppl_only", action="store_true", help="Evaluate the loaded model without doing compression.")
-    parser.add_argument("--distribute_model", action="store_true", help="Use accelerate to put the model on multiple GPUs for slicing and rotation.")
+    parser.add_argument(
+        "--distribute_model",
+        action="store_true",
+        help="Use accelerate to put the model on multiple GPUs for evaluation.",
+    )
 
     parser.add_argument("--save_dir", type=str, default=None, help="Path to save the model.")
     parser.add_argument("--load_model_path", type=str, default=None, help="Path to load the sliced model from.")
@@ -74,12 +76,12 @@ def argparser():
 
 def main():
     print("Running SliceGPT perplexity experiment.")
-    print(f"Number of avaialble cuda devices: {torch.cuda.device_count()}")
+    print(f"Number of available cuda devices: {torch.cuda.device_count()}")
 
     args = argparser()
 
     try:
-        wandb.init(project="slicegpt", mode='disabled', config=args)
+        wandb.init(project="slicegpt", config=args)
     except wandb.UsageError as e:
         # wandb.init will throw an error if the user is not logged in and the process is running in a non-shell
         # environment, e.g. notebook, IDE, no-shell process, etc. In this case, we want to continue without wandb.
@@ -125,16 +127,16 @@ def main():
 
     # fuse layernorms, add shorcuts, check perplexity
     layernorm_fusion.replace_modules(model, model.config)
-    
+
     # gc.collect and empty cache are necessary to clean up GPU memory
     # if the model was ditributed
     model = model.cpu()
     gc.collect()
     torch.cuda.empty_cache()
-    
+
     layernorm_fusion.fuse_modules(model)
     model.eval()
-    
+
     # don't run this on large and/or distributed models
     if args.eval_fused_model:
         if args.distribute_model:
@@ -142,11 +144,11 @@ def main():
             gpu_utils.distribute_model(model)
         else:
             model = model.to(DEV)
-        
+
         dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
         print('Post-fusion:', dataset_ppl)
         wandb.log({"post_fusion_ppl": dataset_ppl})
-        
+
         model = model.cpu()
         gc.collect()
         torch.cuda.empty_cache()
@@ -162,16 +164,15 @@ def main():
         if not os.path.exists(args.save_dir):
             os.makedirs(args.save_dir)
 
-        model_file = os.path.join(args.save_dir, os.path.basename(args.model) +  "_" + str(args.sparsity) + ".pt")
+        model_file = os.path.join(args.save_dir, os.path.basename(args.model) + "_" + str(args.sparsity) + ".pt")
         torch.save(model.state_dict(), model_file)
         print("Saved sliced model to {}".format(args.save_dir))
-
 
     if args.distribute_model:
         gpu_utils.distribute_model(model)
     else:
         model = model.to(DEV)
-        
+
     dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
     print('After rotating and slicing', dataset_ppl)
     wandb.log({"sliced_ppl": dataset_ppl})

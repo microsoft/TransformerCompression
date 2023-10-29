@@ -69,7 +69,7 @@ def replace_layernorms(model, config):
 
         if new_module is not None:
             setattr(model, name, new_module)
-            getattr(model, name).to(module.weight.device)
+            getattr(model, name)
 
 
 def fuse_modules(model):

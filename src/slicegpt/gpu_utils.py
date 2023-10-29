@@ -1,3 +1,4 @@
+import gc
 import math
 import time
 
@@ -6,7 +7,6 @@ import torch
 import tqdm
 from accelerate import dispatch_model, infer_auto_device_map
 from accelerate.utils import get_balanced_memory
-import gc
 
 
 @torch.no_grad()
@@ -49,17 +49,19 @@ def evaluate_ppl(model, testloader, device):
 
 def distribute_model(model):
     # infer device map, make sure each layer is not split across multiple GPUs
-    no_split_modules = ["OPTDecoderLayer", "CompressedOPTDecoderLayer", "LlamaDecoderLayer", "CompressedLlamaDecoderLayer"]
+    no_split_modules = [
+        "OPTDecoderLayer",
+        "CompressedOPTDecoderLayer",
+        "LlamaDecoderLayer",
+        "CompressedLlamaDecoderLayer",
+    ]
     max_memory = get_balanced_memory(
         model,
         max_memory=None,
         no_split_module_classes=no_split_modules,
     )
 
-    device_map = infer_auto_device_map(
-        model,
-        max_memory=max_memory,
-        no_split_module_classes=no_split_modules)
+    device_map = infer_auto_device_map(model, max_memory=max_memory, no_split_module_classes=no_split_modules)
 
     print(device_map)
     dispatch_model(
