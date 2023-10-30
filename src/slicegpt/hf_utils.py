@@ -20,7 +20,7 @@ class UninitializedLlamaForCausalLM(LlamaForCausalLM):
         pass
 
 
-def get_model(model_path, uninitialized=False, dtype=torch.float16):
+def get_model(model_path, uninitialized=False, dtype=torch.float16, token=None):
     """Loads the model and the tokenizer from the given path."""
     if uninitialized:
         model_type = "uninitialized"
@@ -42,11 +42,11 @@ def get_model(model_path, uninitialized=False, dtype=torch.float16):
             model = UninitializedLlamaForCausalLM(config)
             model = model.to(dtype=config.dtype)
         else:
-            model = transformers.LlamaForCausalLM.from_pretrained(model_path, torch_dtype=dtype)
+            model = transformers.LlamaForCausalLM.from_pretrained(model_path, torch_dtype=dtype, token=token)
     else:
         raise NotImplementedError
 
-    tokenizer = transformers.AutoTokenizer.from_pretrained(model_path, use_fast=False)
+    tokenizer = transformers.AutoTokenizer.from_pretrained(model_path, use_fast=False, token=token)
 
     model.seqlen = model.config.max_position_embeddings
     model.eval()  # This switches off dropout.

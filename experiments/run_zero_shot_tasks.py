@@ -25,7 +25,7 @@ class LMClass(BaseLM):
         if args.load_dir:
             model, tokenizer = hf_utils.load_sliced_model(args.model, args.load_dir, args.sparsity, DEV)
         else:
-            model, tokenizer = hf_utils.get_model(args.model)
+            model, tokenizer = hf_utils.get_model(args.model, token=args.hf_token)
 
         self.model = model
         self.model.config.sparsity = args.sparsity
