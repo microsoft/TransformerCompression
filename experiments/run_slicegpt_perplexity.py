@@ -2,7 +2,9 @@
 # Licensed under the MIT license.
 
 import argparse
-import os 
+import os
+
+os.environ["WANDB__SERVICE_WAIT"] = "300"
 
 import torch
 
@@ -72,7 +74,7 @@ def main():
     args = argparser()
 
     try:
-        wandb.init(project="slicegpt", config=args)
+        wandb.init(project="slicegpt", config=args, settings=wandb.Settings(_service_wait=300))
     except wandb.UsageError as e:
         # wandb.init will throw an error if the user is not logged in and the process is running in a non-shell
         # environment, e.g. notebook, IDE, no-shell process, etc. In this case, we want to continue without wandb.
@@ -136,7 +138,7 @@ def main():
             if not os.path.exists(args.save_dir):
                 os.makedirs(args.save_dir)
 
-            model_file = os.path.join(args.save_dir, os.path.basename(args.model) +  "_" + str(args.sparsity) + ".pt")
+            model_file = os.path.join(args.save_dir, os.path.basename(args.model) + "_" + str(args.sparsity) + ".pt")
             torch.save(model.state_dict(), model_file)
             print("Saved sliced model to {}".format(args.save_dir))
 
