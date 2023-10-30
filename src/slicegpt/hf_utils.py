@@ -20,8 +20,8 @@ class UninitializedLlamaForCausalLM(LlamaForCausalLM):
         pass
 
 
-def get_model(model_path, uninitialized=False):
-
+def get_model(model_path, uninitialized=False, dtype=torch.float16):
+    """Loads the model and the tokenizer from the given path."""
     if uninitialized:
         model_type = "uninitialized"
     else:
@@ -33,16 +33,16 @@ def get_model(model_path, uninitialized=False):
         if uninitialized:
             config = OPTConfig.from_pretrained(model_path)
             model = UninitializedOPTForCausalLM(config)
-            model = model.to(dtype=config.torch_dtype)
+            model = model.to(dtype=dtype)
         else:
-            model = transformers.OPTForCausalLM.from_pretrained(model_path, torch_dtype="auto")
+            model = transformers.OPTForCausalLM.from_pretrained(model_path, torch_dtype=dtype)
     elif "meta-llama" in model_path:
         if uninitialized:
             config = LlamaConfig.from_pretrained(model_path)
             model = UninitializedLlamaForCausalLM(config)
-            model = model.to(dtype=config.torch_dtype)
+            model = model.to(dtype=config.dtype)
         else:
-            model = transformers.LlamaForCausalLM.from_pretrained(model_path, torch_dtype='auto')
+            model = transformers.LlamaForCausalLM.from_pretrained(model_path, torch_dtype=dtype)
     else:
         raise NotImplementedError
 
