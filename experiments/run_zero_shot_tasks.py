@@ -2,6 +2,9 @@
 # Licensed under the MIT license.
 
 import argparse
+import os
+
+os.environ["WANDB__SERVICE_WAIT"] = "300"
 import json
 
 import torch
