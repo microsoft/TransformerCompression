@@ -18,7 +18,9 @@ from slicegpt import data_utils, hf_utils, layernorm_fusion, rotate
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-class LMClass(BaseLM):
+class SlicedLM(BaseLM):
+    """A wrapper for a model sliced with SliceGPT that allows it to be used with the LM Eval Harness."""
+
     def __init__(self, args):
         super().__init__()
 
@@ -26,6 +28,7 @@ class LMClass(BaseLM):
             model, tokenizer = hf_utils.load_sliced_model(args.model, args.load_dir, args.sparsity, DEV)
         else:
             model, tokenizer = hf_utils.get_model(args.model, token=args.hf_token)
+            self.apply_slicegpt(model, tokenizer, args.sparsity)
 
         self.model = model
         self.model.config.sparsity = args.sparsity
@@ -34,6 +37,22 @@ class LMClass(BaseLM):
         self.vocab_size = self.tokenizer.vocab_size
         self.batch_size_per_gpu = args.batch_size
         self.seqlen = self.model.config.max_position_embeddings
+
+    def apply_slicegpt(self, model, tokenizer, sparsity, eval_dataset='wikitext2', seed=42):
+        layernorm_fusion.replace_modules(model, model.config)
+        model = model.cpu()
+        layernorm_fusion.fuse_modules(model)
+
+        dataloader, _ = data_utils.get_loaders(
+            dataset_name=eval_dataset,
+            tokenizer=tokenizer,
+            seed=seed,
+        )
+
+        new_embedding_dimension = int((1 - sparsity) * model.config.hidden_size)
+        print(f"New embedding dimension: {new_embedding_dimension} (sparsity {sparsity})")
+
+        rotate.rotate_and_slice(model, dataloader, new_embedding_dimension)
 
     @classmethod
     def create_from_arg_string(cls, args, kwargs):
@@ -87,23 +106,6 @@ class LMClass(BaseLM):
         return self.model.generate(context, max_length=max_length, eos_token_id=eos_token_id, do_sample=False)
 
 
-def apply_slicegpt(model, eval_dataset='wikitext2', seed=42):
-    layernorm_fusion.replace_modules(model.model, model.model.config)
-    model.model = model.model.cpu()
-    layernorm_fusion.fuse_modules(model.model)
-
-    dataloader, _ = data_utils.get_loaders(
-        dataset_name=eval_dataset,
-        tokenizer=model.tokenizer,
-        seed=seed,
-    )
-
-    new_embedding_dimension = int((1 - model.model.config.sparsity) * model.model.config.hidden_size)
-    print(f"New embedding dimension: {new_embedding_dimension} (sparsity {model.model.config.sparsity})")
-
-    rotate.rotate_and_slice(model.model, dataloader, new_embedding_dimension)
-
-
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", required=True)
@@ -134,11 +136,7 @@ def main():
         wandb.init(project="slicegpt", mode='disabled')
 
     # Initialize the model for use in LM Eval Harness.
-    model = LMClass(args)
-
-    # Apply SliceGPT if the model is not a pre-sliced model.
-    if not args.load_dir:
-        apply_slicegpt(model)
+    model = SlicedLM(args)
 
     ### LM Eval Harness ###
     if args.tasks is None:
