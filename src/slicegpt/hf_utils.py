@@ -40,7 +40,7 @@ def get_model(model_path, uninitialized=False, dtype=torch.float16, token=None):
         if uninitialized:
             config = LlamaConfig.from_pretrained(model_path)
             model = UninitializedLlamaForCausalLM(config)
-            model = model.to(dtype=config.dtype)
+            model = model.to(dtype=dtype)
         else:
             model = transformers.LlamaForCausalLM.from_pretrained(model_path, torch_dtype=dtype, token=token)
     else:
