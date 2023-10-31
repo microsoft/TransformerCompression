@@ -20,7 +20,7 @@ from .model_utils import (
 from .modules import RMSN, CompressedLlamaDecoderLayer, CompressedOPTDecoderLayer
 
 
-def replace_modules(model, config):
+def replace_modules(model, config, verbose=True):
     """
     Replace
        OPTDecoder with CompressedOPTDecoderLayer,
@@ -28,21 +28,28 @@ def replace_modules(model, config):
     This adds a 'shortcut operation' to each block.
     This function should be called before fusing the modules!
     """
+    if verbose:
+        print("Replacing modules...", end=" ", flush=True)
+
     if isinstance(model, LlamaPreTrainedModel):
         model = model.model
 
     for name, mod in model.named_children():
         new_mod = None
+
         if isinstance(mod, OPTDecoderLayer):
             new_mod = CompressedOPTDecoderLayer(config).to(config.torch_dtype)
         elif isinstance(mod, LlamaDecoderLayer):
             new_mod = CompressedLlamaDecoderLayer(config).to(config.torch_dtype)
         elif len(list(mod.children())) > 0:
-            replace_modules(mod, config)
+            replace_modules(mod, config, verbose=False)
 
         if new_mod is not None:
             new_mod.load_state_dict(mod.state_dict(), strict=True)
             setattr(model, name, new_mod)
+
+    if verbose:
+        print("Done.")
 
 
 def replace_layernorms(model, config):
@@ -73,7 +80,7 @@ def fuse_modules(model):
         model: the model to be fused
     """
 
-    print("Fusing layernorm modules...")
+    print("Fusing layernorm modules...", end=" ", flush=True)
 
     # make a copy of the weights in the lm head, which are shared with embeddings...
     head = get_lm_head(model)
@@ -98,7 +105,7 @@ def fuse_modules(model):
     fuse_ln_linear(get_pre_head_layernorm(model), [get_lm_head(model)])
 
     replace_layernorms(model, model.config)
-    print("done fusing Layernorm.")
+    print("Done.")
 
 
 def bake_mean_into_linear(linear: torch.nn.Linear) -> None:

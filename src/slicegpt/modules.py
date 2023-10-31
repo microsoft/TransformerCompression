@@ -1,24 +1,23 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 #
-# This file contains derivations from 
+# This file contains derivations from
 # https://github.com/huggingface/transformers/blob/main/src/transformers/models/opt/modeling_opt.py
 # Copyright 2022 The Fairseq Authors and The HuggingFace Inc. team. All rights reserved.
-# and 
+# and
 # https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
 # Copyright 2022 EleutherAI and the HuggingFace Inc. team. All rights reserved.
 # https://www.apache.org/licenses/LICENSE-2.0
 #
 
 
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import torch
-from transformers.modeling_outputs import BaseModelOutputWithPast
 from transformers.models.llama.configuration_llama import LlamaConfig
 from transformers.models.llama.modeling_llama import LlamaDecoderLayer
 from transformers.models.opt import OPTConfig
-from transformers.models.opt.modeling_opt import OPTDecoder, OPTDecoderLayer, logger
+from transformers.models.opt.modeling_opt import OPTDecoderLayer
 
 
 class CompressedOPTDecoderLayer(OPTDecoderLayer):
@@ -143,6 +142,7 @@ class CompressedLlamaDecoderLayer(LlamaDecoderLayer):
         past_key_value: Optional[Tuple[torch.Tensor]] = None,
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
+        padding_mask: Optional[torch.LongTensor] = None,
     ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         """
         Args:
@@ -170,6 +170,7 @@ class CompressedLlamaDecoderLayer(LlamaDecoderLayer):
             past_key_value=past_key_value,
             output_attentions=output_attentions,
             use_cache=use_cache,
+            padding_mask=padding_mask,
         )
         if self.attn_shortcut_Q is not None:
             rotated_residual = torch.matmul(residual, self.attn_shortcut_Q)
