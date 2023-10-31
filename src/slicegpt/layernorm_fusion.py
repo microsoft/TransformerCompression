@@ -20,7 +20,7 @@ from .model_utils import (
 from .modules import RMSN, CompressedLlamaDecoderLayer, CompressedOPTDecoderLayer
 
 
-def replace_modules(model, config, is_first_call=True):
+def replace_modules(model, config, verbose=True):
     """
     Replace
        OPTDecoder with CompressedOPTDecoderLayer,
@@ -28,7 +28,7 @@ def replace_modules(model, config, is_first_call=True):
     This adds a 'shortcut operation' to each block.
     This function should be called before fusing the modules!
     """
-    if is_first_call:
+    if verbose:
         print("Replacing modules...", end=" ", flush=True)
 
     if isinstance(model, LlamaPreTrainedModel):
@@ -42,13 +42,13 @@ def replace_modules(model, config, is_first_call=True):
         elif isinstance(mod, LlamaDecoderLayer):
             new_mod = CompressedLlamaDecoderLayer(config).to(config.torch_dtype)
         elif len(list(mod.children())) > 0:
-            replace_modules(mod, config, is_first_call=False)
+            replace_modules(mod, config, verbose=False)
 
         if new_mod is not None:
             new_mod.load_state_dict(mod.state_dict(), strict=True)
             setattr(model, name, new_mod)
 
-    if is_first_call:
+    if verbose:
         print("Done.")
 
 
