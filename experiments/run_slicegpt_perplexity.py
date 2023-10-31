@@ -112,7 +112,7 @@ def main():
         model = model.to(DEV)
 
     # evaluate perplexity and exit if sliced model is loaded or if ppl_only is set
-    if args.load_dir or args.ppl_only:
+    if args.load_model_path or args.ppl_only:
         dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
 
         print('Loaded model perplexity:', dataset_ppl)
@@ -129,13 +129,12 @@ def main():
     layernorm_fusion.replace_modules(model, model.config)
 
     # gc.collect and empty cache are necessary to clean up GPU memory
-    # if the model was ditributed
+    # if the model was distributed
     model = model.cpu()
     gc.collect()
     torch.cuda.empty_cache()
 
     layernorm_fusion.fuse_modules(model)
-    model.eval()
 
     # don't run this on large and/or distributed models
     if args.eval_fused_model:
