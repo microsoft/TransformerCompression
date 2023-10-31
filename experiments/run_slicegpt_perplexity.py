@@ -6,8 +6,8 @@ import gc
 import os
 
 import torch
-
 import wandb
+
 from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate
 
 os.environ["WANDB__SERVICE_WAIT"] = "300"
@@ -60,7 +60,7 @@ def argparser():
     parser.add_argument(
         "--distribute_model",
         action="store_true",
-        help="Use accelerate to put the model on multiple GPUs for evaluation.",
+        help="Use accelerate to put the model on multiple GPUs for evaluation. It is recommended to use it for models with 30B parameters and above.",
     )
 
     parser.add_argument("--save_dir", type=str, default=None, help="Path to save the model.")
@@ -93,9 +93,9 @@ def main():
         print(f"Loading sliced {args.model} model from {args.load_model_path} with sparsity {args.sparsity}")
         model, tokenizer = hf_utils.load_sliced_model(args.model, args.load_model_path, args.sparsity, DEV)
     else:
-        # load one of the pre-trained models and data
+        # load one of the pre-trained models
         model, tokenizer = hf_utils.get_model(args.model, token=args.hf_token)
-        
+
     dataloader, testloader = data_utils.get_loaders(
         dataset_name=args.cal_dataset,
         tokenizer=tokenizer,

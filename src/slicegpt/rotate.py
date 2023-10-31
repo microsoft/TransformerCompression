@@ -142,7 +142,7 @@ def slice_head(model, new_embedding_dimension):
 def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=False):
     """
     Rotate and slice a model, with interleaved slicing and PCA calculations
-    """ 
+    """
     model.eval()
     dtype = next(iter(model.parameters())).dtype
 

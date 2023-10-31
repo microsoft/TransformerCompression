@@ -8,11 +8,11 @@ os.environ["WANDB__SERVICE_WAIT"] = "300"
 import json
 
 import torch
+import wandb
 from lm_eval import evaluator, tasks
 from lm_eval import utils as lm_eval_utils
 from lm_eval.base import BaseLM
 
-import wandb
 from slicegpt import data_utils, hf_utils, layernorm_fusion, rotate
 
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
