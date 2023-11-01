@@ -34,19 +34,19 @@ def replace_modules(model, config, verbose=True):
     if isinstance(model, LlamaPreTrainedModel):
         model = model.model
 
-    for name, mod in model.named_children():
-        new_mod = None
+    for name, module in model.named_children():
+        new_module = None
 
-        if isinstance(mod, OPTDecoderLayer):
-            new_mod = CompressedOPTDecoderLayer(config).to(config.torch_dtype)
-        elif isinstance(mod, LlamaDecoderLayer):
-            new_mod = CompressedLlamaDecoderLayer(config).to(config.torch_dtype)
-        elif len(list(mod.children())) > 0:
-            replace_modules(mod, config, verbose=False)
+        if isinstance(module, OPTDecoderLayer):
+            new_module = CompressedOPTDecoderLayer(config).to(config.torch_dtype)
+        elif isinstance(module, LlamaDecoderLayer):
+            new_module = CompressedLlamaDecoderLayer(config).to(config.torch_dtype)
+        elif len(list(module.children())) > 0:
+            replace_modules(module, config, verbose=False)
 
-        if new_mod is not None:
-            new_mod.load_state_dict(mod.state_dict(), strict=True)
-            setattr(model, name, new_mod)
+        if new_module is not None:
+            new_module.load_state_dict(module.state_dict(), strict=True)
+            setattr(model, name, new_module)
 
     if verbose:
         print("Done.")
@@ -60,15 +60,16 @@ def replace_layernorms(model, config):
     if isinstance(model, LlamaPreTrainedModel):
         model = model.model
 
-    for name, mod in model.named_children():
-        new_mod = None
-        if isinstance(mod, (torch.nn.LayerNorm, LlamaRMSNorm)):
-            new_mod = RMSN(config.hidden_size)
-        elif len(list(mod.children())) > 0:
-            replace_layernorms(mod, config)
+    for name, module in model.named_children():
+        new_module = None
+        if isinstance(module, (torch.nn.LayerNorm, LlamaRMSNorm)):
+            new_module = RMSN(config.hidden_size)
+        elif len(list(module.children())) > 0:
+            replace_layernorms(module, config)
 
-        if new_mod is not None:
-            setattr(model, name, new_mod)
+        if new_module is not None:
+            setattr(model, name, new_module)
+            getattr(model, name)
 
 
 def fuse_modules(model):

@@ -17,7 +17,7 @@ repos:
   - id: mypy
     stages: [manual]
     name: mypy
-    entry: bash -c 'pylint $@ || true'  # Show suggestions but don't fail
+    entry: bash -c 'mypy $@ || true'  # Show suggestions but don't fail
     language: system
     args: ["--config-file=pyproject.toml", "."]
 
