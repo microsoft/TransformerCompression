@@ -5,7 +5,7 @@ import torch
 import transformers
 from transformers import LlamaConfig, LlamaForCausalLM, OPTConfig, OPTForCausalLM
 
-from slicegpt import layernorm_fusion, model_utils, rotate
+from . import layernorm_fusion, model_utils, rotate
 
 
 class UninitializedOPTForCausalLM(OPTForCausalLM):
@@ -50,7 +50,7 @@ def get_model(model_path, uninitialized=False, dtype=torch.float16, token=None):
 
     model.seqlen = model.config.max_position_embeddings
     model.eval()  # This switches off dropout.
-    model.config.use_cache = False  # Do not cache attention key values.
+    model.config.use_cache = False
 
     print("Done.")
     return model, tokenizer
