@@ -2,10 +2,9 @@
 # Licensed under the MIT license.
 
 import argparse
-import os
-
-os.environ["WANDB__SERVICE_WAIT"] = "300"
+import gc
 import json
+import os
 
 import torch
 from lm_eval import evaluator, tasks
@@ -13,7 +12,7 @@ from lm_eval import utils as lm_eval_utils
 from lm_eval.base import BaseLM
 
 import wandb
-from slicegpt import data_utils, hf_utils, layernorm_fusion, rotate
+from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate
 
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -115,6 +114,11 @@ def parse_args():
         "--sparsity", type=float, default=0.0, help="A measure of how much slicing is applied (in the range [0, 1])"
     )
     parser.add_argument("--batch_size", type=int, default=1, help="Batch size for loading the calibration data.")
+    parser.add_argument(
+        "--distribute_model",
+        action="store_true",
+        help="Use accelerate to put the model on multiple GPUs for evaluation. It is recommended to use it for models with 30B parameters and above.",
+    )
 
     parser.add_argument("--load_dir", type=str, default=None, help="Path to load the sliced model from.")
 
@@ -126,6 +130,7 @@ def parse_args():
 def main():
     args = parse_args()
     print("Running SliceGPT zeroshot tasks experiment.")
+    print(f"Number of available cuda devices: {torch.cuda.device_count()}")
 
     try:
         wandb.init(project="slicegpt", config=args)
@@ -145,7 +150,12 @@ def main():
         task_names = lm_eval_utils.pattern_match(args.tasks.split(","), tasks.ALL_TASKS)
 
     print(f"Selected Tasks: {task_names}")
-    model.model = model.model.to(DEV)
+
+    if args.distribute_model:
+        # distribute model across available GPUs
+        gpu_utils.distribute_model(model.model)
+    else:
+        model.model = model.model.to(DEV)
     model.model.eval()
 
     # Run the evaluation.
