@@ -1,6 +1,8 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
+import logging
+
 import torch
 import transformers
 from transformers import LlamaConfig, LlamaForCausalLM, OPTConfig, OPTForCausalLM
@@ -27,7 +29,7 @@ def get_model(model_path, uninitialized=False, dtype=torch.float16, token=None):
     else:
         model_type = "pretrained"
 
-    print(f"Loading {model_type} {model_path} model...", end=" ")
+    logging.info(f"Loading {model_type} {model_path} model")
 
     if "facebook/opt" in model_path:
         if uninitialized:
@@ -52,7 +54,6 @@ def get_model(model_path, uninitialized=False, dtype=torch.float16, token=None):
     model.eval()  # This switches off dropout.
     model.config.use_cache = False
 
-    print("Done.")
     return model, tokenizer
 
 

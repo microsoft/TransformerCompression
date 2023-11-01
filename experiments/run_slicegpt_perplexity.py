@@ -4,11 +4,14 @@
 import argparse
 import gc
 import os
+import logging
 
 import torch
 
 import wandb
-from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate
+from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate, utils
+
+utils.configure_logging()
 
 os.environ["WANDB__SERVICE_WAIT"] = "300"
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -75,8 +78,8 @@ def argparser():
 
 
 def main():
-    print("Running SliceGPT perplexity experiment.")
-    print(f"Number of available cuda devices: {torch.cuda.device_count()}")
+    logging.info("Running SliceGPT perplexity experiment.")
+    logging.info(f"Number of available cuda devices: {torch.cuda.device_count()}")
 
     args = argparser()
 
@@ -85,12 +88,12 @@ def main():
     except wandb.UsageError as e:
         # wandb.init will throw an error if the user is not logged in and the process is running in a non-shell
         # environment, e.g. notebook, IDE, no-shell process, etc. In this case, we want to continue without wandb.
-        print(f'Failed to initialize wandb: {e}, continuing without wandb.')
+        logging.info(f'Failed to initialize wandb: {e}, continuing without wandb.')
         wandb.init(project="slicegpt", mode='disabled')
 
     if args.load_model_path:
         # load the model from load_model_path to compute perplexity and skip rotation and slicing
-        print(f"Loading sliced {args.model} model from {args.load_model_path} with sparsity {args.sparsity}")
+        logging.info(f"Loading sliced {args.model} model from {args.load_model_path} with sparsity {args.sparsity}")
         model, tokenizer = hf_utils.load_sliced_model(args.model, args.load_model_path, args.sparsity, DEV)
     else:
         # load one of the pre-trained models
@@ -114,7 +117,7 @@ def main():
             model = model.to(DEV)
         
         dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
-        print('Loaded model perplexity:', dataset_ppl)
+        logging.info(f'Loaded model perplexity: {dataset_ppl}')
         wandb.log({"original_ppl": dataset_ppl})
         return
 
@@ -126,7 +129,7 @@ def main():
         else:
             model = model.to(DEV)
         dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
-        print('Original ppl:', dataset_ppl)
+        logging.info(f'Original ppl: {dataset_ppl}')
         wandb.log({"original_ppl": dataset_ppl})
         model = model.cpu()
         gc.collect()
@@ -148,7 +151,7 @@ def main():
         model = model.to(DEV)
 
         dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
-        print('Post-fusion:', dataset_ppl)
+        logging.info(f'Post-fusion: {dataset_ppl}')
         wandb.log({"post_fusion_ppl": dataset_ppl})
 
         model = model.cpu()
@@ -157,10 +160,9 @@ def main():
 
     # compute new embedding dimension given the slicegpt sparsity
     new_embedding_dimension = int((1 - args.sparsity) * model.config.hidden_size)
-    print(f"New embedding dimension: {new_embedding_dimension} (sparsity {args.sparsity})")
+    logging.info(f"New embedding dimension: {new_embedding_dimension} (sparsity {args.sparsity})")
 
     rotate.rotate_and_slice(model, dataloader, new_embedding_dimension)
-    print()
 
     if args.save_dir:
         if not os.path.exists(args.save_dir):
@@ -168,7 +170,7 @@ def main():
 
         model_file = os.path.join(args.save_dir, os.path.basename(args.model) + "_" + str(args.sparsity) + ".pt")
         torch.save(model.state_dict(), model_file)
-        print("Saved sliced model to {}".format(args.save_dir))
+        logging.info(f"Saved sliced model to {args.save_dir}")
 
     if args.distribute_model:
         gpu_utils.distribute_model(model)
@@ -176,7 +178,7 @@ def main():
         model = model.to(DEV)
 
     dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
-    print('After rotating and slicing', dataset_ppl)
+    logging.info(f'After rotating and slicing {dataset_ppl}')
     wandb.log({"sliced_ppl": dataset_ppl})
 
 

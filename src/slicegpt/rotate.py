@@ -1,6 +1,8 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
+import logging
+
 import torch
 
 from . import utils
@@ -169,10 +171,10 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
     # rotate and slice inputs
     inps = torch.matmul(inps, Q.to(dtype=dtype))[:, :, :new_embedding_dimension]
 
-    print("Rotate and slice layers:", end=" ", flush=True)
+    logging.info(f"Rotate and slice layers")
     layers = get_layers(model)
     for i, layer in enumerate(layers):
-        print(i, end=" ", flush=True)
+        logging.info(f"Layer {i}")
 
         layer.attn_shortcut_Q = Q.T.clone().to(dtype=dtype)
 
@@ -223,8 +225,6 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
     if do_slice_head:
         slice_head(model, new_embedding_dimension)
 
-    print("Done.")
-
 
 @torch.no_grad()
 def rotate(model, dataloader):
@@ -246,9 +246,9 @@ def rotate(model, dataloader):
     rotate_embeddings(model, Q_1)
 
     # Rotate the rest of the model.
-    print("(Rotate) layers:", end=" ", flush=True)
+    logging.info("(Rotate) layers")
     for i, layer in enumerate(layers):
-        print(f" {i}", end="", flush=True)
+        logging.info(f"Layer {i}")
 
         # Extract the inputs and outputs of the second layernorm input and calculate the Q_3
         mlp_ln_inputs, outs = get_signals(layer, inps, attention_mask)
@@ -283,8 +283,6 @@ def rotate(model, dataloader):
 
     rotate_head(model, Q_5)
 
-    print(" Done rotating!")
-
 
 def slice_rotated_model(model, new_embedding_dimension, do_slice_head=False):
     model.eval()
@@ -296,7 +294,6 @@ def slice_rotated_model(model, new_embedding_dimension, do_slice_head=False):
     layers = get_layers(model)
 
     for layer in layers:
-
         slice_attention_inputs(layer, new_embedding_dimension)
         slice_attention_output(layer, new_embedding_dimension)
 

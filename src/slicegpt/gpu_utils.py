@@ -1,6 +1,7 @@
 import gc
 import math
 import time
+import logging
 
 import torch
 from accelerate import dispatch_model, infer_auto_device_map
@@ -38,9 +39,9 @@ def evaluate_ppl(model, testloader, device):
     ppl = torch.exp(nlls.sum() / nlls.numel())
 
     elapsed = time.time() - start_time
-    print(
-        "Time spent on evaluation: ",
-        time.strftime("%H:%M:%S.{}".format(str(elapsed % 1)[2:])[:13], time.gmtime(elapsed)),
+    logging.info(
+        "Time spent on evaluation: "
+        + time.strftime("%H:%M:%S.{}".format(str(elapsed % 1)[2:])[:13], time.gmtime(elapsed))
     )
 
     return ppl.item()
