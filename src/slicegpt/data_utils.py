@@ -4,23 +4,52 @@
 import random
 
 import datasets
-import torch
 from torch.utils.data import DataLoader
 
 
-def get_wikitext2(nsamples, seed, seqlen, tokenizer, batch_size):
-    """
-    generate nsamples sequences from the wikitext 2 dataset, each of length seqlen.
-    Additionally gather the test set (not sampled).
-    """
-    traindata = datasets.load_dataset("wikitext", "wikitext-2-raw-v1", split="train")
-    testdata = datasets.load_dataset("wikitext", "wikitext-2-raw-v1", split="test")
+def get_loaders(dataset_name, tokenizer, nsamples=128, seed=0, seqlen=2048, batch_size=1):
+    print(f"Loading dataset: {dataset_name}...", end=" ")
+    if dataset_name == "wikitext2":
+        path = "wikitext"
+        name = "wikitext-2-raw-v1"
+        data_name = "text"
+        train_data_files = None
+        test_data_files = None
+        test_split = "test"
+    elif dataset_name == "ptb":
+        path = "ptb_text_only"
+        name = "penn_treebank"
+        data_name = "sentence"
+        train_data_files = None
+        test_data_files = None
+        test_split = "test"
+    elif dataset_name == "c4":
+        path = "allenai/c4"
+        name = "allenai--c4"
+        train_data_files = {"train": "en/c4-train.00000-of-01024.json.gz"}
+        test_data_files = {"validation": "en/c4-validation.00000-of-00008.json.gz"}
+        data_name = "text"
+        test_split = "validation"
+    else:
+        raise NotImplementedError("The provided dataset is not supported")
 
-    trainenc = tokenizer("\n\n".join(traindata["text"]), return_tensors="pt")
-    testenc = tokenizer("\n\n".join(testdata["text"]), return_tensors="pt")
+    traindata = datasets.load_dataset(path, name, data_files=train_data_files, split="train")
+    testdata = datasets.load_dataset(path, name, data_files=test_data_files, split=test_split)
+
+    random.seed(seed)
+    if dataset_name == "c4":
+        # Keep only a subset of c4's train & test datasets, because these are much larger than
+        # wikitext and ptb datasets.
+        train_indices = random.sample(range(len(traindata)), 5_000)
+        test_indices = random.sample(range(len(testdata)), 500)
+
+        traindata = traindata.select(train_indices)
+        testdata = testdata.select(test_indices)
+
+    trainenc = tokenizer("\n\n".join(traindata[data_name]), return_tensors="pt")
+    testenc = tokenizer("\n\n".join(testdata[data_name]), return_tensors="pt")
 
     # sample the train set
-    random.seed(seed)
     trainloader = []
     for _ in range(nsamples):
         i = random.randint(0, trainenc.input_ids.shape[1] - seqlen - 1)
@@ -36,156 +65,5 @@ def get_wikitext2(nsamples, seed, seqlen, tokenizer, batch_size):
     trainloader = DataLoader(trainloader, batch_size=batch_size)
     testloader = DataLoader(testloader, batch_size=batch_size)
 
-    return trainloader, testloader
-
-
-def get_ptb(nsamples, seed, seqlen, tokenizer):
-    traindata = datasets.load_dataset("ptb_text_only", "penn_treebank", split="train")
-    valdata = datasets.load_dataset("ptb_text_only", "penn_treebank", split="validation")
-
-    trainenc = tokenizer("\n\n".join(traindata["sentence"]), return_tensors="pt")
-    testenc = tokenizer("\n\n".join(valdata["sentence"]), return_tensors="pt")
-
-    random.seed(seed)
-    trainloader = []
-    for _ in range(nsamples):
-        i = random.randint(0, trainenc.input_ids.shape[1] - seqlen - 1)
-        j = i + seqlen
-        inp = trainenc.input_ids[:, i:j]
-        tar = inp.clone()
-        tar[:, :-1] = -100
-        trainloader.append((inp, tar))
-    return trainloader, testenc
-
-
-def get_c4(nsamples, seed, seqlen, tokenizer):
-    traindata = datasets.load_dataset(
-        "allenai/c4",
-        "allenai--c4",
-        data_files={"train": "en/c4-train.00000-of-01024.json.gz"},
-        split="train",
-    )
-    valdata = datasets.load_dataset(
-        "allenai/c4",
-        "allenai--c4",
-        data_files={"validation": "en/c4-validation.00000-of-00008.json.gz"},
-        split="validation",
-    )
-
-    random.seed(seed)
-    trainloader = []
-    for _ in range(nsamples):
-        while True:
-            i = random.randint(0, len(traindata) - 1)
-            trainenc = tokenizer(traindata[i]["text"], return_tensors="pt")
-            if trainenc.input_ids.shape[1] >= seqlen:
-                break
-        i = random.randint(0, trainenc.input_ids.shape[1] - seqlen - 1)
-        j = i + seqlen
-        inp = trainenc.input_ids[:, i:j]
-        tar = inp.clone()
-        tar[:, :-1] = -100
-        trainloader.append((inp, tar))
-
-    random.seed(0)
-    valenc = []
-    for _ in range(256):
-        while True:
-            i = random.randint(0, len(valdata) - 1)
-            tmp = tokenizer(valdata[i]["text"], return_tensors="pt")
-            if tmp.input_ids.shape[1] >= seqlen:
-                break
-        i = random.randint(0, tmp.input_ids.shape[1] - seqlen - 1)
-        j = i + seqlen
-        valenc.append(tmp.input_ids[:, i:j])
-    valenc = torch.hstack(valenc)
-
-    class TokenizerWrapper:
-        def __init__(self, input_ids):
-            self.input_ids = input_ids
-
-    valenc = TokenizerWrapper(valenc)
-
-    return trainloader, valenc
-
-
-def get_ptb_new(nsamples, seed, seqlen, tokenizer):
-
-    traindata = datasets.load_dataset("ptb_text_only", "penn_treebank", split="train")
-    testdata = datasets.load_dataset("ptb_text_only", "penn_treebank", split="test")
-
-    trainenc = tokenizer(" ".join(traindata["sentence"]), return_tensors="pt")
-    testenc = tokenizer(" ".join(testdata["sentence"]), return_tensors="pt")
-
-    random.seed(seed)
-    trainloader = []
-    for _ in range(nsamples):
-        i = random.randint(0, trainenc.input_ids.shape[1] - seqlen - 1)
-        j = i + seqlen
-        inp = trainenc.input_ids[:, i:j]
-        tar = inp.clone()
-        tar[:, :-1] = -100
-        trainloader.append((inp, tar))
-    return trainloader, testenc
-
-
-def get_c4_new(nsamples, seed, seqlen, tokenizer):
-    traindata = datasets.load_dataset(
-        "allenai/c4",
-        "allenai--c4",
-        data_files={"train": "en/c4-train.00000-of-01024.json.gz"},
-        split="train",
-    )
-    valdata = datasets.load_dataset(
-        "allenai/c4",
-        "allenai--c4",
-        data_files={"validation": "en/c4-validation.00000-of-00008.json.gz"},
-        split="validation",
-    )
-
-    import random
-
-    random.seed(seed)
-    trainloader = []
-    for _ in range(nsamples):
-        while True:
-            i = random.randint(0, len(traindata) - 1)
-            trainenc = tokenizer(traindata[i]["text"], return_tensors="pt")
-            if trainenc.input_ids.shape[1] >= seqlen:
-                break
-        i = random.randint(0, trainenc.input_ids.shape[1] - seqlen - 1)
-        j = i + seqlen
-        inp = trainenc.input_ids[:, i:j]
-        tar = inp.clone()
-        tar[:, :-1] = -100
-        trainloader.append((inp, tar))
-
-    valenc = tokenizer(" ".join(valdata[:1100]["text"]), return_tensors="pt")
-    valenc = valenc.input_ids[:, : (256 * seqlen)]
-
-    class TokenizerWrapper:
-        def __init__(self, input_ids):
-            self.input_ids = input_ids
-
-    valenc = TokenizerWrapper(valenc)
-
-    return trainloader, valenc
-
-
-def get_loaders(dataset_name, tokenizer, nsamples=128, seed=0, seqlen=2048, batch_size=1):
-    print(f"Loading dataset: {dataset_name}...", end=" ")
-    if dataset_name == "wikitext2":
-        result = get_wikitext2(nsamples, seed, seqlen, tokenizer, batch_size)
-    elif "ptb" in dataset_name:
-        if "new" in dataset_name:
-            result = get_ptb_new(nsamples, seed, seqlen, tokenizer)
-        result = get_ptb(nsamples, seed, seqlen, tokenizer)
-    elif "c4" in dataset_name:
-        if "new" in dataset_name:
-            result = get_c4_new(nsamples, seed, seqlen, tokenizer)
-        result = get_c4(nsamples, seed, seqlen, tokenizer)
-    else:
-        raise NotImplementedError("The provided dataset is not supported")
-
     print("Done.")
-    return result
+    return trainloader, testloader
