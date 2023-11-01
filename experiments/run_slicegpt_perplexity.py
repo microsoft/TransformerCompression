@@ -112,8 +112,8 @@ def main():
             gpu_utils.distribute_model(model)
         else:
             model = model.to(DEV)
-            dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
-
+        
+        dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
         print('Loaded model perplexity:', dataset_ppl)
         wandb.log({"original_ppl": dataset_ppl})
         return
