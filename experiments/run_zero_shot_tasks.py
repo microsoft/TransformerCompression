@@ -3,11 +3,8 @@
 
 import argparse
 import gc
-import os
-import logging
-import os
-
 import json
+import logging
 import os
 
 import torch
@@ -18,8 +15,9 @@ from lm_eval.base import BaseLM
 import wandb
 from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate, utils
 
-os.environ["WANDB__SERVICE_WAIT"] = "300"
+utils.configure_logging()
 
+os.environ["WANDB__SERVICE_WAIT"] = "300"
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 

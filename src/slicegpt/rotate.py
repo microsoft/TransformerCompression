@@ -219,12 +219,12 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
         # Clear GPU cache.
         torch.cuda.empty_cache()
 
-    logging.info(f"Rotate and slice layers done")
-
     # rotate and slice head
     rotate_head(model, Q)
     if do_slice_head:
         slice_head(model, new_embedding_dimension)
+
+    logging.info(f"Rotate and slice layers done")
 
 
 @torch.no_grad()
@@ -280,9 +280,8 @@ def rotate(model, dataloader):
         inps = outs  # The inputs to the next layer are the outputs from this one!
         Q_1 = Q_5  # first rotation in the next layer is the last one in this...
 
-    logging.info(f"Rotate layers done")
-
     rotate_head(model, Q_5)
+    logging.info(f"Rotate layers done")
 
 
 def slice_rotated_model(model, new_embedding_dimension, do_slice_head=False):
