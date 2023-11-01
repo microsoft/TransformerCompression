@@ -2,7 +2,6 @@
 # Licensed under the MIT license.
 
 import argparse
-import gc
 import logging
 import os
 
@@ -115,7 +114,7 @@ def main():
             gpu_utils.distribute_model(model)
         else:
             model = model.to(DEV)
-        
+
         dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
         logging.info(f'Loaded model perplexity: {dataset_ppl}')
         wandb.log({"original_ppl": dataset_ppl})
@@ -132,17 +131,15 @@ def main():
         logging.info(f'Original ppl: {dataset_ppl}')
         wandb.log({"original_ppl": dataset_ppl})
         model = model.cpu()
-        gc.collect()
-        torch.cuda.empty_cache()
+        utils.cleanup_memory()
 
     # fuse layernorms, add shorcuts, check perplexity
     layernorm_fusion.replace_modules(model, model.config)
 
-    # gc.collect and empty cache are necessary to clean up GPU memory
-    # if the model was distributed
     model = model.cpu()
-    gc.collect()
-    torch.cuda.empty_cache()
+
+    # Run GC and cleanup GPU memory
+    utils.cleanup_memory()
 
     layernorm_fusion.fuse_modules(model)
 
@@ -155,8 +152,9 @@ def main():
         wandb.log({"post_fusion_ppl": dataset_ppl})
 
         model = model.cpu()
-        gc.collect()
-        torch.cuda.empty_cache()
+
+        # Run GC and cleanup GPU memory
+        utils.cleanup_memory()
 
     # compute new embedding dimension given the slicegpt sparsity
     new_embedding_dimension = int((1 - args.sparsity) * model.config.hidden_size)

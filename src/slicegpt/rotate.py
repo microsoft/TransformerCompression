@@ -118,7 +118,8 @@ def rotate_embeddings(model, Q):
         W_ = W.weight.data.to(device=DEV, dtype=torch.float64)
         W.weight.data = torch.matmul(W_, Q).to(device="cpu", dtype=dtype)
 
-    torch.cuda.empty_cache()
+    # Run GC and cleanup GPU memory
+    utils.cleanup_memory()
 
 
 def slice_embeddings(model, new_embedding_dimension):
@@ -194,8 +195,8 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
         rotate_mlp_input(layer, Q)
         slice_mlp_input(layer, new_embedding_dimension)
 
-        # Clear GPU cache.
-        torch.cuda.empty_cache()
+        # Run GC and cleanup GPU memory
+        utils.cleanup_memory()
 
         # now compute the outputs of the layer with slicing between Attention and mlp.
         _, outputs = get_signals(layer, inps, attention_mask)
@@ -216,8 +217,8 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
 
         layer = layer.to('cpu')
 
-        # Clear GPU cache.
-        torch.cuda.empty_cache()
+        # Run GC and cleanup GPU memory
+        utils.cleanup_memory()
 
     # rotate and slice head
     rotate_head(model, Q)
@@ -274,8 +275,8 @@ def rotate(model, dataloader):
         # Rotate MLP output
         rotate_mlp_output(layer, Q_5)
 
-        # Clear GPU cache.
-        torch.cuda.empty_cache()
+        # Run GC and cleanup GPU memory
+        utils.cleanup_memory()
 
         inps = outs  # The inputs to the next layer are the outputs from this one!
         Q_1 = Q_5  # first rotation in the next layer is the last one in this...
