@@ -1,7 +1,10 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
+import logging
+
 import torch
+from tqdm import tqdm
 
 from . import utils
 
@@ -169,11 +172,9 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
     # rotate and slice inputs
     inps = torch.matmul(inps, Q.to(dtype=dtype))[:, :, :new_embedding_dimension]
 
-    print("Rotate and slice layers:", end=" ", flush=True)
+    logging.info(f"Rotate and slice layers")
     layers = get_layers(model)
-    for i, layer in enumerate(layers):
-        print(i, end=" ", flush=True)
-
+    for i, layer in enumerate(tqdm(layers, unit="layer", desc="Rotating and slicing")):
         layer.attn_shortcut_Q = Q.T.clone().to(dtype=dtype)
 
         # rotate and slice the attention inputs to match previous layer
@@ -223,7 +224,7 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
     if do_slice_head:
         slice_head(model, new_embedding_dimension)
 
-    print("Done.")
+    logging.info(f"Rotate and slice layers done")
 
 
 @torch.no_grad()
@@ -246,10 +247,8 @@ def rotate(model, dataloader):
     rotate_embeddings(model, Q_1)
 
     # Rotate the rest of the model.
-    print("(Rotate) layers:", end=" ", flush=True)
-    for i, layer in enumerate(layers):
-        print(f" {i}", end="", flush=True)
-
+    logging.info("Rotate layers")
+    for i, layer in enumerate(tqdm(layers, unit="layer", desc="Rotating")):
         # Extract the inputs and outputs of the second layernorm input and calculate the Q_3
         mlp_ln_inputs, outs = get_signals(layer, inps, attention_mask)
         _, Q_3 = utils.pca_calc(mlp_ln_inputs.reshape(-1, mlp_ln_inputs.shape[-1]))
@@ -282,8 +281,7 @@ def rotate(model, dataloader):
         Q_1 = Q_5  # first rotation in the next layer is the last one in this...
 
     rotate_head(model, Q_5)
-
-    print(" Done rotating!")
+    logging.info(f"Rotate layers done")
 
 
 def slice_rotated_model(model, new_embedding_dimension, do_slice_head=False):
@@ -296,7 +294,6 @@ def slice_rotated_model(model, new_embedding_dimension, do_slice_head=False):
     layers = get_layers(model)
 
     for layer in layers:
-
         slice_attention_inputs(layer, new_embedding_dimension)
         slice_attention_output(layer, new_embedding_dimension)
 

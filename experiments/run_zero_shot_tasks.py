@@ -4,6 +4,7 @@
 import argparse
 import gc
 import json
+import logging
 import os
 
 import torch
@@ -12,8 +13,11 @@ from lm_eval import utils as lm_eval_utils
 from lm_eval.base import BaseLM
 
 import wandb
-from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate
+from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate, utils
 
+utils.configure_logging()
+
+os.environ["WANDB__SERVICE_WAIT"] = "300"
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -49,7 +53,7 @@ class SlicedLM(BaseLM):
         )
 
         new_embedding_dimension = int((1 - sparsity) * model.config.hidden_size)
-        print(f"New embedding dimension: {new_embedding_dimension} (sparsity {sparsity})")
+        logging.info(f"New embedding dimension: {new_embedding_dimension} (sparsity {sparsity})")
 
         rotate.rotate_and_slice(model, dataloader, new_embedding_dimension)
 
@@ -72,7 +76,7 @@ class SlicedLM(BaseLM):
 
     @property
     def max_gen_toks(self):
-        print('max_gen_toks fn')
+        logging.info('max_gen_toks fn')
         return 256
 
     @property
@@ -129,15 +133,15 @@ def parse_args():
 
 def main():
     args = parse_args()
-    print("Running SliceGPT zeroshot tasks experiment.")
-    print(f"Number of available cuda devices: {torch.cuda.device_count()}")
+    logging.info("Running SliceGPT zeroshot tasks experiment.")
+    logging.info(f"Number of available cuda devices: {torch.cuda.device_count()}")
 
     try:
         wandb.init(project="slicegpt", config=args)
     except wandb.UsageError as e:
         # wandb.init will throw an error if the user is not logged in and the process is running in a non-shell
         # environment, e.g. notebook, IDE, no-shell process, etc. In this case, we want to continue without wandb.
-        print(f'Failed to initialize wandb: {e}, continuing without wandb.')
+        logging.info(f'Failed to initialize wandb: {e}, continuing without wandb.')
         wandb.init(project="slicegpt", mode='disabled')
 
     # Initialize the model for use in LM Eval Harness.
@@ -149,7 +153,7 @@ def main():
     else:
         task_names = lm_eval_utils.pattern_match(args.tasks.split(","), tasks.ALL_TASKS)
 
-    print(f"Selected Tasks: {task_names}")
+    logging.info(f"Selected Tasks: {task_names}")
 
     if args.distribute_model:
         # distribute model across available GPUs
@@ -161,8 +165,8 @@ def main():
     # Run the evaluation.
     results = evaluator.simple_evaluate(model=model, tasks=task_names, no_cache=args.no_cache)
     wandb.log(results['results'])
-    print(json.dumps(results, indent=2))
-    print(evaluator.make_table(results))
+    logging.info(json.dumps(results, indent=2))
+    logging.info(evaluator.make_table(results))
 
 
 if __name__ == "__main__":

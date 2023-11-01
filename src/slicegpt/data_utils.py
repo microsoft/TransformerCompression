@@ -1,6 +1,7 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
+import logging
 import random
 
 import datasets
@@ -8,7 +9,7 @@ from torch.utils.data import DataLoader
 
 
 def get_loaders(dataset_name, tokenizer, nsamples=128, seed=0, seqlen=2048, batch_size=1):
-    print(f"Loading dataset: {dataset_name}...", end=" ")
+    logging.info(f"Loading dataset: {dataset_name}")
     if dataset_name == "wikitext2":
         path = "wikitext"
         name = "wikitext-2-raw-v1"
@@ -65,5 +66,5 @@ def get_loaders(dataset_name, tokenizer, nsamples=128, seed=0, seqlen=2048, batc
     trainloader = DataLoader(trainloader, batch_size=batch_size)
     testloader = DataLoader(testloader, batch_size=batch_size)
 
-    print("Done.")
+    logging.info(f"Loading dataset done")
     return trainloader, testloader

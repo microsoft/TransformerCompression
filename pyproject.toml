@@ -26,7 +26,8 @@ dependencies = [
     "wandb",
     "huggingface-hub>=0.16.4,<0.18",
     "accelerate",
-    "lm-eval @ git+https://github.com/EleutherAI/lm-evaluation-harness.git"
+    "lm-eval @ git+https://github.com/EleutherAI/lm-evaluation-harness.git",
+    "tqdm"
 ]
 
 [project.optional-dependencies]

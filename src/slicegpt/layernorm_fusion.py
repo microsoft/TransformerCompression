@@ -1,6 +1,8 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
+import logging
+
 import torch
 from transformers.models.llama.modeling_llama import LlamaDecoderLayer, LlamaPreTrainedModel, LlamaRMSNorm
 from transformers.models.opt.modeling_opt import OPTDecoderLayer
@@ -29,7 +31,7 @@ def replace_modules(model, config, verbose=True):
     This function should be called before fusing the modules!
     """
     if verbose:
-        print("Replacing modules...", end=" ", flush=True)
+        logging.info("Replacing modules")
 
     if isinstance(model, LlamaPreTrainedModel):
         model = model.model
@@ -49,7 +51,7 @@ def replace_modules(model, config, verbose=True):
             setattr(model, name, new_module)
 
     if verbose:
-        print("Done.")
+        logging.info("Replacing modules done")
 
 
 def replace_layernorms(model, config):
@@ -81,7 +83,7 @@ def fuse_modules(model):
         model: the model to be fused
     """
 
-    print("Fusing layernorm modules...", end=" ", flush=True)
+    logging.info("Fusing layernorm modules")
 
     # make a copy of the weights in the lm head, which are shared with embeddings...
     head = get_lm_head(model)
@@ -106,7 +108,7 @@ def fuse_modules(model):
     fuse_ln_linear(get_pre_head_layernorm(model), [get_lm_head(model)])
 
     replace_layernorms(model, model.config)
-    print("Done.")
+    logging.info("Fusing layernorm modules done")
 
 
 def bake_mean_into_linear(linear: torch.nn.Linear) -> None:
