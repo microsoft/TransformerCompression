@@ -18,24 +18,24 @@ authors = [
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "accelerate",
-    "datasets",
-    "huggingface-hub>=0.16.4,<0.18",
-    "lm-eval @ git+https://github.com/EleutherAI/lm-evaluation-harness.git",
-    "numpy",
-    "sentencepiece",
     "torch",
-    "tqdm",
+    "datasets",
     "transformers",
+    "sentencepiece",
+    "numpy",
     "wandb",
+    "huggingface-hub>=0.16.4,<0.18",
+    "accelerate",
+    "lm-eval @ git+https://github.com/EleutherAI/lm-evaluation-harness.git",
+    "tqdm"
 ]
 
 [project.optional-dependencies]
 dev = [
-    "mypy>=1.5.1",
     "pre-commit",
-    "pylint>=3.0.0",
     "pytest>=7.4.2",
+    "mypy>=1.5.1",
+    "pylint>=3.0.0"
 ]
 
 [tool.setuptools.packages.find]
