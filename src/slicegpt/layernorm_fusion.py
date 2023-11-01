@@ -50,6 +50,9 @@ def replace_modules(model, config, verbose=True):
             new_module.load_state_dict(module.state_dict(), strict=True)
             setattr(model, name, new_module)
 
+    if verbose:
+        logging.info("Replacing modules done")
+
 
 def replace_layernorms(model, config):
     """
@@ -105,6 +108,7 @@ def fuse_modules(model):
     fuse_ln_linear(get_pre_head_layernorm(model), [get_lm_head(model)])
 
     replace_layernorms(model, model.config)
+    logging.info("Fusing layernorm modules done")
 
 
 def bake_mean_into_linear(linear: torch.nn.Linear) -> None:

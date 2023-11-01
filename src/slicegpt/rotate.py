@@ -4,6 +4,7 @@
 import logging
 
 import torch
+from tqdm import tqdm
 
 from . import utils
 
@@ -173,9 +174,7 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
 
     logging.info(f"Rotate and slice layers")
     layers = get_layers(model)
-    for i, layer in enumerate(layers):
-        logging.info(f"Layer {i}")
-
+    for i, layer in enumerate(tqdm(layers, unit="layer", desc="Rotating and slicing")):
         layer.attn_shortcut_Q = Q.T.clone().to(dtype=dtype)
 
         # rotate and slice the attention inputs to match previous layer
@@ -220,6 +219,8 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
         # Clear GPU cache.
         torch.cuda.empty_cache()
 
+    logging.info(f"Rotate and slice layers done")
+
     # rotate and slice head
     rotate_head(model, Q)
     if do_slice_head:
@@ -246,10 +247,8 @@ def rotate(model, dataloader):
     rotate_embeddings(model, Q_1)
 
     # Rotate the rest of the model.
-    logging.info("(Rotate) layers")
-    for i, layer in enumerate(layers):
-        logging.info(f"Layer {i}")
-
+    logging.info("Rotate layers")
+    for i, layer in enumerate(tqdm(layers, unit="layer", desc="Rotating")):
         # Extract the inputs and outputs of the second layernorm input and calculate the Q_3
         mlp_ln_inputs, outs = get_signals(layer, inps, attention_mask)
         _, Q_3 = utils.pca_calc(mlp_ln_inputs.reshape(-1, mlp_ln_inputs.shape[-1]))
@@ -280,6 +279,8 @@ def rotate(model, dataloader):
 
         inps = outs  # The inputs to the next layer are the outputs from this one!
         Q_1 = Q_5  # first rotation in the next layer is the last one in this...
+
+    logging.info(f"Rotate layers done")
 
     rotate_head(model, Q_5)
 
