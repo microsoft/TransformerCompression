@@ -6,8 +6,8 @@ import gc
 import os
 
 import torch
-import wandb
 
+import wandb
 from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate
 
 os.environ["WANDB__SERVICE_WAIT"] = "300"
@@ -105,15 +105,14 @@ def main():
         seed=args.seed,
     )
 
-    if args.distribute_model:
-        # distribute model across available GPUs
-        gpu_utils.distribute_model(model)
-    else:
-        model = model.to(DEV)
-
     # evaluate perplexity and exit if sliced model is loaded or if ppl_only is set
     if args.load_model_path or args.ppl_only:
-        dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
+        if args.distribute_model:
+            # distribute model across available GPUs
+            gpu_utils.distribute_model(model)
+        else:
+            model = model.to(DEV)
+            dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
 
         print('Loaded model perplexity:', dataset_ppl)
         wandb.log({"original_ppl": dataset_ppl})
@@ -121,9 +120,17 @@ def main():
 
     # original ppl
     if args.eval_baseline:
+        if args.distribute_model:
+            # distribute model across available GPUs
+            gpu_utils.distribute_model(model)
+        else:
+            model = model.to(DEV)
         dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
         print('Original ppl:', dataset_ppl)
         wandb.log({"original_ppl": dataset_ppl})
+        model = model.cpu()
+        gc.collect()
+        torch.cuda.empty_cache()
 
     # fuse layernorms, add shorcuts, check perplexity
     layernorm_fusion.replace_modules(model, model.config)
@@ -137,12 +144,8 @@ def main():
     layernorm_fusion.fuse_modules(model)
 
     # don't run this on large and/or distributed models
-    if args.eval_fused_model:
-        if args.distribute_model:
-            # distribute model across available GPUs
-            gpu_utils.distribute_model(model)
-        else:
-            model = model.to(DEV)
+    if args.eval_fused_model and not args.distribute_model:
+        model = model.to(DEV)
 
         dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
         print('Post-fusion:', dataset_ppl)
