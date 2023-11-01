@@ -1,4 +1,5 @@
 import gc
+import logging
 import math
 import time
 
@@ -38,9 +39,9 @@ def evaluate_ppl(model, testloader, device):
     ppl = torch.exp(nlls.sum() / nlls.numel())
 
     elapsed = time.time() - start_time
-    print(
-        "Time spent on evaluation: ",
-        time.strftime("%H:%M:%S.{}".format(str(elapsed % 1)[2:])[:13], time.gmtime(elapsed)),
+    logging.info(
+        "Time spent on evaluation: "
+        + time.strftime("%H:%M:%S.{}".format(str(elapsed % 1)[2:])[:13], time.gmtime(elapsed))
     )
 
     return ppl.item()
