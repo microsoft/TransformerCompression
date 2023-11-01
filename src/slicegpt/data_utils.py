@@ -1,8 +1,8 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
-import random
 import logging
+import random
 
 import datasets
 from torch.utils.data import DataLoader

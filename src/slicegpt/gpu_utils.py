@@ -1,7 +1,7 @@
 import gc
+import logging
 import math
 import time
-import logging
 
 import torch
 from accelerate import dispatch_model, infer_auto_device_map

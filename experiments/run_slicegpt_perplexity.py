@@ -3,8 +3,8 @@
 
 import argparse
 import gc
-import os
 import logging
+import os
 
 import torch
 
