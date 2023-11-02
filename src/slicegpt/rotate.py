@@ -318,7 +318,7 @@ def slice_rotated_model(model, new_embedding_dimension, do_slice_head=False):
 @torch.no_grad()
 def pca_calc(X: list[torch.tensor]):
     # Run GC and cleanup GPU memory
-    cleanup_memory()
+    utils.cleanup_memory()
 
     H = None
     for i, Xi in enumerate(X):
