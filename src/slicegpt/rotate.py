@@ -310,9 +310,9 @@ def pca_calc(X: list[torch.tensor]):
     utils.cleanup_memory()
 
     H = None
-    for i, Xi in enumerate(X):
+    for Xi in X:
         Xi = Xi.double().to(device=DEV)
-        Hi = torch.sum(Xi.mT @ Xi, dim=0) / len(X)
+        Hi = torch.sum(Xi.mT @ Xi, dim=0)
         H = Hi if H is None else H + Hi
 
     damp = 0.01 * torch.mean(torch.diag(H))
