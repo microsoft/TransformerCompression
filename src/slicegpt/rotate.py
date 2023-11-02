@@ -237,7 +237,7 @@ def rotate(model, dataloader):
 
     # Rotate the rest of the model.
     logging.info("Rotate layers")
-    for i, layer in enumerate(tqdm(layers, unit="layer", desc="Rotating")):
+    for layer in tqdm(layers, unit="layer", desc="Rotating"):
         # Extract the inputs and outputs of the second layernorm input and calculate the Q_3
         mlp_ln_inputs, outs = get_signals(layer, inps, attn_masks)
         _, Q_3 = pca_calc(mlp_ln_inputs.reshape(-1, mlp_ln_inputs.shape[-1]))
@@ -311,9 +311,9 @@ def pca_calc(X: list[torch.tensor]):
     utils.cleanup_memory()
 
     H = None
-    for i, Xi in enumerate(X):
+    for Xi in X:
         Xi = Xi.double().to(device=DEV)
-        Hi = torch.sum(Xi.mT @ Xi, dim=0) / len(X)
+        Hi = torch.sum(Xi.mT @ Xi, dim=0)
         H = Hi if H is None else H + Hi
 
     damp = 0.01 * torch.mean(torch.diag(H))
