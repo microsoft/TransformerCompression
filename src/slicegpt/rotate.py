@@ -312,12 +312,12 @@ def pca_calc(X: list[torch.tensor]):
 
     H = None
     for i, Xi in enumerate(X):
-        Xi = Xi.double().cuda()
+        Xi = Xi.double().to(device=DEV)
         Hi = torch.sum(Xi.mT @ Xi, dim=0) / len(X)
         H = Hi if H is None else H + Hi
 
     damp = 0.01 * torch.mean(torch.diag(H))
-    diag = torch.arange(H.shape[-1]).cuda()
+    diag = torch.arange(H.shape[-1]).to(device=DEV)
     H[diag, diag] = H[diag, diag] + damp
     X_eig = torch.linalg.eigh(H)
     del H
