@@ -5,12 +5,12 @@ import torch
 import transformers
 
 from . import utils
-from .modules import CompressedOPTDecoderLayer
+from .modules import CompressedOPTDecoderLayer, CompressedLlamaDecoderLayer
 
 OPT_MODEL = transformers.models.opt.modeling_opt.OPTForCausalLM
 OPT_LAYER = CompressedOPTDecoderLayer
 LLAMA_MODEL = transformers.models.llama.modeling_llama.LlamaForCausalLM
-LLAMA_LAYER = transformers.models.llama.modeling_llama.LlamaDecoderLayer
+LLAMA_LAYER = CompressedLlamaDecoderLayer
 
 
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -147,7 +147,7 @@ def get_layer0_inputs(model, batch):
     return inps, attention_mask
 
 
-def get_signals(layer, inputs, attention_mask):
+def get_signals(layer, inputs: list[torch.tensor], attention_mask):
     """
     Take the input signals ("activations") for a layer, run the layer forward.
     Return the output of the layer (not layernormed) and the input to the MLP (pre-layernorm).
@@ -161,7 +161,10 @@ def get_signals(layer, inputs, attention_mask):
         mlp_ln_inputs.append(inp.cpu())
 
     hook = get_second_layernorm(layer).register_forward_hook(hook_fn)
-    outs = [layer(inp.unsqueeze(0), attention_mask=attention_mask)[0] for inp in inputs]
+    outs = [layer(inp, attention_mask=torch.tile(attention_mask, (inp.shape[0], 1, 1, 1)))[0] for inp in inputs]
     hook.remove()
 
-    return torch.cat(mlp_ln_inputs), torch.cat(outs)
+    for i, out in enumerate(outs):
+        mlp_ln_inputs[i] = mlp_ln_inputs[i].reshape(out.shape[0], out.shape[1], -1)
+
+    return mlp_ln_inputs, outs

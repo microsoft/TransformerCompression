@@ -162,16 +162,14 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
         inp, _ = get_layer0_inputs(model, batch)
         inps.append(inp)
 
-    inps = torch.cat(inps)
-
-    _, Q = utils.pca_calc(inps.reshape(-1, model.config.hidden_size))
+    _, Q = pca_calc(inps)
     Q = Q.to(device=DEV)
 
     rotate_embeddings(model, Q)
     slice_embeddings(model, new_embedding_dimension)
 
     # rotate and slice inputs
-    inps = torch.matmul(inps, Q.to(dtype=dtype))[:, :, :new_embedding_dimension]
+    inps = [torch.matmul(inp, Q.to(dtype=dtype))[:, :, :new_embedding_dimension] for inp in inps]
 
     logging.info(f"Rotate and slice layers")
     layers = get_layers(model)
@@ -184,7 +182,7 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
 
         # get signal between attention and mlp, rotate and slice
         mlp_ln_inputs, _ = get_signals(layer, inps, attention_mask)
-        _, Q = utils.pca_calc(mlp_ln_inputs.reshape(-1, mlp_ln_inputs.shape[-1]))
+        _, Q = pca_calc(mlp_ln_inputs)
         Q = Q.to(device=DEV, dtype=torch.float64)
 
         layer.attn_shortcut_Q = torch.matmul(layer.attn_shortcut_Q, Q.to(dtype=dtype))
@@ -199,8 +197,8 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
         utils.cleanup_memory()
 
         # now compute the outputs of the layer with slicing between Attention and mlp.
-        _, outputs = get_signals(layer, inps, attention_mask)
-        _, Q = utils.pca_calc(outputs.reshape(-1, outputs.shape[-1]))
+        _, outs = get_signals(layer, inps, attention_mask)
+        _, Q = pca_calc(outs)
 
         layer.mlp_shortcut_Q = torch.matmul(layer.mlp_shortcut_Q, Q.to(dtype=dtype))
 
@@ -213,7 +211,7 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
         rotate_mlp_output(layer, Q)
         slice_mlp_output(layer, dim)
 
-        inps = torch.matmul(outputs, Q.to(dtype=dtype))[:, :, :dim]
+        inps = [torch.matmul(out, Q.to(dtype=dtype))[:, :, :dim] for out in outs]
 
         layer = layer.to('cpu')
 
@@ -241,7 +239,7 @@ def rotate(model, dataloader):
 
     # Get the input of the first layer norm and calculate the Q_1
     inps, attention_mask = get_layer0_inputs(model, dataloader)
-    _, Q_1 = utils.pca_calc(inps.reshape(-1, model.config.hidden_size))
+    _, Q_1 = pca_calc(inps.reshape(-1, model.config.hidden_size))
     Q_1 = Q_1.to(device=DEV)
 
     # Rotate the embeddings.
@@ -252,9 +250,9 @@ def rotate(model, dataloader):
     for i, layer in enumerate(tqdm(layers, unit="layer", desc="Rotating")):
         # Extract the inputs and outputs of the second layernorm input and calculate the Q_3
         mlp_ln_inputs, outs = get_signals(layer, inps, attention_mask)
-        _, Q_3 = utils.pca_calc(mlp_ln_inputs.reshape(-1, mlp_ln_inputs.shape[-1]))
+        _, Q_3 = pca_calc(mlp_ln_inputs.reshape(-1, mlp_ln_inputs.shape[-1]))
         Q_3 = Q_3.to(device=DEV)
-        _, Q_5 = utils.pca_calc(outs.reshape(-1, outs.shape[-1]))
+        _, Q_5 = pca_calc(outs.reshape(-1, outs.shape[-1]))
         Q_5 = Q_5.to(device=DEV)
 
         # Rotate the Q, K and V matrices of the self-attention layer.
@@ -315,3 +313,25 @@ def slice_rotated_model(model, new_embedding_dimension, do_slice_head=False):
     if do_slice_head:
         get_pre_head_layernorm(model).normalized_shape = (new_embedding_dimension,)
         slice_head(model, new_embedding_dimension)
+
+
+@torch.no_grad()
+def pca_calc(X: list[torch.tensor]):
+    # Run GC and cleanup GPU memory
+    cleanup_memory()
+
+    H = None
+    for i, Xi in enumerate(X):
+        Xi = Xi.double().cuda()
+        Hi = torch.sum(Xi.mT @ Xi, dim=0) / len(X)
+        H = Hi if H is None else H + Hi
+
+    damp = 0.01 * torch.mean(torch.diag(H))
+    diag = torch.arange(H.shape[-1]).cuda()
+    H[diag, diag] = H[diag, diag] + damp
+    X_eig = torch.linalg.eigh(H)
+    del H
+    index = torch.argsort(X_eig[0], descending=True)
+    eig_val = X_eig[0][index]
+    eigen_vec = X_eig[1][:, index]
+    return eig_val, eigen_vec
