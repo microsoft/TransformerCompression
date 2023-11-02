@@ -1,11 +1,11 @@
-import gc
 import logging
-import math
 import time
 
 import torch
 from accelerate import dispatch_model, infer_auto_device_map
 from accelerate.utils import get_balanced_memory
+
+from . import utils
 
 
 @torch.no_grad()
@@ -67,6 +67,5 @@ def distribute_model(model):
         model, device_map=device_map, offload_buffers=True, offload_dir="offload", state_dict=model.state_dict()
     )
 
-    # gc.collect and empty cache are necessary to clean up GPU memory
-    gc.collect()
-    torch.cuda.empty_cache()
+    # Run GC and cleanup GPU memory
+    utils.cleanup_memory()

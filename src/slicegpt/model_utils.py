@@ -4,6 +4,7 @@
 import torch
 import transformers
 
+from . import utils
 from .modules import CompressedOPTDecoderLayer
 
 OPT_MODEL = transformers.models.opt.modeling_opt.OPTForCausalLM
@@ -140,7 +141,8 @@ def get_layer0_inputs(model, batch):
     for W in get_embeddings(model):
         W.weight = torch.nn.Parameter(W.weight.to('cpu'))
 
-    torch.cuda.empty_cache()
+    # Run GC and cleanup GPU memory
+    utils.cleanup_memory()
 
     return inps, attention_mask
 
@@ -154,12 +156,12 @@ def get_signals(layer, inputs, attention_mask):
     layer = layer.to(DEV)
 
     def hook_fn(_, inp, _output):
-        if type(inp) == tuple:
+        if isinstance(inp, tuple):
             inp = inp[0]
         mlp_ln_inputs.append(inp.cpu())
 
     hook = get_second_layernorm(layer).register_forward_hook(hook_fn)
-    outs = [layer(input.unsqueeze(0), attention_mask=attention_mask)[0] for input in inputs]
+    outs = [layer(inp.unsqueeze(0), attention_mask=attention_mask)[0] for inp in inputs]
     hook.remove()
 
     return torch.cat(mlp_ln_inputs), torch.cat(outs)
