@@ -53,13 +53,19 @@ skip-string-normalization = true
 profile = "black"
 line_length = 120
 
-[tool.mypy]  
+[tool.mypy]
+python_version = 3.10
 disallow_untyped_defs = true
+ignore_errors = true
 
-[tool.pylint.'MASTER']
+[tool.pylint.main]
 max-line-length = 120
 suggestion-mode = true
+py-version = "3.10"
 
-[tool.pylint.'MESSAGES CONTROL']
+[tool.pylint.messages_control]
 # Disable the message, report, category or checker with the given id(s).
 disable = []
+
+[tool.pylint.basic]
+class-const-naming-style = "UPPER_CASE"

@@ -4,8 +4,8 @@
 import torch
 import transformers
 
-from . import utils
-from .modules import CompressedOPTDecoderLayer
+from slicegpt import utils
+from slicegpt.modules import CompressedOPTDecoderLayer
 
 OPT_MODEL = transformers.models.opt.modeling_opt.OPTForCausalLM
 OPT_LAYER = CompressedOPTDecoderLayer
@@ -19,87 +19,87 @@ DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 def get_embeddings(model):
     if isinstance(model, OPT_MODEL):
         return [model.model.decoder.embed_tokens, model.model.decoder.embed_positions]
-    elif isinstance(model, LLAMA_MODEL):
+    if isinstance(model, LLAMA_MODEL):
         return [model.model.embed_tokens]
-    else:
-        raise NotImplementedError
+
+    raise NotImplementedError
 
 
 def get_layers(model):
     if isinstance(model, OPT_MODEL):
         return model.model.decoder.layers
-    elif isinstance(model, LLAMA_MODEL):
+    if isinstance(model, LLAMA_MODEL):
         return model.model.layers
-    else:
-        raise NotImplementedError
+
+    raise NotImplementedError
 
 
 def get_first_layernorm(layer):
     if isinstance(layer, OPT_LAYER):
         return layer.self_attn_layer_norm
-    elif isinstance(layer, LLAMA_LAYER):
+    if isinstance(layer, LLAMA_LAYER):
         return layer.input_layernorm
-    else:
-        raise NotImplementedError
+
+    raise NotImplementedError
 
 
 def get_second_layernorm(layer):
     if isinstance(layer, OPT_LAYER):
         return layer.final_layer_norm
-    elif isinstance(layer, LLAMA_LAYER):
+    if isinstance(layer, LLAMA_LAYER):
         return layer.post_attention_layernorm
-    else:
-        raise NotImplementedError
+
+    raise NotImplementedError
 
 
 def get_pre_head_layernorm(model):
     if isinstance(model, OPT_MODEL):
         return model.model.decoder.final_layer_norm
-    elif isinstance(model, LLAMA_MODEL):
+    if isinstance(model, LLAMA_MODEL):
         return model.model.norm
-    else:
-        raise NotImplementedError
+
+    raise NotImplementedError
 
 
 def get_attention_inputs(layer):
     if isinstance(layer, (OPT_LAYER, LLAMA_LAYER)):
         return [layer.self_attn.q_proj, layer.self_attn.k_proj, layer.self_attn.v_proj]
-    else:
-        raise NotImplementedError
+
+    raise NotImplementedError
 
 
 def get_attention_output(layer):
     if isinstance(layer, OPT_LAYER):
         return layer.self_attn.out_proj
-    elif isinstance(layer, LLAMA_LAYER):
+    if isinstance(layer, LLAMA_LAYER):
         return layer.self_attn.o_proj
-    else:
-        raise NotImplementedError
+
+    raise NotImplementedError
 
 
 def get_mlp_inputs(layer):
     if isinstance(layer, OPT_LAYER):
         return [layer.fc1]
-    elif isinstance(layer, LLAMA_LAYER):
+    if isinstance(layer, LLAMA_LAYER):
         return [layer.mlp.gate_proj, layer.mlp.up_proj]
-    else:
-        raise NotImplementedError
+
+    raise NotImplementedError
 
 
 def get_mlp_output(layer):
     if isinstance(layer, OPT_LAYER):
         return layer.fc2
-    elif isinstance(layer, LLAMA_LAYER):
+    if isinstance(layer, LLAMA_LAYER):
         return layer.mlp.down_proj
-    else:
-        raise NotImplementedError
+
+    raise NotImplementedError
 
 
 def get_lm_head(model):
     if isinstance(model, (OPT_MODEL, LLAMA_MODEL)):
         return model.lm_head
-    else:
-        raise NotImplementedError
+
+    raise NotImplementedError
 
 
 def get_layer0_inputs(model, batch):

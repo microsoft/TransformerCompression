@@ -225,7 +225,7 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
     if do_slice_head:
         slice_head(model, new_embedding_dimension)
 
-    logging.info(f"Rotate and slice layers done")
+    logging.info("Rotate and slice layers done")
 
 
 @torch.no_grad()
@@ -249,7 +249,7 @@ def rotate(model, dataloader):
 
     # Rotate the rest of the model.
     logging.info("Rotate layers")
-    for i, layer in enumerate(tqdm(layers, unit="layer", desc="Rotating")):
+    for _, layer in enumerate(tqdm(layers, unit="layer", desc="Rotating")):
         # Extract the inputs and outputs of the second layernorm input and calculate the Q_3
         mlp_ln_inputs, outs = get_signals(layer, inps, attention_mask)
         _, Q_3 = utils.pca_calc(mlp_ln_inputs.reshape(-1, mlp_ln_inputs.shape[-1]))

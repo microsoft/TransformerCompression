@@ -54,7 +54,7 @@ def get_model(model_path, uninitialized=False, dtype=torch.float16, token=None):
     model.eval()  # This switches off dropout.
     model.config.use_cache = False
 
-    logging.info(f"Loading model done")
+    logging.info("Loading model done")
 
     return model, tokenizer
 
