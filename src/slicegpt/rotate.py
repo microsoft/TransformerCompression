@@ -150,17 +150,7 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
     model.eval()
     dtype = next(iter(model.parameters())).dtype
 
-    inps = []
-
-    # Process the first batch separately to get the attention mask
-    first_batch = next(iter(dataloader))
-    inp, attention_mask = get_layer0_inputs(model, first_batch)
-    inps.append(inp)
-
-    # Process the remaining batches
-    for batch in dataloader:
-        inp, _ = get_layer0_inputs(model, batch)
-        inps.append(inp)
+    inps, attn_masks = zip(*[get_layer0_inputs(model, batch) for batch in dataloader])
 
     _, Q = pca_calc(inps)
     Q = Q.to(device=DEV)
@@ -181,7 +171,7 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
         slice_attention_inputs(layer, new_embedding_dimension)
 
         # get signal between attention and mlp, rotate and slice
-        mlp_ln_inputs, _ = get_signals(layer, inps, attention_mask)
+        mlp_ln_inputs, _ = get_signals(layer, inps, attn_masks)
         _, Q = pca_calc(mlp_ln_inputs)
         Q = Q.to(device=DEV, dtype=torch.float64)
 
@@ -197,7 +187,7 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
         utils.cleanup_memory()
 
         # now compute the outputs of the layer with slicing between Attention and mlp.
-        _, outs = get_signals(layer, inps, attention_mask)
+        _, outs = get_signals(layer, inps, attn_masks)
         _, Q = pca_calc(outs)
 
         layer.mlp_shortcut_Q = torch.matmul(layer.mlp_shortcut_Q, Q.to(dtype=dtype))
@@ -238,7 +228,7 @@ def rotate(model, dataloader):
     layers = get_layers(model)
 
     # Get the input of the first layer norm and calculate the Q_1
-    inps, attention_mask = get_layer0_inputs(model, dataloader)
+    inps, attn_masks = get_layer0_inputs(model, dataloader)
     _, Q_1 = pca_calc(inps.reshape(-1, model.config.hidden_size))
     Q_1 = Q_1.to(device=DEV)
 
@@ -249,7 +239,7 @@ def rotate(model, dataloader):
     logging.info("Rotate layers")
     for i, layer in enumerate(tqdm(layers, unit="layer", desc="Rotating")):
         # Extract the inputs and outputs of the second layernorm input and calculate the Q_3
-        mlp_ln_inputs, outs = get_signals(layer, inps, attention_mask)
+        mlp_ln_inputs, outs = get_signals(layer, inps, attn_masks)
         _, Q_3 = pca_calc(mlp_ln_inputs.reshape(-1, mlp_ln_inputs.shape[-1]))
         Q_3 = Q_3.to(device=DEV)
         _, Q_5 = pca_calc(outs.reshape(-1, outs.shape[-1]))
