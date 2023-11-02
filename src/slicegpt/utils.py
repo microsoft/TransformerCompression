@@ -9,6 +9,7 @@ import pathlib
 
 import torch
 
+
 def configure_logging(
     log_to_console: bool = True,
     log_to_file: bool = True,

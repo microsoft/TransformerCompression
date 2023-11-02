@@ -5,7 +5,7 @@ import torch
 import transformers
 
 from . import utils
-from .modules import CompressedOPTDecoderLayer, CompressedLlamaDecoderLayer
+from .modules import CompressedLlamaDecoderLayer, CompressedOPTDecoderLayer
 
 OPT_MODEL = transformers.models.opt.modeling_opt.OPTForCausalLM
 OPT_LAYER = CompressedOPTDecoderLayer
