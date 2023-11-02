@@ -1,0 +1,21 @@
+name: PR.$(date:yyyyMMdd)$(rev:.r)
+
+trigger: none
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+- checkout: self
+  clean: true
+  persistCredentials: true
+
+- task: UsePythonVersion@0
+  inputs:
+    versionSpec: '3.10'
+    addToPath: true
+  displayName: Use python 3.10.x
+
+- bash: |
+    ./build_and_test.sh
+  displayName: Run tests and checks
