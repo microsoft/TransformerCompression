@@ -165,7 +165,7 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
 
     logging.info(f"Rotate and slice layers")
     layers = get_layers(model)
-    for i, layer in enumerate(tqdm(layers, unit="layer", desc="Rotating and slicing")):
+    for layer in tqdm(layers, unit="layer", desc="Rotating and slicing"):
         layer.attn_shortcut_Q = Q.T.clone().to(dtype=dtype)
 
         # rotate and slice the attention inputs to match previous layer
@@ -222,6 +222,7 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
 def rotate(model, dataloader):
     """
     Rotate a model.
+    TODO: Make this gpu memory efficient.
     """
     model.eval()
     dtype = next(iter(model.parameters())).dtype  # Get the dtype of the model.
@@ -276,6 +277,9 @@ def rotate(model, dataloader):
 
 
 def slice_rotated_model(model, new_embedding_dimension, do_slice_head=False):
+    """
+    TODO: Make this gpu memory efficient.
+    """
     model.eval()
 
     # slice embeddings
