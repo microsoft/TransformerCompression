@@ -30,7 +30,7 @@ class SlicedLM(BaseLM):
             model, tokenizer = hf_utils.load_sliced_model(args.model, args.load_dir, args.sparsity, DEV)
         else:
             model, tokenizer = hf_utils.get_model(args.model, token=args.hf_token)
-            self.apply_slicegpt(model, tokenizer, args.sparsity, args.cal_nsamples)
+            self.apply_slicegpt(model, tokenizer, args)
 
         self.model = model
         self.model.config.sparsity = args.sparsity
@@ -40,16 +40,16 @@ class SlicedLM(BaseLM):
         self.batch_size_per_gpu = args.batch_size
         self.seqlen = self.model.config.max_position_embeddings
 
-    def apply_slicegpt(self, model, tokenizer, sparsity, cal_nsamples=128, eval_dataset='wikitext2', seed=42):
+    def apply_slicegpt(self, model, tokenizer, args):
         layernorm_fusion.replace_modules(model, model.config)
         model = model.cpu()
         layernorm_fusion.fuse_modules(model)
 
         dataloader, _ = data_utils.get_loaders(
-            dataset_name=eval_dataset,
-            nsamples=cal_nsamples,
+            nsamples=args.cal_nsamples,
+            batch_size=args.batch_size,
+            seqlen=model.config.max_position_embeddings,
             tokenizer=tokenizer,
-            seed=seed,
         )
 
         new_embedding_dimension = int((1 - sparsity) * model.config.hidden_size)
