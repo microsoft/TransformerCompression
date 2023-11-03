@@ -47,6 +47,7 @@ class SlicedLM(BaseLM):
         layernorm_fusion.fuse_modules(model)
 
         dataloader, _ = data_utils.get_loaders(
+            dataset_name=args.cal_dataset,
             nsamples=args.cal_nsamples,
             batch_size=args.batch_size,
             seqlen=model.config.max_position_embeddings,
@@ -112,7 +113,33 @@ class SlicedLM(BaseLM):
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", required=True)
+    parser.add_argument(
+        "--model",
+        type=str,
+        help="OPT model to load; pass `facebook/opt-125m`.",
+        choices=[
+            # OPT models
+            "facebook/opt-125m",
+            "facebook/opt-1.3b",
+            "facebook/opt-2.7b",
+            "facebook/opt-6.7b",
+            "facebook/opt-13b",
+            "facebook/opt-30b",
+            "facebook/opt-66b",
+            # LLAMA 2 Models
+            'meta-llama/Llama-2-7b-hf',
+            'meta-llama/Llama-2-13b-hf',
+            'meta-llama/Llama-2-70b-hf',
+        ],
+        default="facebook/opt-125m",
+    )
+    parser.add_argument(
+        "--cal_dataset",
+        type=str,
+        help="Dataset to calibrate on.",
+        choices=["wikitext2", "ptb", "c4"],
+        default="wikitext2",
+    )
     parser.add_argument(
         "--cal_nsamples",
         type=int,
