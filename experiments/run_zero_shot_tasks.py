@@ -30,7 +30,7 @@ class SlicedLM(BaseLM):
             model, tokenizer = hf_utils.load_sliced_model(args.model, args.load_dir, args.sparsity, DEV)
         else:
             model, tokenizer = hf_utils.get_model(args.model, token=args.hf_token)
-            self.apply_slicegpt(model, tokenizer, args.sparsity)
+            self.apply_slicegpt(model, tokenizer, args.sparsity, args.cal_nsamples)
 
         self.model = model
         self.model.config.sparsity = args.sparsity
@@ -40,13 +40,14 @@ class SlicedLM(BaseLM):
         self.batch_size_per_gpu = args.batch_size
         self.seqlen = self.model.config.max_position_embeddings
 
-    def apply_slicegpt(self, model, tokenizer, sparsity, eval_dataset='wikitext2', seed=42):
+    def apply_slicegpt(self, model, tokenizer, sparsity, cal_nsamples=128, eval_dataset='wikitext2', seed=42):
         layernorm_fusion.replace_modules(model, model.config)
         model = model.cpu()
         layernorm_fusion.fuse_modules(model)
 
         dataloader, _ = data_utils.get_loaders(
             dataset_name=eval_dataset,
+            nsamples=cal_nsamples,
             tokenizer=tokenizer,
             seed=seed,
         )
@@ -111,6 +112,12 @@ class SlicedLM(BaseLM):
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", required=True)
+    parser.add_argument(
+        "--cal_nsamples",
+        type=int,
+        help="Number of samples of the calibration data to load.",
+        default=128,
+    )
     parser.add_argument("--tasks", default=None, choices=lm_eval_utils.MultiChoice(tasks.ALL_TASKS))
     parser.add_argument("--no_cache", action="store_true")
     parser.add_argument(
