@@ -161,7 +161,10 @@ def get_signals(layer, inputs: list[torch.tensor], attention_masks: list[torch.t
         mlp_ln_inputs.append(inp.cpu().reshape(-1, seqlen, inp.shape[-1]))
 
     hook = get_second_layernorm(layer).register_forward_hook(hook_fn)
-    outs = [layer(inp.to(device=DEV), attention_mask=attn_mask.to(device=DEV))[0].cpu() for inp, attn_mask in zip(inputs, attention_masks)]
+    outs = [
+        layer(inp.to(device=DEV), attention_mask=attn_mask.to(device=DEV))[0].cpu()
+        for inp, attn_mask in zip(inputs, attention_masks)
+    ]
     hook.remove()
 
     return mlp_ln_inputs, outs

@@ -149,7 +149,9 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
     model.eval()
     dtype = next(iter(model.parameters())).dtype
 
-    inps, attn_masks = zip(*[(inp.cpu(), attn_mask.cpu()) for inp, attn_mask in (get_layer0_inputs(model, batch) for batch in dataloader)])
+    inps, attn_masks = zip(
+        *[(inp.cpu(), attn_mask.cpu()) for inp, attn_mask in (get_layer0_inputs(model, batch) for batch in dataloader)]
+    )
 
     _, Q = pca_calc(inps)
     Q = Q.to(device=DEV)
