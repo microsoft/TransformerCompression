@@ -150,7 +150,7 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
     model.eval()
     dtype = next(iter(model.parameters())).dtype
 
-    inps, attn_masks = zip(*[get_layer0_inputs(model, batch) for batch in dataloader])
+    inps, attn_masks = zip(*[(inp.cpu(), attn_mask.cpu()) for inp, attn_mask in (get_layer0_inputs(model, batch) for batch in dataloader)])
 
     _, Q = pca_calc(inps)
     Q = Q.to(device=DEV)
@@ -159,7 +159,7 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
     slice_embeddings(model, new_embedding_dimension)
 
     # rotate and slice inputs
-    inps = [torch.matmul(inp, Q.to(dtype=dtype))[:, :, :new_embedding_dimension] for inp in inps]
+    inps = [torch.matmul(inp.to(device=DEV), Q.to(dtype=dtype))[:, :, :new_embedding_dimension].cpu() for inp in inps]
 
     logging.info(f"Rotate and slice layers")
     layers = get_layers(model)
@@ -201,7 +201,7 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
         rotate_mlp_output(layer, Q)
         slice_mlp_output(layer, dim)
 
-        inps = [torch.matmul(out, Q.to(dtype=dtype))[:, :, :dim] for out in outs]
+        inps = [torch.matmul(out.to(device=DEV), Q.to(dtype=dtype))[:, :, :dim].cpu() for out in outs]
 
         layer = layer.to('cpu')
 
