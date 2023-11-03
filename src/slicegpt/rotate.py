@@ -221,6 +221,7 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
 def rotate(model, dataloader):
     """
     Rotate a model.
+    TODO: Make this gpu memory efficient.
     """
     model.eval()
     dtype = next(iter(model.parameters())).dtype  # Get the dtype of the model.
@@ -275,6 +276,9 @@ def rotate(model, dataloader):
 
 
 def slice_rotated_model(model, new_embedding_dimension, do_slice_head=False):
+    """
+    TODO: Make this gpu memory efficient.
+    """
     model.eval()
 
     # slice embeddings
