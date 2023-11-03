@@ -53,7 +53,7 @@ class SlicedLM(BaseLM):
             tokenizer=tokenizer,
         )
 
-        new_embedding_dimension = int((1 - sparsity) * model.config.hidden_size)
+        new_embedding_dimension = int((1 - args.sparsity) * model.config.hidden_size)
         logging.info(f"New embedding dimension: {new_embedding_dimension} (sparsity {sparsity})")
 
         rotate.rotate_and_slice(model, dataloader, new_embedding_dimension)
