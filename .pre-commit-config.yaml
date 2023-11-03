@@ -19,6 +19,8 @@ repos:
     name: mypy
     entry: bash -c 'mypy $@ || true'  # Show suggestions but don't fail
     language: system
+    pass_filenames: false
+    types: [python]
     args: ["--config-file=pyproject.toml", "."]
 
 - repo: local
@@ -28,4 +30,5 @@ repos:
     name: pylint
     entry: bash -c 'pylint $@ || true' # Show suggestions but don't fail
     language: system
+    types: [python]
     args: [".", "--rcfile=./pyproject.toml"]

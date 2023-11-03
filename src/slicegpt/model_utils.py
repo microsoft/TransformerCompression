@@ -4,8 +4,8 @@
 import torch
 import transformers
 
-from slicegpt import utils
-from slicegpt.modules import CompressedOPTDecoderLayer
+from . import utils
+from .modules import CompressedOPTDecoderLayer
 
 OPT_MODEL = transformers.models.opt.modeling_opt.OPTForCausalLM
 OPT_LAYER = CompressedOPTDecoderLayer
