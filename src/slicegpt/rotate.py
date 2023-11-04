@@ -6,10 +6,6 @@ import logging
 import torch
 from tqdm import tqdm
 
-from . import utils
-
-DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 from .model_utils import (
     get_attention_inputs,
     get_attention_output,
@@ -24,6 +20,9 @@ from .model_utils import (
     get_second_layernorm,
     get_signals,
 )
+from .utils import cleanup_memory, pca_calc
+
+DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def rotate_attention_inputs(layer, Q):
@@ -119,7 +118,7 @@ def rotate_embeddings(model, Q):
         W.weight.data = torch.matmul(W_, Q).to(device="cpu", dtype=dtype)
 
     # Run GC and cleanup GPU memory
-    utils.cleanup_memory()
+    cleanup_memory()
 
 
 def slice_embeddings(model, new_embedding_dimension):
@@ -164,7 +163,7 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
 
     inps = torch.cat(inps)
 
-    _, Q = utils.pca_calc(inps.reshape(-1, model.config.hidden_size))
+    _, Q = pca_calc(inps.reshape(-1, model.config.hidden_size))
     Q = Q.to(device=DEV)
 
     rotate_embeddings(model, Q)
@@ -173,9 +172,9 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
     # rotate and slice inputs
     inps = torch.matmul(inps, Q.to(dtype=dtype))[:, :, :new_embedding_dimension]
 
-    logging.info(f"Rotate and slice layers")
+    logging.info("Rotate and slice layers")
     layers = get_layers(model)
-    for i, layer in enumerate(tqdm(layers, unit="layer", desc="Rotating and slicing")):
+    for layer in tqdm(layers, unit="layer", desc="Rotating and slicing"):
         layer.attn_shortcut_Q = Q.T.clone().to(dtype=dtype)
 
         # rotate and slice the attention inputs to match previous layer
@@ -184,7 +183,7 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
 
         # get signal between attention and mlp, rotate and slice
         mlp_ln_inputs, _ = get_signals(layer, inps, attention_mask)
-        _, Q = utils.pca_calc(mlp_ln_inputs.reshape(-1, mlp_ln_inputs.shape[-1]))
+        _, Q = pca_calc(mlp_ln_inputs.reshape(-1, mlp_ln_inputs.shape[-1]))
         Q = Q.to(device=DEV, dtype=torch.float64)
 
         layer.attn_shortcut_Q = torch.matmul(layer.attn_shortcut_Q, Q.to(dtype=dtype))
@@ -196,11 +195,11 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
         slice_mlp_input(layer, new_embedding_dimension)
 
         # Run GC and cleanup GPU memory
-        utils.cleanup_memory()
+        cleanup_memory()
 
         # now compute the outputs of the layer with slicing between Attention and mlp.
         _, outputs = get_signals(layer, inps, attention_mask)
-        _, Q = utils.pca_calc(outputs.reshape(-1, outputs.shape[-1]))
+        _, Q = pca_calc(outputs.reshape(-1, outputs.shape[-1]))
 
         layer.mlp_shortcut_Q = torch.matmul(layer.mlp_shortcut_Q, Q.to(dtype=dtype))
 
@@ -218,14 +217,14 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
         layer = layer.to('cpu')
 
         # Run GC and cleanup GPU memory
-        utils.cleanup_memory()
+        cleanup_memory()
 
     # rotate and slice head
     rotate_head(model, Q)
     if do_slice_head:
         slice_head(model, new_embedding_dimension)
 
-    logging.info(f"Rotate and slice layers done")
+    logging.info("Rotate and slice layers done")
 
 
 @torch.no_grad()
@@ -241,7 +240,7 @@ def rotate(model, dataloader):
 
     # Get the input of the first layer norm and calculate the Q_1
     inps, attention_mask = get_layer0_inputs(model, dataloader)
-    _, Q_1 = utils.pca_calc(inps.reshape(-1, model.config.hidden_size))
+    _, Q_1 = pca_calc(inps.reshape(-1, model.config.hidden_size))
     Q_1 = Q_1.to(device=DEV)
 
     # Rotate the embeddings.
@@ -249,12 +248,12 @@ def rotate(model, dataloader):
 
     # Rotate the rest of the model.
     logging.info("Rotate layers")
-    for i, layer in enumerate(tqdm(layers, unit="layer", desc="Rotating")):
+    for layer in tqdm(layers, unit="layer", desc="Rotating"):
         # Extract the inputs and outputs of the second layernorm input and calculate the Q_3
         mlp_ln_inputs, outs = get_signals(layer, inps, attention_mask)
-        _, Q_3 = utils.pca_calc(mlp_ln_inputs.reshape(-1, mlp_ln_inputs.shape[-1]))
+        _, Q_3 = pca_calc(mlp_ln_inputs.reshape(-1, mlp_ln_inputs.shape[-1]))
         Q_3 = Q_3.to(device=DEV)
-        _, Q_5 = utils.pca_calc(outs.reshape(-1, outs.shape[-1]))
+        _, Q_5 = pca_calc(outs.reshape(-1, outs.shape[-1]))
         Q_5 = Q_5.to(device=DEV)
 
         # Rotate the Q, K and V matrices of the self-attention layer.
@@ -276,13 +275,13 @@ def rotate(model, dataloader):
         rotate_mlp_output(layer, Q_5)
 
         # Run GC and cleanup GPU memory
-        utils.cleanup_memory()
+        cleanup_memory()
 
         inps = outs  # The inputs to the next layer are the outputs from this one!
         Q_1 = Q_5  # first rotation in the next layer is the last one in this...
 
     rotate_head(model, Q_5)
-    logging.info(f"Rotate layers done")
+    logging.info("Rotate layers done")
 
 
 def slice_rotated_model(model, new_embedding_dimension, do_slice_head=False):

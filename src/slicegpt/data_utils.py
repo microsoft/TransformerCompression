@@ -66,5 +66,5 @@ def get_loaders(dataset_name, tokenizer, nsamples=128, seed=0, seqlen=2048, batc
     trainloader = DataLoader(trainloader, batch_size=batch_size)
     testloader = DataLoader(testloader, batch_size=batch_size)
 
-    logging.info(f"Loading dataset done")
+    logging.info("Loading dataset done")
     return trainloader, testloader
