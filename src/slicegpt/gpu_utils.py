@@ -40,8 +40,8 @@ def evaluate_ppl(model, testloader, device):
 
     elapsed = time.time() - start_time
     logging.info(
-        "Time spent on evaluation: "
-        + time.strftime("%H:%M:%S.{}".format(str(elapsed % 1)[2:])[:13], time.gmtime(elapsed))
+        "Time spent on evaluation: %s",
+        time.strftime("%H:%M:%S.{}".format(str(elapsed % 1)[2:])[:13], time.gmtime(elapsed)),
     )
 
     return ppl.item()
