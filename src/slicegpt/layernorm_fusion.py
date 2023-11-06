@@ -101,9 +101,14 @@ def fuse_modules(model):
         fuse_ln_linear(get_first_layernorm(layer), get_attention_inputs(layer))
         fuse_ln_linear(get_second_layernorm(layer), get_mlp_inputs(layer))
 
-        # Then we bake the mean substitution into the previous linear layers
-        bake_mean_into_linear(get_attention_output(layer))
-        bake_mean_into_linear(get_mlp_output(layer))
+        if isinstance(get_first_layernorm(layer), torch.nn.LayerNorm):
+            # Then we bake the mean substitution into the previous linear layers
+            bake_mean_into_linear(get_attention_output(layer))
+            bake_mean_into_linear(get_mlp_output(layer))
+        elif isinstance(get_first_layernorm(layer), LlamaRMSNorm):
+            pass
+        else:
+            raise NotImplementedError
 
     fuse_ln_linear(get_pre_head_layernorm(model), [get_lm_head(model)])
 
