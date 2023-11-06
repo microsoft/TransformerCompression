@@ -20,7 +20,7 @@ from .model_utils import (
     get_second_layernorm,
     get_signals,
 )
-from .utils import cleanup_memory, pca_calc
+from .utils import cleanup_memory
 
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -313,7 +313,7 @@ def slice_rotated_model(model, new_embedding_dimension, do_slice_head=False):
 @torch.no_grad()
 def pca_calc(X: list[torch.tensor]):
     # Run GC and cleanup GPU memory
-    utils.cleanup_memory()
+    cleanup_memory()
 
     H = None
     for Xi in X:
