@@ -6,10 +6,6 @@ import logging
 import torch
 from tqdm import tqdm
 
-from . import utils
-
-DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 from .model_utils import (
     get_attention_inputs,
     get_attention_output,
@@ -24,6 +20,9 @@ from .model_utils import (
     get_second_layernorm,
     get_signals,
 )
+from .utils import cleanup_memory
+
+DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def rotate_attention_inputs(layer, Q):
@@ -119,7 +118,7 @@ def rotate_embeddings(model, Q):
         W.weight.data = torch.matmul(W_, Q).to(device="cpu", dtype=dtype)
 
     # Run GC and cleanup GPU memory
-    utils.cleanup_memory()
+    cleanup_memory()
 
 
 def slice_embeddings(model, new_embedding_dimension):
@@ -163,7 +162,7 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
     # rotate and slice inputs
     inps = [torch.matmul(inp.to(device=DEV), Q.to(dtype=dtype))[:, :, :new_embedding_dimension].cpu() for inp in inps]
 
-    logging.info(f"Rotate and slice layers")
+    logging.info("Rotate and slice layers")
     layers = get_layers(model)
     for layer in tqdm(layers, unit="layer", desc="Rotating and slicing"):
         layer.attn_shortcut_Q = Q.T.clone().to(dtype=dtype)
@@ -186,7 +185,7 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
         slice_mlp_input(layer, new_embedding_dimension)
 
         # Run GC and cleanup GPU memory
-        utils.cleanup_memory()
+        cleanup_memory()
 
         # now compute the outputs of the layer with slicing between Attention and mlp.
         _, outs = get_signals(layer, inps, attn_masks)
@@ -208,14 +207,14 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
         layer = layer.to('cpu')
 
         # Run GC and cleanup GPU memory
-        utils.cleanup_memory()
+        cleanup_memory()
 
     # rotate and slice head
     rotate_head(model, Q)
     if do_slice_head:
         slice_head(model, new_embedding_dimension)
 
-    logging.info(f"Rotate and slice layers done")
+    logging.info("Rotate and slice layers done")
 
 
 @torch.no_grad()
@@ -267,13 +266,13 @@ def rotate(model, dataloader):
         rotate_mlp_output(layer, Q_5)
 
         # Run GC and cleanup GPU memory
-        utils.cleanup_memory()
+        cleanup_memory()
 
         inps = outs  # The inputs to the next layer are the outputs from this one!
         Q_1 = Q_5  # first rotation in the next layer is the last one in this...
 
     rotate_head(model, Q_5)
-    logging.info(f"Rotate layers done")
+    logging.info("Rotate layers done")
 
 
 def slice_rotated_model(model, new_embedding_dimension, do_slice_head=False):
@@ -314,7 +313,7 @@ def slice_rotated_model(model, new_embedding_dimension, do_slice_head=False):
 @torch.no_grad()
 def pca_calc(X: list[torch.tensor]):
     # Run GC and cleanup GPU memory
-    utils.cleanup_memory()
+    cleanup_memory()
 
     H = None
     for Xi in X:

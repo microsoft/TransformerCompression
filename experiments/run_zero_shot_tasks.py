@@ -2,7 +2,6 @@
 # Licensed under the MIT license.
 
 import argparse
-import gc
 import json
 import logging
 import os
