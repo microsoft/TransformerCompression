@@ -312,14 +312,17 @@ def slice_rotated_model(model, new_embedding_dimension, do_slice_head=False):
 
 @torch.no_grad()
 def pca_calc(X: list[torch.tensor]):
+    """
+    Run PCA on a list of batched data. Returns the eigenvalues and eigenvectors.
+    """
     # Run GC and cleanup GPU memory
     cleanup_memory()
 
     H = None
-    for Xi in X:
-        Xi = Xi.double().to(device=DEV)
-        Hi = torch.sum(Xi.mT @ Xi, dim=0)
-        H = Hi if H is None else H + Hi
+    for X_batch in X:
+        X_batch = X_batch.double().to(device=DEV)
+        H_batch = torch.sum(X_batch.mT @ X_batch, dim=0)  # sum over the batch dimension.
+        H = H_batch if H is None else H + H_batch
 
     damp = 0.01 * torch.mean(torch.diag(H))
     diag = torch.arange(H.shape[-1]).to(device=DEV)
