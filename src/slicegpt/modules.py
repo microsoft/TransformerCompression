@@ -31,6 +31,9 @@ class CompressedOPTDecoderLayer(OPTDecoderLayer):
         super().__init__(config)
         self.register_buffer("mlp_shortcut_Q", None)
         self.register_buffer("attn_shortcut_Q", None)
+        self.register_buffer("mlp_shortcut_bias", None)
+        self.register_buffer("attn_shortcut_bias", None)
+        
 
     def forward(
         self,
@@ -78,6 +81,8 @@ class CompressedOPTDecoderLayer(OPTDecoderLayer):
             hidden_states = rotated_shortcut + hidden_states
         else:
             hidden_states = residual + hidden_states
+        if self.attn_shortcut_bias is not None:
+            hidden_states = hidden_states + self.attn_shortcut_bias
 
         # 350m applies layer norm AFTER attention
         if not self.do_layer_norm_before:
@@ -105,6 +110,8 @@ class CompressedOPTDecoderLayer(OPTDecoderLayer):
             hidden_states = rotated_shortcut.view(hidden_states_shape) + hidden_states.view(hidden_states_shape)
         else:
             hidden_states = (residual + hidden_states).view(hidden_states_shape)
+        if self.mlp_shortcut_bias is not None:
+            hidden_states = hidden_states + self.mlp_shortcut_bias
 
         # 350m applies layer norm AFTER attention
         if not self.do_layer_norm_before:
