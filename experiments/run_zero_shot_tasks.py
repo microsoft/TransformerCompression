@@ -30,7 +30,7 @@ class SlicedLM(BaseLM):
             model, tokenizer = hf_utils.load_sliced_model(args.model, args.load_dir, args.sparsity, DEV)
         else:
             model, tokenizer = hf_utils.get_model(args.model, token=args.hf_token)
-            self.apply_slicegpt(model, tokenizer, args.sparsity)
+            self.apply_slicegpt(model, tokenizer, args)
 
         self.model = model
         self.model.config.sparsity = args.sparsity
@@ -40,19 +40,21 @@ class SlicedLM(BaseLM):
         self.batch_size_per_gpu = args.batch_size
         self.seqlen = self.model.config.max_position_embeddings
 
-    def apply_slicegpt(self, model, tokenizer, sparsity, eval_dataset='wikitext2', seed=42):
+    def apply_slicegpt(self, model, tokenizer, args):
         layernorm_fusion.replace_modules(model, model.config)
         model = model.cpu()
         layernorm_fusion.fuse_modules(model)
 
         dataloader, _ = data_utils.get_loaders(
-            dataset_name=eval_dataset,
+            dataset_name=args.cal_dataset,
+            nsamples=args.cal_nsamples,
+            batch_size=args.batch_size,
+            seqlen=model.config.max_position_embeddings,
             tokenizer=tokenizer,
-            seed=seed,
         )
 
-        new_embedding_dimension = int((1 - sparsity) * model.config.hidden_size)
-        logging.info(f"New embedding dimension: {new_embedding_dimension} (sparsity {sparsity})")
+        new_embedding_dimension = int((1 - args.sparsity) * model.config.hidden_size)
+        logging.info(f"New embedding dimension: {new_embedding_dimension} (sparsity {args.sparsity})")
 
         rotate.rotate_and_slice(model, dataloader, new_embedding_dimension)
 
@@ -110,7 +112,39 @@ class SlicedLM(BaseLM):
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", required=True)
+    parser.add_argument(
+        "--model",
+        type=str,
+        help="OPT model to load; pass `facebook/opt-125m`.",
+        choices=[
+            # OPT models
+            "facebook/opt-125m",
+            "facebook/opt-1.3b",
+            "facebook/opt-2.7b",
+            "facebook/opt-6.7b",
+            "facebook/opt-13b",
+            "facebook/opt-30b",
+            "facebook/opt-66b",
+            # LLAMA 2 Models
+            'meta-llama/Llama-2-7b-hf',
+            'meta-llama/Llama-2-13b-hf',
+            'meta-llama/Llama-2-70b-hf',
+        ],
+        default="facebook/opt-125m",
+    )
+    parser.add_argument(
+        "--cal_dataset",
+        type=str,
+        help="Dataset to calibrate on.",
+        choices=["wikitext2", "ptb", "c4"],
+        default="wikitext2",
+    )
+    parser.add_argument(
+        "--cal_nsamples",
+        type=int,
+        help="Number of samples of the calibration data to load.",
+        default=128,
+    )
     parser.add_argument("--tasks", default=None, choices=lm_eval_utils.MultiChoice(tasks.ALL_TASKS))
     parser.add_argument("--no_cache", action="store_true")
     parser.add_argument(

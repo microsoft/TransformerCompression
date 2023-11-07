@@ -20,7 +20,7 @@ from .model_utils import (
     get_second_layernorm,
     get_signals,
 )
-from .utils import cleanup_memory, pca_calc
+from .utils import cleanup_memory
 
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -149,28 +149,18 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
     model.eval()
     dtype = next(iter(model.parameters())).dtype
 
-    inps = []
+    inps, attn_masks = zip(
+        *[(inp.cpu(), attn_mask.cpu()) for inp, attn_mask in (get_layer0_inputs(model, batch) for batch in dataloader)]
+    )
 
-    # Process the first batch separately to get the attention mask
-    first_batch = next(iter(dataloader))
-    inp, attention_mask = get_layer0_inputs(model, first_batch)
-    inps.append(inp)
-
-    # Process the remaining batches
-    for batch in dataloader:
-        inp, _ = get_layer0_inputs(model, batch)
-        inps.append(inp)
-
-    inps = torch.cat(inps)
-
-    _, Q = pca_calc(inps.reshape(-1, model.config.hidden_size))
+    _, Q = pca_calc(inps)
     Q = Q.to(device=DEV)
 
     rotate_embeddings(model, Q)
     slice_embeddings(model, new_embedding_dimension)
 
     # rotate and slice inputs
-    inps = torch.matmul(inps, Q.to(dtype=dtype))[:, :, :new_embedding_dimension]
+    inps = [torch.matmul(inp.to(device=DEV), Q.to(dtype=dtype))[:, :, :new_embedding_dimension].cpu() for inp in inps]
 
     logging.info("Rotate and slice layers")
     layers = get_layers(model)
@@ -182,8 +172,8 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
         slice_attention_inputs(layer, new_embedding_dimension)
 
         # get signal between attention and mlp, rotate and slice
-        mlp_ln_inputs, _ = get_signals(layer, inps, attention_mask)
-        _, Q = pca_calc(mlp_ln_inputs.reshape(-1, mlp_ln_inputs.shape[-1]))
+        mlp_ln_inputs, _ = get_signals(layer, inps, attn_masks)
+        _, Q = pca_calc(mlp_ln_inputs)
         Q = Q.to(device=DEV, dtype=torch.float64)
 
         layer.attn_shortcut_Q = torch.matmul(layer.attn_shortcut_Q, Q.to(dtype=dtype))
@@ -198,8 +188,8 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
         cleanup_memory()
 
         # now compute the outputs of the layer with slicing between Attention and mlp.
-        _, outputs = get_signals(layer, inps, attention_mask)
-        _, Q = pca_calc(outputs.reshape(-1, outputs.shape[-1]))
+        _, outs = get_signals(layer, inps, attn_masks)
+        _, Q = pca_calc(outs)
 
         layer.mlp_shortcut_Q = torch.matmul(layer.mlp_shortcut_Q, Q.to(dtype=dtype))
 
@@ -212,7 +202,7 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
         rotate_mlp_output(layer, Q)
         slice_mlp_output(layer, dim)
 
-        inps = torch.matmul(outputs, Q.to(dtype=dtype))[:, :, :dim]
+        inps = [torch.matmul(out.to(device=DEV), Q.to(dtype=dtype))[:, :, :dim].cpu() for out in outs]
 
         layer = layer.to('cpu')
 
@@ -231,6 +221,7 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
 def rotate(model, dataloader):
     """
     Rotate a model.
+    TODO: Make this gpu memory efficient.
     """
     model.eval()
     dtype = next(iter(model.parameters())).dtype  # Get the dtype of the model.
@@ -239,7 +230,7 @@ def rotate(model, dataloader):
     layers = get_layers(model)
 
     # Get the input of the first layer norm and calculate the Q_1
-    inps, attention_mask = get_layer0_inputs(model, dataloader)
+    inps, attn_masks = get_layer0_inputs(model, dataloader)
     _, Q_1 = pca_calc(inps.reshape(-1, model.config.hidden_size))
     Q_1 = Q_1.to(device=DEV)
 
@@ -250,7 +241,7 @@ def rotate(model, dataloader):
     logging.info("Rotate layers")
     for layer in tqdm(layers, unit="layer", desc="Rotating"):
         # Extract the inputs and outputs of the second layernorm input and calculate the Q_3
-        mlp_ln_inputs, outs = get_signals(layer, inps, attention_mask)
+        mlp_ln_inputs, outs = get_signals(layer, inps, attn_masks)
         _, Q_3 = pca_calc(mlp_ln_inputs.reshape(-1, mlp_ln_inputs.shape[-1]))
         Q_3 = Q_3.to(device=DEV)
         _, Q_5 = pca_calc(outs.reshape(-1, outs.shape[-1]))
@@ -285,6 +276,9 @@ def rotate(model, dataloader):
 
 
 def slice_rotated_model(model, new_embedding_dimension, do_slice_head=False):
+    """
+    TODO: Make this gpu memory efficient.
+    """
     model.eval()
 
     # slice embeddings
@@ -314,3 +308,28 @@ def slice_rotated_model(model, new_embedding_dimension, do_slice_head=False):
     if do_slice_head:
         get_pre_head_layernorm(model).normalized_shape = (new_embedding_dimension,)
         slice_head(model, new_embedding_dimension)
+
+
+@torch.no_grad()
+def pca_calc(X: list[torch.tensor]):
+    """
+    Run PCA on a list of batched data. Returns the eigenvalues and eigenvectors.
+    """
+    # Run GC and cleanup GPU memory
+    cleanup_memory()
+
+    H = None
+    for X_batch in X:
+        X_batch = X_batch.double().to(device=DEV)
+        H_batch = torch.sum(X_batch.mT @ X_batch, dim=0)  # sum over the batch dimension.
+        H = H_batch if H is None else H + H_batch
+
+    damp = 0.01 * torch.mean(torch.diag(H))
+    diag = torch.arange(H.shape[-1]).to(device=DEV)
+    H[diag, diag] = H[diag, diag] + damp
+    X_eig = torch.linalg.eigh(H)
+    del H
+    index = torch.argsort(X_eig[0], descending=True)
+    eig_val = X_eig[0][index]
+    eigen_vec = X_eig[1][:, index]
+    return eig_val, eigen_vec
