@@ -5,10 +5,9 @@ import torch
 import transformers
 
 from . import utils
-from .modules import CompressedOPTDecoderLayer
 
 OPT_MODEL = transformers.models.opt.modeling_opt.OPTForCausalLM
-OPT_LAYER = CompressedOPTDecoderLayer
+OPT_LAYER = transformers.models.opt.modeling_opt.OPTDecoderLayer
 LLAMA_MODEL = transformers.models.llama.modeling_llama.LlamaForCausalLM
 LLAMA_LAYER = transformers.models.llama.modeling_llama.LlamaDecoderLayer
 
@@ -117,8 +116,6 @@ def get_layer0_inputs(model, batch):
         def __init__(self, module):
             super().__init__()
             self.module = module
-            self.saved_inps = None
-            self.saved_attention_mask = None
 
         def forward(self, inp, **kwargs):
             self.saved_inps = inp
@@ -133,7 +130,7 @@ def get_layer0_inputs(model, batch):
         pass
 
     inps = layers[0].saved_inps
-    attention_mask = layers[0].saved_attention_masks[-1].unsqueeze(0)
+    attention_masks = layers[0].saved_attention_masks
 
     layers[0] = layers[0].module
 
@@ -144,24 +141,30 @@ def get_layer0_inputs(model, batch):
     # Run GC and cleanup GPU memory
     utils.cleanup_memory()
 
-    return inps, attention_mask
+    return inps, attention_masks
 
 
-def get_signals(layer, inputs, attention_mask):
+def get_signals(layer, inputs: list[torch.tensor], attention_masks: list[torch.tensor]):
     """
     Take the input signals ("activations") for a layer, run the layer forward.
     Return the output of the layer (not layernormed) and the input to the MLP (pre-layernorm).
     """
     mlp_ln_inputs = []
     layer = layer.to(DEV)
+    seqlen = inputs[0].shape[-2]
 
     def hook_fn(_, inp, _output):
         if isinstance(inp, tuple):
             inp = inp[0]
-        mlp_ln_inputs.append(inp.cpu())
+
+        # The mlp operates on (batch_size * seqlen, hidden_size) tensors, so recover batch dimension.
+        mlp_ln_inputs.append(inp.cpu().reshape(-1, seqlen, inp.shape[-1]))
 
     hook = get_second_layernorm(layer).register_forward_hook(hook_fn)
-    outs = [layer(inp.unsqueeze(0), attention_mask=attention_mask)[0] for inp in inputs]
+    outs = [
+        layer(inp.to(device=DEV), attention_mask=attn_mask.to(device=DEV))[0].cpu()
+        for inp, attn_mask in zip(inputs, attention_masks)
+    ]
     hook.remove()
 
-    return torch.cat(mlp_ln_inputs), torch.cat(outs)
+    return mlp_ln_inputs, outs
