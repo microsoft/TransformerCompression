@@ -26,12 +26,17 @@ from .modules import RMSN
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def rotate_attention_inputs(layer, Q):
+def rotate_attention_inputs(layer, Q, module_bias=None):
     # Rotate the WQ, WK and WV matrices of the self-attention layer.
     for W in get_attention_inputs(layer):
         dtype = W.weight.dtype
+
         W_ = W.weight.to(device=DEV, dtype=torch.float64)
         W.weight.data = torch.matmul(W_, Q).to(device="cpu", dtype=dtype)
+        
+        if module_bias is not None:
+            W.bias.data = W.bias.data + torch.matmul(W_, module_bias).to(device="cpu", dtype=dtype)
+        
 
 
 def slice_attention_inputs(layer, new_embedding_dimension):
@@ -70,12 +75,14 @@ def slice_attention_output(layer, new_embedding_dimension):
         layer.attn_shortcut_bias = layer.attn_shortcut_bias[:new_embedding_dimension]
 
 
-def rotate_mlp_input(layer, Q):
+def rotate_mlp_input(layer, Q, module_bias=None):
     # Rotate the MLP input weights.
     for W in get_mlp_inputs(layer):
         dtype = W.weight.dtype
         W_ = W.weight.data.to(device=DEV, dtype=torch.float64)
-        W.weight.data = torch.matmul(W_, Q).to(device="cpu", dtype=dtype)
+        W.weight.data = torch.matmul(W_, Q).to(dtype=dtype)
+        if module_bias is not None:
+            W.bias.data = W.bias.data + torch.matmul(W_, module_bias).to(dtype=dtype)
 
 
 def slice_mlp_input(layer, new_embedding_dimension):
@@ -145,6 +152,30 @@ def slice_head(model, new_embedding_dimension):
     model.lm_head.weight.data = model.lm_head.weight.data[:, :new_embedding_dimension]
     model.lm_head.in_features = new_embedding_dimension
 
+def compute_new_inputs_and_biases(X, Q, new_embedding_dimension):
+    """
+    Compute the biases for the shortcut connections, and rotate-and-slice the inputs.
+    """
+    dtype = X[0].dtype
+    Q_sliced = Q[:, :new_embedding_dimension]
+    rmsn = RMSN(Q.shape[0])
+    new_X = []
+    error1 = 0
+    error2 = 0
+    denom = 0
+    for x_batch in X:
+        x_batch = x_batch.to(device=DEV, dtype=Q.dtype)
+        new_inp = torch.matmul(x_batch, Q_sliced)
+        error1 = error1 + torch.sum(x_batch - torch.matmul(new_inp, Q_sliced.T), dim=[0, 1])
+        error2 = error2 + torch.sum(rmsn(x_batch) - torch.matmul(rmsn(new_inp), Q_sliced.T), dim=[0, 1])
+        new_X.append(new_inp.to(device='cpu', dtype=dtype))
+        denom = denom + x_batch.shape[0] * x_batch.shape[1]
+
+    shortcut_bias = error1 / denom
+    module_bias = error2 / denom
+    print(f"shortcut bias: {torch.max(torch.abs(shortcut_bias)).item()}, module bias: {torch.max(torch.abs(module_bias)).item()}")
+    return new_X, shortcut_bias, module_bias
+    
 
 @torch.no_grad()
 def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=False, fix_biases=True):
@@ -165,11 +196,7 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
     slice_embeddings(model, new_embedding_dimension)
 
     # rotate and slice inputs TODO only one batch on GPU at once please!
-    Q_sliced = Q.to(dtype=dtype)[:, :new_embedding_dimension]
-    new_inps = [torch.matmul(inp.to(device=DEV), Q_sliced) for inp in inps] # on cuda
-    errors = [inp.to(device=DEV) - torch.matmul(new_inp, Q_sliced.T) for inp, new_inp in zip(inps, new_inps)]
-    shortcut_bias = torch.stack([torch.mean(err, dim=[0, 1]) for err in errors]).mean(0)
-    inps = [inp.cpu() for inp in new_inps]
+    inps, shortcut_bias, module_bias = compute_new_inputs_and_biases(inps, Q, new_embedding_dimension)
 
 
     logging.info("Rotate and slice layers")
@@ -180,7 +207,7 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
             layer.attn_shortcut_bias = shortcut_bias.clone().to(dtype=dtype)
 
         # rotate and slice the attention inputs to match previous layer
-        rotate_attention_inputs(layer, Q)
+        rotate_attention_inputs(layer, Q, module_bias=module_bias if fix_biases else None)
         slice_attention_inputs(layer, new_embedding_dimension)
 
         # get signal between attention and mlp, rotate and slice
@@ -189,11 +216,7 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
         Q = Q.to(device=DEV, dtype=torch.float64)
         
         # compute bias correction
-        mlp_ln_inputs = [inp.to(device=Q.device) for inp in mlp_ln_inputs]
-        Q_sliced = Q.to(dtype=dtype)[:, :new_embedding_dimension]
-        new_inputs = [torch.matmul(inp, Q_sliced) for inp in mlp_ln_inputs]
-        errors = [orig_inp - torch.matmul(inp, Q_sliced.T) for orig_inp, inp in zip(mlp_ln_inputs, new_inputs)]
-        shortcut_bias = torch.stack([torch.mean(err, dim=[0, 1]) for err in errors]).mean(0)
+        _, shortcut_bias, module_bias = compute_new_inputs_and_biases(mlp_ln_inputs, Q, new_embedding_dimension)
 
         # apply new Q to attention output
         layer.attn_shortcut_Q = torch.matmul(layer.attn_shortcut_Q, Q.to(dtype=dtype))
@@ -206,7 +229,7 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
         layer.mlp_shortcut_Q = Q.T.clone().to(dtype=dtype)
         if fix_biases:
             layer.mlp_shortcut_bias = shortcut_bias.clone().to(dtype=dtype)
-        rotate_mlp_input(layer, Q)
+        rotate_mlp_input(layer, Q, module_bias=module_bias if fix_biases else None)
         slice_mlp_input(layer, new_embedding_dimension)
 
         # Run GC and cleanup GPU memory
@@ -229,11 +252,8 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
         rotate_mlp_output(layer, Q)
         slice_mlp_output(layer, dim)
 
-        Q_sliced = Q.to(dtype=dtype)[:, :dim]
-        inps = [torch.matmul(out.to(device=DEV), Q_sliced) for out in outs]
-        errors = [out.to(device=DEV) - torch.matmul(inp, Q_sliced.T) for inp, out in zip(inps, outs)]
-        shortcut_bias = torch.stack([torch.mean(err, dim=[0, 1]) for err in errors]).mean(0)
-        inps = [inp.cpu() for inp in inps]
+        inps, shortcut_bias, module_bias = compute_new_inputs_and_biases(outs, Q, dim)
+
         layer = layer.to('cpu')
 
         # Run GC and cleanup GPU memory
@@ -248,7 +268,7 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
     # a final shorcut bias added to the head.
     if fix_biases:
         head = get_lm_head(model)
-        shortcut_bias = torch.matmul(head.weight.to(device=shortcut_bias.device), shortcut_bias).cpu()
+        shortcut_bias = torch.matmul(head.weight.to(dtype=torch.float64, device=shortcut_bias.device), shortcut_bias).to(device='cpu', dtype=dtype)
         if head.bias is None:
             head.bias = torch.nn.Parameter(shortcut_bias)
         else:
