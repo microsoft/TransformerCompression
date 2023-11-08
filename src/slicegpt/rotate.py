@@ -147,7 +147,7 @@ def slice_head(model, new_embedding_dimension):
 
 
 @torch.no_grad()
-def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=False, fix_biases=False):
+def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=False, fix_biases=True):
     """
     Rotate and slice a model, with interleaved slicing and PCA calculations
     """
@@ -245,8 +245,10 @@ def rotate_and_slice(model, dataloader, new_embedding_dimension, do_slice_head=F
     if do_slice_head:
         slice_head(model, new_embedding_dimension)
         
-        # a final chorcut bias added to the head.
+    # a final shorcut bias added to the head.
+    if fix_biases:
         head = get_lm_head(model)
+        shortcut_bias = torch.matmul(head.weight.to(device=shortcut_bias.device), shortcut_bias).cpu()
         if head.bias is None:
             head.bias = torch.nn.Parameter(shortcut_bias)
         else:
