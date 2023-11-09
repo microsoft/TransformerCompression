@@ -42,7 +42,7 @@ def get_model(model_path, uninitialized=False, dtype=torch.float16, token=None):
             model = transformers.OPTForCausalLM.from_pretrained(model_path, torch_dtype=dtype)
     elif "meta-llama" in model_path:
         if uninitialized:
-            config = LlamaConfig.from_pretrained(model_path)
+            config = LlamaConfig.from_pretrained(model_path, token=token)
             model = UninitializedLlamaForCausalLM(config)
             model = model.to(dtype=dtype)
         else:
@@ -61,9 +61,9 @@ def get_model(model_path, uninitialized=False, dtype=torch.float16, token=None):
     return model, tokenizer
 
 
-def load_sliced_model(model_name, model_path, sparsity, device):
+def load_sliced_model(model_name, model_path, sparsity, token, device):
     """Loads the sliced model and the tokenizer from the given path."""
-    model, tokenizer = get_model(model_name, uninitialized=True)
+    model, tokenizer = get_model(model_name, uninitialized=True, token=token)
     replace_modules(model, model.config)
     fuse_modules(model)
     new_embedding_dimension = int((1 - sparsity) * model.config.hidden_size)
