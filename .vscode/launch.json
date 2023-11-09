@@ -1,0 +1,35 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Current File",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "slicegpt zeroshot",
+            "type": "python",
+            "request": "launch",
+            "program": "/home/aiscuser/TransformerCompression/experiments/run_zero_shot_tasks.py",
+            "console": "integratedTerminal",
+            "args": ["--model", "meta-llama/Llama-2-70b-hf",
+                     "--hf_token", "***REMOVED***",
+                     "--tasks=piqa",
+                     "--no_cache",
+                     "--batch_size=64", //100 for 7b
+                     "--sparsity=0.0",
+                     "--distribute_model",
+                     "--load_model_path=sliced_models/Llama-2-70b-hf_0.0.pt" ],
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "0,1,2,3",
+                "WANDB_MODE": "offline",
+            }
+        },
+    ]
+}
