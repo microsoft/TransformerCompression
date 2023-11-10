@@ -207,7 +207,7 @@ class RMSN(torch.nn.Module):
     https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py#L75
     """
 
-    def __init__(self, mean_dim):
+    def __init__(self, mean_dim: int):
         super().__init__()
         self.eps = 1e-5
         self.mean_dim = mean_dim
