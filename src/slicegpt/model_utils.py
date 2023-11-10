@@ -1,19 +1,22 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
-from typing import List, Tuple
+from typing import List, Tuple, Union
 
 import torch
-import transformers
+from transformers.models.llama.modeling_llama import LlamaDecoderLayer, LlamaForCausalLM
+from transformers.models.opt.modeling_opt import OPTDecoderLayer, OPTForCausalLM
 
 from . import utils
 
-OPT_MODEL = transformers.models.opt.modeling_opt.OPTForCausalLM
-OPT_LAYER = transformers.models.opt.modeling_opt.OPTDecoderLayer
-LLAMA_MODEL = transformers.models.llama.modeling_llama.LlamaForCausalLM
-LLAMA_LAYER = transformers.models.llama.modeling_llama.LlamaDecoderLayer
-MODEL = OPT_MODEL | LLAMA_MODEL
-LAYER = OPT_LAYER | LLAMA_LAYER
+OPT_MODEL = OPTForCausalLM
+OPT_LAYER = OPTDecoderLayer
+LLAMA_MODEL = LlamaForCausalLM
+LLAMA_LAYER = LlamaDecoderLayer
+
+MODEL = Union[OPTForCausalLM, LlamaForCausalLM]
+LAYER = Union[OPTDecoderLayer, LlamaDecoderLayer]
+
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
