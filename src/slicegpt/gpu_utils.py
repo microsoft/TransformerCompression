@@ -10,6 +10,9 @@ from tqdm import tqdm
 
 from . import model_utils, utils
 from .config import config
+import transformers
+
+import numpy as np
 
 
 @torch.no_grad()
