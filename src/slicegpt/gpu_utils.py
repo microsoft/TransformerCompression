@@ -4,7 +4,10 @@ import time
 import torch
 from accelerate import dispatch_model, infer_auto_device_map
 from accelerate.utils import get_balanced_memory
+import transformers
 
+from tqdm import tqdm
+import numpy as np
 from . import utils
 
 
@@ -69,3 +72,52 @@ def distribute_model(model):
 
     # Run GC and cleanup GPU memory
     utils.cleanup_memory()
+
+
+def benchmark(model, input_batch, device):
+    model.config.use_cache = True
+
+    batch_size = input_batch.shape[0]
+    input_seqlen = input_batch.shape[1]
+    input_batch = input_batch.to(device)
+    torch.cuda.synchronize(device=device)
+
+    cache = {"past": None}
+    def clear_past(i):
+        def tmp(layer, inp, out):
+            if cache["past"]:
+                cache["past"][i] = None
+
+        return tmp
+
+    if isinstance(model, transformers.LlamaForCausalLM):
+        for i, layer in enumerate(model.model.layers):
+            layer.register_forward_hook(clear_past(i))
+    elif isinstance(model, transformers.OPTForCausalLM):
+        for i, layer in enumerate(model.model.decoder.layers):
+            layer.register_forward_hook(clear_past(i))
+    else:
+        raise NotImplementedError(f"Unsupported model type: {type(model)}")
+
+    with torch.no_grad():
+        attention_mask = torch.ones((batch_size, input_seqlen), device=device)
+        times = []
+        for i in tqdm(range(input_seqlen), desc="Benchmarking"):
+            tick = time.time()
+            out = model(
+                input_batch[:, i].reshape((batch_size, 1)),
+                past_key_values=cache["past"],
+                attention_mask=attention_mask[:, : (i + 1)]
+            )
+
+            torch.cuda.synchronize(device=device)
+            times.append(time.time() - tick)
+            cache["past"] = list(out.past_key_values)
+            del out
+
+        torch.cuda.synchronize(device=device)
+        median_time = np.median(times)
+        throughput = batch_size / median_time
+        
+        results = {"median_time": median_time, "latency": 1/throughput, "throughput": throughput}
+        return results
