@@ -74,13 +74,19 @@ def distribute_model(model):
     utils.cleanup_memory()
 
 
+def sync_gpus():
+    """Sync all GPUs to make sure all operations are finished, needed for correct benchmarking of latency/throughput."""
+    for i in range(torch.cuda.device_count()):
+        torch.cuda.synchronize(device=i)
+
+
 def benchmark(model, input_batch, device):
     model.config.use_cache = True
 
     batch_size = input_batch.shape[0]
     input_seqlen = input_batch.shape[1]
     input_batch = input_batch.to(device)
-    torch.cuda.synchronize(device=device)
+    sync_gpus()
 
     cache = {"past": None}
     def clear_past(i):
@@ -110,12 +116,12 @@ def benchmark(model, input_batch, device):
                 attention_mask=attention_mask[:, : (i + 1)]
             )
 
-            torch.cuda.synchronize(device=device)
+            sync_gpus()
             times.append(time.time() - tick)
             cache["past"] = list(out.past_key_values)
             del out
 
-        torch.cuda.synchronize(device=device)
+        sync_gpus()
         median_time = np.median(times)
         throughput = batch_size / median_time
         
