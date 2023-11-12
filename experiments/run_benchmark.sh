@@ -5,10 +5,9 @@ PYTHON_SCRIPT="run_benchmark.py"
 HF_TOKEN="***REMOVED***"
 
 MODEL_FAMILIES=("facebook" "meta-llama")
-#MODEL_NAMES=("opt-6.7b" "Llama-2-7b-hf" "opt-13b" "Llama-2-13b-hf") # "OPT-66b" "Llama-2-70b-hf")
-MODEL_NAMES=("OPT-66b" "Llama-2-70b-hf")
-DISTRIBUTE_FLAGS=(true true) # true true)
-INITIAL_BATCH_SIZES=(1 1)
+MODEL_NAMES=("opt-6.7b" "Llama-2-7b-hf" "opt-13b" "Llama-2-13b-hf" "opt-66b" "Llama-2-70b-hf")
+DISTRIBUTE_FLAGS=(false false true true true true)
+INITIAL_BATCH_SIZES=(512 512 256 256 1 1)
 
 for ((i = 0; i < ${#MODEL_NAMES[@]}; i++)); do
     MODEL_FAMILY="${MODEL_FAMILIES[$i]}"
