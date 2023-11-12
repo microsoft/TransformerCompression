@@ -4,10 +4,10 @@ RUN=true
 PYTHON_SCRIPT="run_benchmark.py"
 HF_TOKEN="***REMOVED***"
 
-MODEL_FAMILIES=("facebook" "meta-llama")
-MODEL_NAMES=("opt-6.7b" "Llama-2-7b-hf" "opt-13b" "Llama-2-13b-hf" "opt-66b" "Llama-2-70b-hf")
-DISTRIBUTE_FLAGS=(false false true true true true)
-INITIAL_BATCH_SIZES=(512 512 256 256 1 1)
+MODEL_FAMILIES=("meta-llama" "meta-llama" "meta-llama" "facebook" "facebook" "facebook")
+MODEL_NAMES=("Llama-2-70b-hf" "Llama-2-13b-hf" "Llama-2-7b-hf" "opt-66b" "opt-13b" "opt-6.7b")
+DISTRIBUTE_FLAGS=(true true false true true false)
+INITIAL_BATCH_SIZES=(128 256 512 16 256 512)
 
 for ((i = 0; i < ${#MODEL_NAMES[@]}; i++)); do
     MODEL_FAMILY="${MODEL_FAMILIES[$i]}"
@@ -24,7 +24,7 @@ for ((i = 0; i < ${#MODEL_NAMES[@]}; i++)); do
     SPARSITY=0.25
 
     if $DISTRIBUTE; then
-        for TEST_ID in {0..3}; do
+        for TEST_ID in {0..2}; do
             BATCH_SIZE=$INITIAL_BATCH_SIZE
             GPU_ID="0,1"
             ARGS="$BASE_ARGS --batch_size=$BATCH_SIZE"

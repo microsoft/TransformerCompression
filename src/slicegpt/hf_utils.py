@@ -110,7 +110,4 @@ def load_sliced_model(model_name: str, model_path: str, sparsity: float, token: 
     model.load_state_dict(torch.load(model_path, map_location="cpu"))
     model.eval()
 
-    if device != torch.device("cpu"):
-        distribute_model(model)
-
     return model, tokenizer
