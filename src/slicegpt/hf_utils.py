@@ -4,8 +4,7 @@
 import logging
 
 import torch
-import transformers
-from transformers import LlamaConfig, LlamaForCausalLM, OPTConfig, OPTForCausalLM
+from transformers import AutoTokenizer, LlamaConfig, LlamaForCausalLM, OPTConfig, OPTForCausalLM
 
 from .layernorm_fusion import fuse_modules, replace_modules
 from .model_utils import get_layers
@@ -39,18 +38,18 @@ def get_model(model_path, uninitialized=False, dtype=torch.float16, token=None):
             model = UninitializedOPTForCausalLM(config)
             model = model.to(dtype=dtype)
         else:
-            model = transformers.OPTForCausalLM.from_pretrained(model_path, torch_dtype=dtype)
+            model = OPTForCausalLM.from_pretrained(model_path, torch_dtype=dtype)
     elif "meta-llama" in model_path:
         if uninitialized:
             config = LlamaConfig.from_pretrained(model_path)
             model = UninitializedLlamaForCausalLM(config)
             model = model.to(dtype=dtype)
         else:
-            model = transformers.LlamaForCausalLM.from_pretrained(model_path, torch_dtype=dtype, token=token)
+            model = LlamaForCausalLM.from_pretrained(model_path, torch_dtype=dtype, token=token)
     else:
         raise NotImplementedError
 
-    tokenizer = transformers.AutoTokenizer.from_pretrained(model_path, use_fast=False, token=token)
+    tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=False, token=token)
 
     model.seqlen = model.config.max_position_embeddings
     model.eval()  # This switches off dropout.

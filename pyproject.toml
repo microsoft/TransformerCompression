@@ -57,6 +57,7 @@ line_length = 120
 [tool.mypy]
 python_version = "3.10"
 disallow_untyped_defs = true
+ignore_missing_imports = true
 
 [tool.pylint.main]
 max-line-length = 120

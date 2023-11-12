@@ -2,17 +2,16 @@
 # Licensed under the MIT license.
 
 import logging
-from typing import List
 
 import torch
-from transformers.models.llama.modeling_llama import LlamaDecoderLayer, LlamaPreTrainedModel, LlamaRMSNorm
-from transformers.models.opt.modeling_opt import OPTDecoderLayer
+from transformers.models.llama.modeling_llama import LlamaRMSNorm
 
 from .model_utils import (
     LAYER,
     LLAMA_LAYER,
     LLAMA_MODEL,
     MODEL,
+    MODEL_CONFIG,
     OPT_LAYER,
     OPT_MODEL,
     get_attention_inputs,
@@ -29,7 +28,7 @@ from .model_utils import (
 from .modules import RMSN, CompressedLlamaDecoderLayer, CompressedOPTDecoderLayer
 
 
-def replace_modules(model: MODEL, config, verbose: bool = True) -> None:
+def replace_modules(model: MODEL, config: MODEL_CONFIG, verbose: bool = True) -> None:
     """
     Replace
        OPTDecoder with CompressedOPTDecoderLayer,
@@ -61,7 +60,7 @@ def replace_modules(model: MODEL, config, verbose: bool = True) -> None:
         logging.info("Replacing modules done")
 
 
-def replace_layernorms(model: MODEL, config) -> None:
+def replace_layernorms(model: MODEL, config: MODEL_CONFIG) -> None:
     """
     Replace
        nn.LayerNorm with slicegpt.modules.RMSN
@@ -139,7 +138,7 @@ def bake_mean_into_linear(linear: torch.nn.Linear) -> None:
         linear.bias.data = linear.bias.data.to(linear_dtype)
 
 
-def fuse_ln_linear(layernorm: torch.nn.LayerNorm, linear_layers: List[torch.nn.Linear]):
+def fuse_ln_linear(layernorm: torch.nn.Module, linear_layers: list[torch.nn.Linear]) -> None:
     """
     fuse the linear operations in Layernorm into the adjacent linear blocks.
     """

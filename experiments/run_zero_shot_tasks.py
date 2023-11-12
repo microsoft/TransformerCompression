@@ -164,7 +164,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def main():
+def main() -> None:
     args = parse_args()
     logging.info("Running SliceGPT zeroshot tasks experiment.")
     logging.info(f"Number of available cuda devices: {torch.cuda.device_count()}")
