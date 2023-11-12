@@ -10,6 +10,7 @@ from transformers import LlamaConfig, LlamaForCausalLM, OPTConfig, OPTForCausalL
 from .layernorm_fusion import fuse_modules, replace_modules
 from .model_utils import get_layers
 from .rotate import slice_rotated_model
+from .gpu_utils import distribute_model
 
 
 class UninitializedOPTForCausalLM(OPTForCausalLM):
@@ -76,7 +77,10 @@ def load_sliced_model(model_name, model_path, sparsity, token, device):
 
     slice_rotated_model(model, new_embedding_dimension)
 
-    model.load_state_dict(torch.load(model_path, map_location=device))
+    model.load_state_dict(torch.load(model_path, map_location="cpu"))
     model.eval()
+
+    if device != torch.device("cpu"):
+        distribute_model(model)
 
     return model, tokenizer

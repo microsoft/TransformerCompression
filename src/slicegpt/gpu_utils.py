@@ -51,7 +51,7 @@ def evaluate_ppl(model, testloader, device):
 
 
 def distribute_model(model):
-    # infer device map, make sure each layer is not split across multiple GPUs
+    """Distribute the model across available GPUs."""
     no_split_modules = [
         "OPTDecoderLayer",
         "CompressedOPTDecoderLayer",
@@ -60,7 +60,6 @@ def distribute_model(model):
     ]
     max_memory = get_balanced_memory(
         model,
-        max_memory=None,
         no_split_module_classes=no_split_modules,
     )
 
