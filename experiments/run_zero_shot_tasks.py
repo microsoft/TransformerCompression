@@ -27,7 +27,7 @@ class SlicedLM(BaseLM):
         super().__init__()
 
         if args.load_model_path:
-            model, tokenizer = hf_utils.load_sliced_model(args.model, args.load_model_path, args.sparsity, args.hf_token, DEV)
+            model, tokenizer = hf_utils.load_sliced_model(args.model, args.load_model_path, args.sparsity, args.hf_token)
         else:
             model, tokenizer = hf_utils.get_model(args.model, token=args.hf_token)
             self.apply_slicegpt(model, tokenizer, args)
@@ -42,7 +42,6 @@ class SlicedLM(BaseLM):
 
     def apply_slicegpt(self, model, tokenizer, args):
         layernorm_fusion.replace_modules(model, model.config)
-        model = model.cpu()
         layernorm_fusion.fuse_modules(model)
 
         dataloader, _ = data_utils.get_loaders(
@@ -180,6 +179,13 @@ def main() -> None:
     # Initialize the model for use in LM Eval Harness.
     model = SlicedLM(args)
 
+    model.model.eval()
+    if args.distribute_model:
+        # distribute model across available GPUs
+        gpu_utils.distribute_model(model.model)
+    else:
+        model.model = model.model.to(DEV)
+
     ### LM Eval Harness ###
     if args.tasks is None:
         task_names = tasks.ALL_TASKS
@@ -187,13 +193,6 @@ def main() -> None:
         task_names = lm_eval_utils.pattern_match(args.tasks.split(","), tasks.ALL_TASKS)
 
     logging.info(f"Selected Tasks: {task_names}")
-
-    if args.distribute_model:
-        # distribute model across available GPUs
-        gpu_utils.distribute_model(model.model)
-    else:
-        model.model = model.model.to(DEV)
-    model.model.eval()
 
     # Run the evaluation.
     results = evaluator.simple_evaluate(model=model, tasks=task_names, no_cache=args.no_cache)

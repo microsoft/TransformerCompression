@@ -101,7 +101,7 @@ def main() -> None:
     if args.load_model_path:
         # load the model from load_model_path to compute perplexity and skip rotation and slicing
         logging.info(f"Loading sliced {args.model} model from {args.load_model_path} with sparsity {args.sparsity}")
-        model, tokenizer = hf_utils.load_sliced_model(args.model, args.load_model_path, args.sparsity, args.hf_token, DEV)
+        model, tokenizer = hf_utils.load_sliced_model(args.model, args.load_model_path, args.sparsity, args.hf_token)
     else:
         # load one of the pre-trained models
         model, tokenizer = hf_utils.get_model(args.model, token=args.hf_token)
@@ -135,20 +135,17 @@ def main() -> None:
             gpu_utils.distribute_model(model)
         else:
             model = model.to(DEV)
+
         dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
         logging.info(f'Original ppl: {dataset_ppl:.4f}')
         wandb.log({"original_ppl": dataset_ppl})
         model = model.cpu()
         utils.cleanup_memory()
 
-    # fuse layernorms, add shortcuts, check perplexity
+    # replace modules with compressible equivalents
     layernorm_fusion.replace_modules(model, model.config)
 
-    model = model.cpu()
-
-    # Run GC and cleanup GPU memory
-    utils.cleanup_memory()
-
+    # fuse layernorms and add rotations to skip connections
     layernorm_fusion.fuse_modules(model)
 
     # don't run this on large and/or distributed models
@@ -161,7 +158,7 @@ def main() -> None:
 
         model = model.cpu()
 
-        # Run GC and cleanup GPU memory
+        # run GC and cleanup GPU memory
         utils.cleanup_memory()
 
     original_param_count = sum(int(p.nelement()) for p in model.parameters())

@@ -83,11 +83,6 @@ def sync_gpus():
 def benchmark(model, input_batch, device):
     model.config.use_cache = True
 
-    batch_size = input_batch.shape[0]
-    input_seqlen = input_batch.shape[1]
-    input_batch = input_batch.to(device)
-    sync_gpus()
-
     cache = {"past": None}
     def clear_past(i):
         def tmp(layer, inp, out):
@@ -106,22 +101,29 @@ def benchmark(model, input_batch, device):
         raise NotImplementedError(f"Unsupported model type: {type(model)}")
 
     with torch.no_grad():
-        attention_mask = torch.ones((batch_size, input_seqlen), device=device)
+        batch_size = input_batch.shape[0]
+        input_seqlen = input_batch.shape[1]
+        attention_mask = torch.ones((batch_size, input_seqlen))
         times = []
         for i in tqdm(range(input_seqlen), desc="Benchmarking"):
-            tick = time.time()
-            out = model(
-                input_batch[:, i].reshape((batch_size, 1)),
-                past_key_values=cache["past"],
-                attention_mask=attention_mask[:, : (i + 1)]
-            )
+            input_batch_i = input_batch[:, i].reshape((batch_size, 1)).to(device)
+            attention_mask_i = attention_mask[:, : (i + 1)].to(device)
 
             sync_gpus()
+            tick = time.time()
+            out = model(
+                input_batch_i,
+                past_key_values=cache["past"],
+                attention_mask=attention_mask_i
+            )
+            sync_gpus()
             times.append(time.time() - tick)
+
             cache["past"] = list(out.past_key_values)
             del out
 
-        sync_gpus()
+            input_batch_i, attention_mask_i = input_batch_i.to("cpu"), attention_mask_i.to("cpu")
+
         median_time = np.median(times)
         throughput = batch_size / median_time
         
