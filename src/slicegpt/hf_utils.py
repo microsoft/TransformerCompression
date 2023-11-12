@@ -62,7 +62,7 @@ def get_model(model_path, uninitialized=False, dtype=torch.float16, token=None):
     return model, tokenizer
 
 
-def load_sliced_model(model_name, model_path, sparsity, token, device):
+def load_sliced_model(model_name, model_path, sparsity, token):
     """Loads the sliced model and the tokenizer from the given path."""
     model, tokenizer = get_model(model_name, uninitialized=True, token=token)
     replace_modules(model, model.config)
@@ -79,8 +79,5 @@ def load_sliced_model(model_name, model_path, sparsity, token, device):
 
     model.load_state_dict(torch.load(model_path, map_location="cpu"))
     model.eval()
-
-    if device != torch.device("cpu"):
-        distribute_model(model)
 
     return model, tokenizer

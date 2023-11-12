@@ -93,7 +93,7 @@ def main():
     if args.load_model_path:
         # load the model from load_model_path to compute perplexity and skip rotation and slicing
         logging.info(f"Loading sliced {args.model} model from {args.load_model_path} with sparsity {args.sparsity}")
-        model, tokenizer = hf_utils.load_sliced_model(args.model, args.load_model_path, args.sparsity, args.hf_token, DEV)
+        model, tokenizer = hf_utils.load_sliced_model(args.model, args.load_model_path, args.sparsity, args.hf_token)
     else:
         # load one of the pre-trained models
         model, tokenizer = hf_utils.get_model(args.model, token=args.hf_token)
@@ -127,20 +127,17 @@ def main():
             gpu_utils.distribute_model(model)
         else:
             model = model.to(DEV)
+
         dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
         logging.info(f'Original ppl: {dataset_ppl}')
         wandb.log({"original_ppl": dataset_ppl})
         model = model.cpu()
         utils.cleanup_memory()
 
-    # fuse layernorms, add shorcuts, check perplexity
+    # replace modules with compressible equivalents
     layernorm_fusion.replace_modules(model, model.config)
 
-    model = model.cpu()
-
-    # Run GC and cleanup GPU memory
-    utils.cleanup_memory()
-
+    # fuse layernorms and add rotations to skip connections
     layernorm_fusion.fuse_modules(model)
 
     # don't run this on large and/or distributed models
@@ -153,10 +150,10 @@ def main():
 
         model = model.cpu()
 
-        # Run GC and cleanup GPU memory
+        # run GC and cleanup GPU memory
         utils.cleanup_memory()
 
-    # compute new embedding dimension given the slicegpt sparsity
+    # compute new embedding dimension given the desired sparsity level
     new_embedding_dimension = int((1 - args.sparsity) * model.config.hidden_size)
     logging.info(f"New embedding dimension: {new_embedding_dimension} (sparsity {args.sparsity})")
 
