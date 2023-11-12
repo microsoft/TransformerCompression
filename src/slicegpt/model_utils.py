@@ -107,7 +107,7 @@ def get_lm_head(model: MODEL) -> torch.nn.Linear:
     raise NotImplementedError
 
 
-def get_layer0_inputs(model: MODEL, batch: torch.Tensor) -> tuple:
+def get_layer0_inputs(model: MODEL, batch: torch.Tensor) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
     """
     Returns the inputs to the first layer of the model (after embeddings).
     NB: this won't work from OPT 350m.

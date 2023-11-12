@@ -145,7 +145,7 @@ def slice_head(model: MODEL, new_embedding_dimension: int) -> None:
 
 @torch.no_grad()
 def rotate_and_slice(
-    model: MODEL, dataloader: torch.utils.data.DataLoader, new_embedding_dimension: int, do_slice_head: int = False
+    model: MODEL, dataloader: torch.utils.data.DataLoader, new_embedding_dimension: int, do_slice_head: bool = False
 ) -> None:
     """
     Rotate and slice a model, with interleaved slicing and PCA calculations

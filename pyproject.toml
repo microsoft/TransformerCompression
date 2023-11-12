@@ -57,6 +57,9 @@ line_length = 120
 [tool.mypy]
 python_version = "3.10"
 disallow_untyped_defs = true
+
+# TODO: Consider adding this option on per-library basis:
+# https://mypy.readthedocs.io/en/stable/running_mypy.html#missing-library-stubs-or-py-typed-marker
 ignore_missing_imports = true
 
 [tool.pylint.main]
