@@ -52,7 +52,7 @@ def evaluate_ppl(model, testloader: DataLoader[torch.Tensor], device: torch.devi
 
 
 def distribute_model(model) -> None:
-    # infer device map, make sure each layer is not split across multiple GPUs
+    """Distribute the model across available GPUs."""
     no_split_modules = [
         "OPTDecoderLayer",
         "CompressedOPTDecoderLayer",
@@ -61,7 +61,6 @@ def distribute_model(model) -> None:
     ]
     max_memory = get_balanced_memory(
         model,
-        max_memory=None,
         no_split_module_classes=no_split_modules,
     )
 
