@@ -4,12 +4,13 @@ import time
 import torch
 from accelerate import dispatch_model, infer_auto_device_map
 from accelerate.utils import get_balanced_memory
+from torch.utils.data import DataLoader
 
 from . import utils
 
 
 @torch.no_grad()
-def evaluate_ppl(model, testloader, device):
+def evaluate_ppl(model, testloader: DataLoader, device: torch.device) -> float:
     """
     Evaluate the model's perplexity on the test set using batch processing.
     It is expected that model is already on the correct device.
@@ -47,7 +48,7 @@ def evaluate_ppl(model, testloader, device):
     return ppl.item()
 
 
-def distribute_model(model):
+def distribute_model(model) -> None:
     # infer device map, make sure each layer is not split across multiple GPUs
     no_split_modules = [
         "OPTDecoderLayer",

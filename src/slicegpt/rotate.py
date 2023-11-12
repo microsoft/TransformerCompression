@@ -315,7 +315,7 @@ def slice_rotated_model(model: MODEL, new_embedding_dimension: int, do_slice_hea
 
 
 @torch.no_grad()
-def pca_calc(X: list[torch.Tensor]):
+def pca_calc(X: list[torch.Tensor]) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Run PCA on a list of batched data. Returns the eigenvalues and eigenvectors.
     """

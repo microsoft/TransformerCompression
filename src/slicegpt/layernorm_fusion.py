@@ -7,13 +7,11 @@ import torch
 from transformers.models.llama.modeling_llama import LlamaRMSNorm
 
 from .model_utils import (
-    LAYER,
     LLAMA_LAYER,
     LLAMA_MODEL,
     MODEL,
     MODEL_CONFIG,
     OPT_LAYER,
-    OPT_MODEL,
     get_attention_inputs,
     get_attention_output,
     get_embeddings,
