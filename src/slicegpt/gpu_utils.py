@@ -10,10 +10,11 @@ from tqdm import tqdm
 
 from . import model_utils, utils
 from .config import config
+from .model_adapter import ModelAdapter
 
 
 @torch.no_grad()
-def evaluate_ppl(model, testloader: DataLoader[torch.Tensor]) -> float:
+def evaluate_ppl(model: ModelAdapter, testloader: DataLoader[torch.Tensor]) -> float:
     """
     Evaluate the model's perplexity on the test set using batch processing.
     It is expected that model is already on the correct device.
@@ -22,22 +23,23 @@ def evaluate_ppl(model, testloader: DataLoader[torch.Tensor]) -> float:
 
     start_time = time.time()
 
-    model.eval()
+    model.raw_model.eval()
 
     loss_fct = torch.nn.CrossEntropyLoss(reduction="none")
 
     nlls = []
 
     for batch in testloader:
+        assert isinstance(batch, torch.Tensor)
         input_ids = batch.to(config.device)
-        logits = model(input_ids=input_ids).logits
+        logits = model.raw_model(input_ids=input_ids).logits
 
         # Shift outputs and labels autoregressively.
         logits = logits[:, :-1, :]
         shift_labels = input_ids[:, 1:]
 
         # CrossEntropyLoss demands data dimension is dimension 1.
-        nll = loss_fct(logits.permute(0, 2, 1), shift_labels).float().sum(dim=1) / model.seqlen
+        nll = loss_fct(logits.permute(0, 2, 1), shift_labels).float().sum(dim=1) / model.raw_model.seqlen
 
         nlls.append(nll)
 
@@ -55,23 +57,23 @@ def evaluate_ppl(model, testloader: DataLoader[torch.Tensor]) -> float:
     return ppl.item()
 
 
-def distribute_model(model) -> None:
+def distribute_model(model: ModelAdapter) -> None:
     """Distribute the model across available GPUs."""
-    no_split_modules = [
-        "OPTDecoderLayer",
-        "CompressedOPTDecoderLayer",
-        "LlamaDecoderLayer",
-        "CompressedLlamaDecoderLayer",
-    ]
     max_memory = get_balanced_memory(
-        model,
-        no_split_module_classes=no_split_modules,
+        model.raw_model,
+        no_split_module_classes=model.no_split_module_classes,
     )
 
-    device_map = infer_auto_device_map(model, max_memory=max_memory, no_split_module_classes=no_split_modules)
+    device_map = infer_auto_device_map(
+        model.raw_model, max_memory=max_memory, no_split_module_classes=model.no_split_module_classes
+    )
 
     dispatch_model(
-        model, device_map=device_map, offload_buffers=True, offload_dir="offload", state_dict=model.state_dict()
+        model.raw_model,
+        device_map=device_map,
+        offload_buffers=True,
+        offload_dir="offload",
+        state_dict=model.raw_model.state_dict(),
     )
 
     # Run GC and cleanup GPU memory
