@@ -10,7 +10,7 @@ from . import utils
 
 
 @torch.no_grad()
-def evaluate_ppl(model, testloader: DataLoader, device: torch.device) -> float:
+def evaluate_ppl(model, testloader: DataLoader[torch.Tensor], device: torch.device) -> float:
     """
     Evaluate the model's perplexity on the test set using batch processing.
     It is expected that model is already on the correct device.

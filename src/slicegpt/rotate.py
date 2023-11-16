@@ -145,7 +145,10 @@ def slice_head(model: MODEL, new_embedding_dimension: int) -> None:
 
 @torch.no_grad()
 def rotate_and_slice(
-    model: MODEL, dataloader: torch.utils.data.DataLoader, new_embedding_dimension: int, do_slice_head: bool = False
+    model: MODEL,
+    dataloader: torch.utils.data.DataLoader[torch.Tensor],
+    new_embedding_dimension: int,
+    do_slice_head: bool = False,
 ) -> None:
     """
     Rotate and slice a model, with interleaved slicing and PCA calculations
@@ -222,7 +225,7 @@ def rotate_and_slice(
 
 
 @torch.no_grad()
-def rotate(model: MODEL, dataloader: torch.utils.data.DataLoader) -> None:
+def rotate(model: MODEL, dataloader: torch.utils.data.DataLoader[torch.Tensor]) -> None:
     """
     Rotate a model.
     TODO: Make this gpu memory efficient.

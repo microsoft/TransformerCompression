@@ -5,12 +5,13 @@ import logging
 import random
 
 import datasets
+import torch
 from torch.utils.data import DataLoader
 
 
 def get_loaders(
     dataset_name: str, tokenizer, nsamples: int = 128, seed: int = 0, seqlen: int = 2048, batch_size: int = 1
-) -> tuple[DataLoader, DataLoader]:
+) -> tuple[DataLoader[torch.Tensor], DataLoader[torch.Tensor]]:
     logging.info(f"Loading dataset: {dataset_name}")
     if dataset_name == "wikitext2":
         path = "wikitext"
