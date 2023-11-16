@@ -1,21 +1,27 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
+from typing import TypeAlias
+
 import torch
-import transformers
+from transformers.models.llama.modeling_llama import LlamaConfig, LlamaDecoderLayer, LlamaForCausalLM
+from transformers.models.opt.modeling_opt import OPTConfig, OPTDecoderLayer, OPTForCausalLM
 
 from . import utils
 
-OPT_MODEL = transformers.models.opt.modeling_opt.OPTForCausalLM
-OPT_LAYER = transformers.models.opt.modeling_opt.OPTDecoderLayer
-LLAMA_MODEL = transformers.models.llama.modeling_llama.LlamaForCausalLM
-LLAMA_LAYER = transformers.models.llama.modeling_llama.LlamaDecoderLayer
+OPT_MODEL = OPTForCausalLM
+OPT_LAYER = OPTDecoderLayer
+LLAMA_MODEL = LlamaForCausalLM
+LLAMA_LAYER = LlamaDecoderLayer
 
+MODEL: TypeAlias = OPTForCausalLM | LlamaForCausalLM
+LAYER: TypeAlias = OPTDecoderLayer | LlamaDecoderLayer
+MODEL_CONFIG: TypeAlias = OPTConfig | LlamaConfig
 
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def get_embeddings(model):
+def get_embeddings(model: MODEL) -> list[torch.nn.Module]:
     if isinstance(model, OPT_MODEL):
         return [model.model.decoder.embed_tokens, model.model.decoder.embed_positions]
     if isinstance(model, LLAMA_MODEL):
@@ -24,7 +30,7 @@ def get_embeddings(model):
     raise NotImplementedError
 
 
-def get_layers(model):
+def get_layers(model: MODEL) -> list[torch.nn.Module]:
     if isinstance(model, OPT_MODEL):
         return model.model.decoder.layers
     if isinstance(model, LLAMA_MODEL):
@@ -33,7 +39,7 @@ def get_layers(model):
     raise NotImplementedError
 
 
-def get_first_layernorm(layer):
+def get_first_layernorm(layer: LAYER) -> torch.nn.Module:
     if isinstance(layer, OPT_LAYER):
         return layer.self_attn_layer_norm
     if isinstance(layer, LLAMA_LAYER):
@@ -42,7 +48,7 @@ def get_first_layernorm(layer):
     raise NotImplementedError
 
 
-def get_second_layernorm(layer):
+def get_second_layernorm(layer: LAYER) -> torch.nn.Module:
     if isinstance(layer, OPT_LAYER):
         return layer.final_layer_norm
     if isinstance(layer, LLAMA_LAYER):
@@ -51,7 +57,7 @@ def get_second_layernorm(layer):
     raise NotImplementedError
 
 
-def get_pre_head_layernorm(model):
+def get_pre_head_layernorm(model: MODEL) -> torch.nn.Module:
     if isinstance(model, OPT_MODEL):
         return model.model.decoder.final_layer_norm
     if isinstance(model, LLAMA_MODEL):
@@ -60,14 +66,14 @@ def get_pre_head_layernorm(model):
     raise NotImplementedError
 
 
-def get_attention_inputs(layer):
+def get_attention_inputs(layer: LAYER) -> list[torch.nn.Linear]:
     if isinstance(layer, (OPT_LAYER, LLAMA_LAYER)):
         return [layer.self_attn.q_proj, layer.self_attn.k_proj, layer.self_attn.v_proj]
 
     raise NotImplementedError
 
 
-def get_attention_output(layer):
+def get_attention_output(layer: LAYER) -> torch.nn.Linear:
     if isinstance(layer, OPT_LAYER):
         return layer.self_attn.out_proj
     if isinstance(layer, LLAMA_LAYER):
@@ -76,7 +82,7 @@ def get_attention_output(layer):
     raise NotImplementedError
 
 
-def get_mlp_inputs(layer):
+def get_mlp_inputs(layer: LAYER) -> list[torch.nn.Linear]:
     if isinstance(layer, OPT_LAYER):
         return [layer.fc1]
     if isinstance(layer, LLAMA_LAYER):
@@ -85,7 +91,7 @@ def get_mlp_inputs(layer):
     raise NotImplementedError
 
 
-def get_mlp_output(layer):
+def get_mlp_output(layer: LAYER) -> torch.nn.Linear:
     if isinstance(layer, OPT_LAYER):
         return layer.fc2
     if isinstance(layer, LLAMA_LAYER):
@@ -94,14 +100,14 @@ def get_mlp_output(layer):
     raise NotImplementedError
 
 
-def get_lm_head(model):
+def get_lm_head(model: MODEL) -> torch.nn.Linear:
     if isinstance(model, (OPT_MODEL, LLAMA_MODEL)):
         return model.lm_head
 
     raise NotImplementedError
 
 
-def get_layer0_inputs(model, batch):
+def get_layer0_inputs(model: MODEL, batch: torch.Tensor) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
     """
     Returns the inputs to the first layer of the model (after embeddings).
     NB: this won't work from OPT 350m.
@@ -144,7 +150,9 @@ def get_layer0_inputs(model, batch):
     return inps, attention_masks
 
 
-def get_signals(layer, inputs: list[torch.tensor], attention_masks: list[torch.tensor]):
+def get_signals(
+    layer: LAYER, inputs: list[torch.Tensor], attention_masks: list[torch.Tensor]
+) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
     """
     Take the input signals ("activations") for a layer, run the layer forward.
     Return the output of the layer (not layernormed) and the input to the MLP (pre-layernorm).
