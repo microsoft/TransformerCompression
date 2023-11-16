@@ -84,7 +84,7 @@ def argparser():
     return args
 
 
-def main():
+def main() -> None:
     logging.info("Running SliceGPT perplexity experiment")
     logging.info(f"Number of available cuda devices: {torch.cuda.device_count()}")
 

@@ -4,7 +4,7 @@
 from slicegpt import hf_utils
 
 
-def test_download_model():
+def test_download_model() -> None:
     print("Downloading model from HF.")
     model_name = "facebook/opt-125m"
     model, tokenizer = hf_utils.get_model(model_name)

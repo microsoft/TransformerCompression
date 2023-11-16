@@ -4,10 +4,14 @@
 import logging
 
 import torch
-from transformers.models.llama.modeling_llama import LlamaDecoderLayer, LlamaPreTrainedModel, LlamaRMSNorm
-from transformers.models.opt.modeling_opt import OPTDecoderLayer
+from transformers.models.llama.modeling_llama import LlamaRMSNorm
 
 from .model_utils import (
+    LLAMA_LAYER,
+    LLAMA_MODEL,
+    MODEL,
+    MODEL_CONFIG,
+    OPT_LAYER,
     get_attention_inputs,
     get_attention_output,
     get_embeddings,
@@ -22,7 +26,7 @@ from .model_utils import (
 from .modules import RMSN, CompressedLlamaDecoderLayer, CompressedOPTDecoderLayer
 
 
-def replace_modules(model, config, verbose=True):
+def replace_modules(model: MODEL, config: MODEL_CONFIG, verbose: bool = True) -> None:
     """
     Replace
        OPTDecoder with CompressedOPTDecoderLayer,
@@ -33,15 +37,15 @@ def replace_modules(model, config, verbose=True):
     if verbose:
         logging.info("Replacing modules")
 
-    if isinstance(model, LlamaPreTrainedModel):
+    if isinstance(model, LLAMA_MODEL):
         model = model.model
 
     for name, module in model.named_children():
         new_module = None
 
-        if isinstance(module, OPTDecoderLayer):
+        if isinstance(module, OPT_LAYER):
             new_module = CompressedOPTDecoderLayer(config).to(config.torch_dtype)
-        elif isinstance(module, LlamaDecoderLayer):
+        elif isinstance(module, LLAMA_LAYER):
             new_module = CompressedLlamaDecoderLayer(config).to(config.torch_dtype)
         elif len(list(module.children())) > 0:
             replace_modules(module, config, verbose=False)
@@ -54,12 +58,12 @@ def replace_modules(model, config, verbose=True):
         logging.info("Replacing modules done")
 
 
-def replace_layernorms(model, config):
+def replace_layernorms(model: MODEL, config: MODEL_CONFIG) -> None:
     """
     Replace
        nn.LayerNorm with slicegpt.modules.RMSN
     """
-    if isinstance(model, LlamaPreTrainedModel):
+    if isinstance(model, LLAMA_MODEL):
         model = model.model
 
     for name, module in model.named_children():
@@ -74,7 +78,7 @@ def replace_layernorms(model, config):
             getattr(model, name)
 
 
-def fuse_modules(model):
+def fuse_modules(model: MODEL) -> None:
     """
     This function fuses the linear and layernorm into each other inplace.
     After this function is called, the model should outputs the same results as before.
@@ -132,7 +136,7 @@ def bake_mean_into_linear(linear: torch.nn.Linear) -> None:
         linear.bias.data = linear.bias.data.to(linear_dtype)
 
 
-def fuse_ln_linear(layernorm: torch.nn.LayerNorm, linear_layers: list):
+def fuse_ln_linear(layernorm: torch.nn.Module, linear_layers: list[torch.nn.Linear]) -> None:
     """
     fuse the linear operations in Layernorm into the adjacent linear blocks.
     """
