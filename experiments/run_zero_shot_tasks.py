@@ -190,7 +190,7 @@ def main() -> None:
         # distribute model across available GPUs
         gpu_utils.distribute_model(model.model)
     else:
-        model.model = model.model.to(DEV)
+        model.model = model.model.to(config.device)
 
     ### LM Eval Harness ###
     if args.tasks is None:

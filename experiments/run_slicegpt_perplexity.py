@@ -85,9 +85,8 @@ def argparser():
         raise argparse.ArgumentTypeError(f"Sparsity should be in the range [0, 1)")
 
     if args.device:
-        print(f'{args.device}')
         config.device = torch.device(args.device)
-        print(f'{config.device =}')
+
     return args
 
 
