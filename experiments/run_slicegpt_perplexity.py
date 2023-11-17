@@ -9,11 +9,11 @@ import torch
 import wandb
 
 from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate, utils
+from slicegpt.config import config
 
 utils.configure_logging()
 
 os.environ["WANDB__SERVICE_WAIT"] = "300"
-DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def argparser():
@@ -71,6 +71,9 @@ def argparser():
     parser.add_argument('--hf-token', type=str, default=None)
 
     parser.add_argument('--no-wandb', action="store_true", help="Disable wandb.")
+    parser.add_argument(
+        '--device', type=str, default=None, help="PyTorch device to use for compression and evaluation."
+    )
 
     args = parser.parse_args()
 
@@ -81,14 +84,20 @@ def argparser():
     if not 0 <= args.sparsity < 1:
         raise argparse.ArgumentTypeError(f"Sparsity should be in the range [0, 1)")
 
+    if args.device:
+        print(f'{args.device}')
+        config.device = torch.device(args.device)
+        print(f'{config.device =}')
     return args
 
 
 def main() -> None:
     logging.info("Running SliceGPT perplexity experiment")
-    logging.info(f"Number of available cuda devices: {torch.cuda.device_count()}")
 
     args = argparser()
+
+    logging.info(f"PyTorch device: {config.device}")
+    logging.info(f"Number of available cuda devices: {torch.cuda.device_count()}")
 
     try:
         wandb.init(project="slicegpt", config=args, mode='disabled' if args.no_wandb else None)
@@ -101,7 +110,7 @@ def main() -> None:
     if args.load_model_path:
         # load the model from load_model_path to compute perplexity and skip rotation and slicing
         logging.info(f"Loading sliced {args.model} model from {args.load_model_path} with sparsity {args.sparsity}")
-        model, tokenizer = hf_utils.load_sliced_model(args.model, args.load_model_path, args.sparsity, DEV)
+        model, tokenizer = hf_utils.load_sliced_model(args.model, args.load_model_path, args.sparsity)
     else:
         # load one of the pre-trained models
         model, tokenizer = hf_utils.get_model(args.model, token=args.hf_token)
@@ -121,9 +130,9 @@ def main() -> None:
             # distribute model across available GPUs
             gpu_utils.distribute_model(model)
         else:
-            model = model.to(DEV)
+            model = model.to(config.device)
 
-        dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
+        dataset_ppl = gpu_utils.evaluate_ppl(model, testloader)
         logging.info(f'Loaded model perplexity: {dataset_ppl}')
         wandb.log({"original_ppl": dataset_ppl})
         return
@@ -134,9 +143,9 @@ def main() -> None:
             # distribute model across available GPUs
             gpu_utils.distribute_model(model)
         else:
-            model = model.to(DEV)
+            model = model.to(config.device)
 
-        dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
+        dataset_ppl = gpu_utils.evaluate_ppl(model, testloader)
         logging.info(f'Original ppl: {dataset_ppl:.4f}')
         wandb.log({"original_ppl": dataset_ppl})
         model = model.cpu()
@@ -150,9 +159,9 @@ def main() -> None:
 
     # don't run this on large and/or distributed models
     if args.eval_fused_model and not args.distribute_model:
-        model = model.to(DEV)
+        model = model.to(config.device)
 
-        dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
+        dataset_ppl = gpu_utils.evaluate_ppl(model, testloader)
         logging.info(f'Post-fusion: {dataset_ppl:.4f}')
         wandb.log({"post_fusion_ppl": dataset_ppl})
 
@@ -181,9 +190,9 @@ def main() -> None:
     if args.distribute_model:
         gpu_utils.distribute_model(model)
     else:
-        model = model.to(DEV)
+        model = model.to(config.device)
 
-    dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
+    dataset_ppl = gpu_utils.evaluate_ppl(model, testloader)
     logging.info(f'After rotating and slicing {dataset_ppl:.4f}')
     wandb.log({"sliced_ppl": dataset_ppl})
 

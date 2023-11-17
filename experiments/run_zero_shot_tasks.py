@@ -13,11 +13,11 @@ from lm_eval import utils as lm_eval_utils
 from lm_eval.base import BaseLM
 
 from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate, utils
+from slicegpt.config import config
 
 utils.configure_logging()
 
 os.environ["WANDB__SERVICE_WAIT"] = "300"
-DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class SlicedLM(BaseLM):

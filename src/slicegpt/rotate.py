@@ -6,6 +6,7 @@ import logging
 import torch
 from tqdm import tqdm
 
+from .config import config
 from .model_utils import (
     LAYER,
     MODEL,
@@ -24,14 +25,12 @@ from .model_utils import (
 )
 from .utils import cleanup_memory
 
-DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 
 def rotate_attention_inputs(layer: LAYER, Q: torch.Tensor) -> None:
     # Rotate the WQ, WK and WV matrices of the self-attention layer.
     for W in get_attention_inputs(layer):
         dtype = W.weight.dtype
-        W_ = W.weight.to(device=DEV, dtype=torch.float64)
+        W_ = W.weight.to(device=config.device, dtype=torch.float64)
         W.weight.data = torch.matmul(W_, Q).to(device="cpu", dtype=dtype)
 
 
@@ -51,10 +50,10 @@ def rotate_attention_output(layer: LAYER, Q: torch.Tensor) -> None:
     W = get_attention_output(layer)
 
     dtype = W.weight.data.dtype
-    W_ = W.weight.data.to(device=DEV, dtype=torch.float64)
+    W_ = W.weight.data.to(device=config.device, dtype=torch.float64)
     W.weight.data = torch.matmul(Q.T, W_).to(device="cpu", dtype=dtype)
     if W.bias is not None:
-        b = W.bias.data.to(device=DEV, dtype=torch.float64)
+        b = W.bias.data.to(device=config.device, dtype=torch.float64)
         W.bias.data = torch.matmul(Q.T, b).to(device="cpu", dtype=dtype)
 
 
@@ -73,7 +72,7 @@ def rotate_mlp_input(layer: LAYER, Q: torch.Tensor) -> None:
     # Rotate the MLP input weights.
     for W in get_mlp_inputs(layer):
         dtype = W.weight.dtype
-        W_ = W.weight.data.to(device=DEV, dtype=torch.float64)
+        W_ = W.weight.data.to(device=config.device, dtype=torch.float64)
         W.weight.data = torch.matmul(W_, Q).to(device="cpu", dtype=dtype)
 
 
@@ -94,10 +93,10 @@ def rotate_mlp_output(layer: LAYER, Q: torch.Tensor) -> None:
     # Rotate the MLP output weights and bias.
     W = get_mlp_output(layer)
     dtype = W.weight.data.dtype
-    W_ = W.weight.data.to(device=DEV, dtype=torch.float64)
+    W_ = W.weight.data.to(device=config.device, dtype=torch.float64)
     W.weight.data = torch.matmul(Q.T, W_).to(device="cpu", dtype=dtype)
     if W.bias is not None:
-        b = W.bias.data.to(device=DEV, dtype=torch.float64)
+        b = W.bias.data.to(device=config.device, dtype=torch.float64)
         W.bias.data = torch.matmul(Q.T, b).to(device="cpu", dtype=dtype)
 
 
@@ -116,7 +115,7 @@ def rotate_embeddings(model: MODEL, Q: torch.Tensor) -> None:
     # Rotate the embeddings.
     for W in get_embeddings(model):
         dtype = W.weight.data.dtype
-        W_ = W.weight.data.to(device=DEV, dtype=torch.float64)
+        W_ = W.weight.data.to(device=config.device, dtype=torch.float64)
         W.weight.data = torch.matmul(W_, Q).to(device="cpu", dtype=dtype)
 
     # Run GC and cleanup GPU memory
@@ -133,7 +132,7 @@ def rotate_head(model: MODEL, Q: torch.Tensor) -> None:
     # Rotate the head.
     W = get_lm_head(model)
     dtype = W.weight.data.dtype
-    W_ = W.weight.data.to(device=DEV, dtype=torch.float64)
+    W_ = W.weight.data.to(device=config.device, dtype=torch.float64)
     W.weight.data = torch.matmul(W_, Q).to(device="cpu", dtype=dtype)
 
 
@@ -161,13 +160,16 @@ def rotate_and_slice(
     )
 
     _, Q = pca_calc(inps)
-    Q = Q.to(device=DEV)
+    Q = Q.to(device=config.device)
 
     rotate_embeddings(model, Q)
     slice_embeddings(model, new_embedding_dimension)
 
     # rotate and slice inputs
-    inps = [torch.matmul(inp.to(device=DEV), Q.to(dtype=dtype))[:, :, :new_embedding_dimension].cpu() for inp in inps]
+    inps = [
+        torch.matmul(inp.to(device=config.device), Q.to(dtype=dtype))[:, :, :new_embedding_dimension].cpu()
+        for inp in inps
+    ]
 
     logging.info("Rotate and slice layers")
     layers = get_layers(model)
@@ -181,7 +183,7 @@ def rotate_and_slice(
         # get signal between attention and mlp, rotate and slice
         mlp_ln_inputs, _ = get_signals(layer, inps, attn_masks)
         _, Q = pca_calc(mlp_ln_inputs)
-        Q = Q.to(device=DEV, dtype=torch.float64)
+        Q = Q.to(device=config.device, dtype=torch.float64)
 
         layer.attn_shortcut_Q = torch.matmul(layer.attn_shortcut_Q, Q.to(dtype=dtype))
         rotate_attention_output(layer, Q)
@@ -209,7 +211,7 @@ def rotate_and_slice(
         rotate_mlp_output(layer, Q)
         slice_mlp_output(layer, dim)
 
-        inps = [torch.matmul(out.to(device=DEV), Q.to(dtype=dtype))[:, :, :dim].cpu() for out in outs]
+        inps = [torch.matmul(out.to(device=config.device), Q.to(dtype=dtype))[:, :, :dim].cpu() for out in outs]
 
         layer = layer.to('cpu')
 
@@ -239,7 +241,7 @@ def rotate(model: MODEL, dataloader: torch.utils.data.DataLoader[torch.Tensor]) 
     # Get the input of the first layer norm and calculate the Q_1
     inps, attn_masks = get_layer0_inputs(model, dataloader)
     _, Q_1 = pca_calc(inps.reshape(-1, model.config.hidden_size))
-    Q_1 = Q_1.to(device=DEV)
+    Q_1 = Q_1.to(device=config.device)
 
     # Rotate the embeddings.
     rotate_embeddings(model, Q_1)
@@ -250,9 +252,9 @@ def rotate(model: MODEL, dataloader: torch.utils.data.DataLoader[torch.Tensor]) 
         # Extract the inputs and outputs of the second layernorm input and calculate the Q_3
         mlp_ln_inputs, outs = get_signals(layer, inps, attn_masks)
         _, Q_3 = pca_calc(mlp_ln_inputs.reshape(-1, mlp_ln_inputs.shape[-1]))
-        Q_3 = Q_3.to(device=DEV)
+        Q_3 = Q_3.to(device=config.device)
         _, Q_5 = pca_calc(outs.reshape(-1, outs.shape[-1]))
-        Q_5 = Q_5.to(device=DEV)
+        Q_5 = Q_5.to(device=config.device)
 
         # Rotate the Q, K and V matrices of the self-attention layer.
         rotate_attention_inputs(layer, Q_1)
@@ -327,12 +329,12 @@ def pca_calc(X: list[torch.Tensor]) -> tuple[torch.Tensor, torch.Tensor]:
 
     H = None
     for X_batch in X:
-        X_batch = X_batch.double().to(device=DEV)
+        X_batch = X_batch.double().to(device=config.device)
         H_batch = torch.sum(X_batch.mT @ X_batch, dim=0)  # sum over the batch dimension.
         H = H_batch if H is None else H + H_batch
 
     damp = 0.01 * torch.mean(torch.diag(H))
-    diag = torch.arange(H.shape[-1]).to(device=DEV)
+    diag = torch.arange(H.shape[-1]).to(device=config.device)
     H[diag, diag] = H[diag, diag] + damp
     X_eig = torch.linalg.eigh(H)
     del H
