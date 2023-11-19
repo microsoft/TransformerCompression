@@ -37,8 +37,8 @@ def get_loaders(
     else:
         raise NotImplementedError("The provided dataset is not supported")
 
-    traindata = datasets.load_dataset(path, name, data_files=train_data_files, split="train")
-    testdata = datasets.load_dataset(path, name, data_files=test_data_files, split=test_split)
+    traindata = datasets.load_dataset(path, name=name, data_files=train_data_files, split="train")
+    testdata = datasets.load_dataset(path, name=name, data_files=test_data_files, split=test_split)
 
     random.seed(seed)
     if dataset_name == "c4":

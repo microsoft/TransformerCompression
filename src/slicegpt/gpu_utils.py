@@ -1,14 +1,14 @@
 import logging
 import time
 
+import numpy as np
 import torch
+import transformers
 from accelerate import dispatch_model, infer_auto_device_map
 from accelerate.utils import get_balanced_memory
 from torch.utils.data import DataLoader
-import transformers
-
 from tqdm import tqdm
-import numpy as np
+
 from . import utils
 
 
@@ -84,6 +84,7 @@ def benchmark(model, input_batch, device):
     model.config.use_cache = True
 
     cache = {"past": None}
+
     def clear_past(i):
         def tmp(layer, inp, out):
             if cache["past"]:
@@ -111,11 +112,7 @@ def benchmark(model, input_batch, device):
 
             sync_gpus()
             tick = time.time()
-            out = model(
-                input_batch_i,
-                past_key_values=cache["past"],
-                attention_mask=attention_mask_i
-            )
+            out = model(input_batch_i, past_key_values=cache["past"], attention_mask=attention_mask_i)
             sync_gpus()
             times.append(time.time() - tick)
 
@@ -126,6 +123,6 @@ def benchmark(model, input_batch, device):
 
         median_time = np.median(times)
         throughput = batch_size / median_time
-        
-        results = {"median_time": median_time, "latency": 1/throughput, "throughput": throughput}
+
+        results = {"median_time": median_time, "latency": 1 / throughput, "throughput": throughput}
         return results

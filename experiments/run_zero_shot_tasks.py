@@ -27,7 +27,9 @@ class SlicedLM(BaseLM):
         super().__init__()
 
         if args.load_model_path:
-            model, tokenizer = hf_utils.load_sliced_model(args.model, args.load_model_path, args.sparsity, args.hf_token)
+            model, tokenizer = hf_utils.load_sliced_model(
+                args.model, args.load_model_path, args.sparsity, args.hf_token
+            )
         else:
             model, tokenizer = hf_utils.get_model(args.model, token=args.hf_token)
             self.apply_slicegpt(model, tokenizer, args)
