@@ -74,20 +74,20 @@ def distribute_model(model) -> None:
     utils.cleanup_memory()
 
 
-def sync_gpus():
+def sync_gpus() -> None:
     """Sync all GPUs to make sure all operations are finished, needed for correct benchmarking of latency/throughput."""
     for i in range(torch.cuda.device_count()):
         torch.cuda.synchronize(device=i)
 
 
-def benchmark(model, input_batch, device):
+def benchmark(model, input_batch: torch.tensor, device: torch.device) -> dict:
     """Benchmark the model's latency and throughput on the given input batch."""
     model.config.use_cache = True
 
     cache = {"past": None}
 
     def clear_past_cache(layer_idx):
-        def tmp(layer, inp, out):
+        def tmp(*_):
             if cache["past"]:
                 cache["past"][layer_idx] = None
 
