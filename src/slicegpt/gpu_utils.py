@@ -18,6 +18,9 @@ def evaluate_ppl(model, testloader: DataLoader[torch.Tensor], device: torch.devi
     Evaluate the model's perplexity on the test set using batch processing.
     It is expected that model is already on the correct device.
     """
+    if device == torch.device("cuda"):
+        sync_gpus()
+
     start_time = time.time()
 
     model.eval()
@@ -41,6 +44,9 @@ def evaluate_ppl(model, testloader: DataLoader[torch.Tensor], device: torch.devi
 
     nlls = torch.cat(nlls)
     ppl = torch.exp(nlls.sum() / nlls.numel())
+
+    if device == torch.device("cuda"):
+        sync_gpus()
 
     elapsed = time.time() - start_time
     logging.info(

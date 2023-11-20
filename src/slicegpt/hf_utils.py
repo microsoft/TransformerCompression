@@ -23,6 +23,36 @@ class UninitializedLlamaForCausalLM(LlamaForCausalLM):
         pass
 
 
+def skip(*args, **kwargs):
+    pass
+
+
+def do_not_initialize(func):
+    """
+    A decorator that prevents initalization of torch.nn modules.
+    """
+
+    def wrapper(*args, **kwargs):
+        kaiming_fn = torch.nn.init.kaiming_uniform_
+        uniform_fn = torch.nn.init.uniform_
+        normal_fn = torch.nn.init.normal_
+
+        torch.nn.init.kaiming_uniform_ = skip
+        torch.nn.init.uniform_ = skip
+        torch.nn.init.normal_ = skip
+
+        result = func(*args, **kwargs)
+
+        torch.nn.init.kaiming_uniform_ = kaiming_fn
+        torch.nn.init.uniform_ = uniform_fn
+        torch.nn.init.normal_ = normal_fn
+
+        return result
+
+    return wrapper
+
+
+@do_not_initialize
 def get_model(model_path: str, uninitialized: bool = False, dtype: torch.dtype = torch.float16, token=None):
     """Loads the model and the tokenizer from the given path."""
     if uninitialized:
@@ -60,6 +90,7 @@ def get_model(model_path: str, uninitialized: bool = False, dtype: torch.dtype =
     return model, tokenizer
 
 
+@do_not_initialize
 def load_sliced_model(model_name: str, model_path: str, sparsity: float, token: str) -> tuple:
     """Loads the sliced model and the tokenizer from the given path."""
     model, tokenizer = get_model(model_name, uninitialized=True, token=token)
