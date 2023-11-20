@@ -70,30 +70,38 @@ def argparser():
 
     parser.add_argument('--hf_token', type=str, default=None)
 
+    parser.add_argument('--no_wandb', action="store_true", help="Disable wandb.")
+
     args = parser.parse_args()
-    assert args.sparsity >= 0 and args.sparsity <= 1, "Sparsity should be in the range [0, 1]!"
+
+    logging.debug(f'Parsed arguments:')
+    for arg, argv in vars(args).items():
+        logging.debug(f'{arg} = {argv}')
+
+    if not 0 <= args.sparsity < 1:
+        raise argparse.ArgumentTypeError(f"Sparsity should be in the range [0, 1)")
 
     return args
 
 
-def main():
-    logging.info("Running SliceGPT perplexity experiment.")
+def main() -> None:
+    logging.info("Running SliceGPT perplexity experiment")
     logging.info(f"Number of available cuda devices: {torch.cuda.device_count()}")
 
     args = argparser()
 
     try:
-        wandb.init(project="slicegpt", config=args)
+        wandb.init(project="slicegpt", config=args, mode='disabled' if args.no_wandb else None)
     except wandb.UsageError as e:
         # wandb.init will throw an error if the user is not logged in and the process is running in a non-shell
         # environment, e.g. notebook, IDE, no-shell process, etc. In this case, we want to continue without wandb.
-        logging.info(f'Failed to initialize wandb: {e}, continuing without wandb.')
+        logging.info(f'Failed to initialize wandb: {e}, continuing without wandb')
         wandb.init(project="slicegpt", mode='disabled')
 
     if args.load_model_path:
         # load the model from load_model_path to compute perplexity and skip rotation and slicing
         logging.info(f"Loading sliced {args.model} model from {args.load_model_path} with sparsity {args.sparsity}")
-        model, tokenizer = hf_utils.load_sliced_model(args.model, args.load_model_path, args.sparsity, args.hf_token)
+        model, tokenizer = hf_utils.load_sliced_model(args.model, args.load_model_path, args.sparsity, DEV)
     else:
         # load one of the pre-trained models
         model, tokenizer = hf_utils.get_model(args.model, token=args.hf_token)
@@ -129,7 +137,7 @@ def main():
             model = model.to(DEV)
 
         dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
-        logging.info(f'Original ppl: {dataset_ppl}')
+        logging.info(f'Original ppl: {dataset_ppl:.4f}')
         wandb.log({"original_ppl": dataset_ppl})
         model = model.cpu()
         utils.cleanup_memory()
@@ -145,13 +153,16 @@ def main():
         model = model.to(DEV)
 
         dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
-        logging.info(f'Post-fusion: {dataset_ppl}')
+        logging.info(f'Post-fusion: {dataset_ppl:.4f}')
         wandb.log({"post_fusion_ppl": dataset_ppl})
 
         model = model.cpu()
 
         # run GC and cleanup GPU memory
         utils.cleanup_memory()
+
+    original_param_count = sum(int(p.nelement()) for p in model.parameters())
+    logging.info(f'Original model parameters: {original_param_count:,d}')
 
     # compute new embedding dimension given the desired sparsity level
     new_embedding_dimension = int((1 - args.sparsity) * model.config.hidden_size)
@@ -173,8 +184,12 @@ def main():
         model = model.to(DEV)
 
     dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
-    logging.info(f'After rotating and slicing {dataset_ppl}')
+    logging.info(f'After rotating and slicing {dataset_ppl:.4f}')
     wandb.log({"sliced_ppl": dataset_ppl})
+
+    sliced_param_count = sum(int(p.nelement()) for p in model.parameters())
+    sliced_fraction = 1.0 - sliced_param_count / original_param_count
+    logging.info(f'Sliced model parameters: {sliced_param_count:,d} (sliced fraction {sliced_fraction:.4f})')
 
 
 if __name__ == "__main__":

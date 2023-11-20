@@ -27,10 +27,14 @@ class SlicedLM(BaseLM):
         super().__init__()
 
         if args.load_model_path:
-            model, tokenizer = hf_utils.load_sliced_model(args.model, args.load_model_path, args.sparsity, args.hf_token)
+            model, tokenizer = hf_utils.load_sliced_model(
+                args.model, args.load_model_path, args.sparsity, args.hf_token
+            )
         else:
             model, tokenizer = hf_utils.get_model(args.model, token=args.hf_token)
-            self.apply_slicegpt(model, tokenizer, args)
+
+            if not args.baseline:
+                self.apply_slicegpt(model, tokenizer, args)
 
         self.model = model
         self.model.config.sparsity = args.sparsity
@@ -158,18 +162,20 @@ def parse_args():
 
     parser.add_argument("--load_model_path", type=str, default=None, help="Path to load the sliced model from.")
 
+    parser.add_argument("--baseline", action="store_true", help="Evalute the dense (un-sliced) model.")
+
     parser.add_argument('--hf_token', type=str, default=None)
 
     return parser.parse_args()
 
 
-def main():
+def main() -> None:
     args = parse_args()
     logging.info("Running SliceGPT zeroshot tasks experiment.")
     logging.info(f"Number of available cuda devices: {torch.cuda.device_count()}")
 
     try:
-        wandb.init(project="slicegpt", config=args)
+        wandb.init(project="slicegpt-zeroshot", config=args)
     except wandb.UsageError as e:
         # wandb.init will throw an error if the user is not logged in and the process is running in a non-shell
         # environment, e.g. notebook, IDE, no-shell process, etc. In this case, we want to continue without wandb.
@@ -195,7 +201,7 @@ def main():
     logging.info(f"Selected Tasks: {task_names}")
 
     # Run the evaluation.
-    results = evaluator.simple_evaluate(model=model, tasks=task_names, no_cache=args.no_cache)
+    results = evaluator.simple_evaluate(model=model, tasks=task_names, no_cache=True)
     wandb.log(results['results'])
     logging.info(json.dumps(results, indent=2))
     logging.info(evaluator.make_table(results))

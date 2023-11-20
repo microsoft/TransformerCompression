@@ -16,7 +16,7 @@ def configure_logging(
     log_dir: str = 'log',
     level: int = logging.INFO,
 ) -> None:
-    handlers = []
+    handlers: list[logging.Handler] = []
 
     if log_to_console:
         handler = logging.StreamHandler()
@@ -28,13 +28,13 @@ def configure_logging(
     if log_to_file:
         path = pathlib.Path.cwd() / log_dir / f'{datetime.datetime.now():log_%Y-%m-%d-%H-%M-%S}.log'
         path.parent.mkdir(parents=True, exist_ok=True)
-        handler = logging.FileHandler(path, encoding='utf-8')
-        handler.setLevel(logging.DEBUG)
+        file_handler = logging.FileHandler(path, encoding='utf-8')
+        file_handler.setLevel(logging.DEBUG)
         formatter = logging.Formatter(
             '%(asctime)s.%(msecs)04d\t%(levelname)s\t%(name)s\t%(message)s', datefmt='%Y-%m-%dT%H:%M:%S'
         )
-        handler.setFormatter(formatter)
-        handlers.append(handler)
+        file_handler.setFormatter(formatter)
+        handlers.append(file_handler)
 
     logging.basicConfig(
         handlers=handlers,
@@ -50,7 +50,7 @@ def cleanup_memory() -> None:
     except (ValueError, KeyError):
         pass
 
-    def total_reserved_mem():
+    def total_reserved_mem() -> int:
         return sum(torch.cuda.memory_reserved(device=i) for i in range(torch.cuda.device_count()))
 
     memory_before = total_reserved_mem()

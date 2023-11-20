@@ -5,10 +5,13 @@ import logging
 import random
 
 import datasets
+import torch
 from torch.utils.data import DataLoader
 
 
-def get_loaders(dataset_name, tokenizer, nsamples=128, seed=0, seqlen=2048, batch_size=1):
+def get_loaders(
+    dataset_name: str, tokenizer, nsamples: int = 128, seed: int = 0, seqlen: int = 2048, batch_size: int = 1
+) -> tuple[DataLoader[torch.Tensor], DataLoader[torch.Tensor]]:
     logging.info(f"Loading dataset: {dataset_name}")
     if dataset_name == "wikitext2":
         path = "wikitext"
@@ -34,8 +37,8 @@ def get_loaders(dataset_name, tokenizer, nsamples=128, seed=0, seqlen=2048, batc
     else:
         raise NotImplementedError("The provided dataset is not supported")
 
-    traindata = datasets.load_dataset(path, name, data_files=train_data_files, split="train")
-    testdata = datasets.load_dataset(path, name, data_files=test_data_files, split=test_split)
+    traindata = datasets.load_dataset(path, name=name, data_files=train_data_files, split="train")
+    testdata = datasets.load_dataset(path, name=name, data_files=test_data_files, split=test_split)
 
     random.seed(seed)
     if dataset_name == "c4":

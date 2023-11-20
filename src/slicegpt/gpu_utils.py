@@ -1,9 +1,13 @@
 import logging
 import time
 
+import numpy as np
 import torch
+import transformers
 from accelerate import dispatch_model, infer_auto_device_map
 from accelerate.utils import get_balanced_memory
+from torch.utils.data import DataLoader
+from tqdm import tqdm
 import transformers
 
 from tqdm import tqdm
@@ -12,11 +16,14 @@ from . import utils
 
 
 @torch.no_grad()
-def evaluate_ppl(model, testloader, device):
+def evaluate_ppl(model, testloader: DataLoader[torch.Tensor], device: torch.device) -> float:
     """
     Evaluate the model's perplexity on the test set using batch processing.
     It is expected that model is already on the correct device.
     """
+    if device == torch.device("cuda"):
+        sync_gpus()
+
     start_time = time.time()
 
     model.eval()
@@ -41,6 +48,9 @@ def evaluate_ppl(model, testloader, device):
     nlls = torch.cat(nlls)
     ppl = torch.exp(nlls.sum() / nlls.numel())
 
+    if device == torch.device("cuda"):
+        sync_gpus()
+
     elapsed = time.time() - start_time
     logging.info(
         "Time spent on evaluation: %s",
@@ -50,7 +60,7 @@ def evaluate_ppl(model, testloader, device):
     return ppl.item()
 
 
-def distribute_model(model):
+def distribute_model(model) -> None:
     """Distribute the model across available GPUs."""
     no_split_modules = [
         "OPTDecoderLayer",
@@ -73,58 +83,56 @@ def distribute_model(model):
     utils.cleanup_memory()
 
 
-def sync_gpus():
+def sync_gpus() -> None:
     """Sync all GPUs to make sure all operations are finished, needed for correct benchmarking of latency/throughput."""
     for i in range(torch.cuda.device_count()):
         torch.cuda.synchronize(device=i)
 
 
-def benchmark(model, input_batch, device):
+def benchmark(model, input_batch: torch.tensor, device: torch.device) -> dict:
+    """Benchmark the model's latency and throughput on the given input batch."""
     model.config.use_cache = True
 
     cache = {"past": None}
-    def clear_past(i):
-        def tmp(layer, inp, out):
+
+    def clear_past_cache(layer_idx):
+        def tmp(*_):
             if cache["past"]:
-                cache["past"][i] = None
+                cache["past"][layer_idx] = None
 
         return tmp
 
     if isinstance(model, transformers.LlamaForCausalLM):
-        for i, layer in enumerate(model.model.layers):
-            layer.register_forward_hook(clear_past(i))
+        for idx, layer in enumerate(model.model.layers):
+            layer.register_forward_hook(clear_past_cache(idx))
     elif isinstance(model, transformers.OPTForCausalLM):
-        for i, layer in enumerate(model.model.decoder.layers):
-            layer.register_forward_hook(clear_past(i))
+        for idx, layer in enumerate(model.model.decoder.layers):
+            layer.register_forward_hook(clear_past_cache(idx))
     else:
         raise NotImplementedError(f"Unsupported model type: {type(model)}")
 
     with torch.no_grad():
-        batch_size = input_batch.shape[0]
-        input_seqlen = input_batch.shape[1]
-        attention_mask = torch.ones((batch_size, input_seqlen))
-        times = []
-        for i in tqdm(range(input_seqlen), desc="Benchmarking"):
+        batch_size, input_seq_len = input_batch.shape[:2]
+        attention_mask = torch.ones((batch_size, input_seq_len))
+        time_measurements = []
+
+        for i in tqdm(range(input_seq_len), desc="Benchmarking"):
             input_batch_i = input_batch[:, i].reshape((batch_size, 1)).to(device)
             attention_mask_i = attention_mask[:, : (i + 1)].to(device)
 
             sync_gpus()
-            tick = time.time()
-            out = model(
-                input_batch_i,
-                past_key_values=cache["past"],
-                attention_mask=attention_mask_i
-            )
+            start_time = time.time()
+            output = model(input_batch_i, past_key_values=cache["past"], attention_mask=attention_mask_i)
             sync_gpus()
-            times.append(time.time() - tick)
+            time_measurements.append(time.time() - start_time)
 
-            cache["past"] = list(out.past_key_values)
-            del out
+            cache["past"] = list(output.past_key_values)
+            del output
 
             input_batch_i, attention_mask_i = input_batch_i.to("cpu"), attention_mask_i.to("cpu")
 
-        median_time = np.median(times)
+        median_time = np.median(time_measurements)
         throughput = batch_size / median_time
-        
-        results = {"median_time": median_time, "latency": 1/throughput, "throughput": throughput}
+
+        results = {"median_time": median_time, "latency": 1 / throughput, "throughput": throughput}
         return results
