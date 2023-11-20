@@ -3,16 +3,12 @@ import time
 
 import numpy as np
 import torch
-import transformers
 from accelerate import dispatch_model, infer_auto_device_map
 from accelerate.utils import get_balanced_memory
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-import transformers
 
-from tqdm import tqdm
-import numpy as np
-from . import utils
+from . import model_utils, utils
 
 
 @torch.no_grad()
@@ -102,14 +98,10 @@ def benchmark(model, input_batch: torch.tensor, device: torch.device) -> dict:
 
         return tmp
 
-    if isinstance(model, transformers.LlamaForCausalLM):
-        for idx, layer in enumerate(model.model.layers):
-            layer.register_forward_hook(clear_past_cache(idx))
-    elif isinstance(model, transformers.OPTForCausalLM):
-        for idx, layer in enumerate(model.model.decoder.layers):
-            layer.register_forward_hook(clear_past_cache(idx))
-    else:
-        raise NotImplementedError(f"Unsupported model type: {type(model)}")
+    layers = model_utils.get_layers(model)
+    for idx, layer in enumerate(layers):
+        # Clear past cache after each layer get called to get accurate timing of each forward pass.
+        layer.register_forward_hook(clear_past_cache(idx))
 
     with torch.no_grad():
         batch_size, input_seq_len = input_batch.shape[:2]
