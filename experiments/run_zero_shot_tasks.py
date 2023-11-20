@@ -26,11 +26,15 @@ class SlicedLM(BaseLM):
     def __init__(self, args):
         super().__init__()
 
-        if args.load_dir:
-            model, tokenizer = hf_utils.load_sliced_model(args.model, args.load_dir, args.sparsity, DEV)
+        if args.load_model_path:
+            model, tokenizer = hf_utils.load_sliced_model(
+                args.model, args.load_model_path, args.sparsity, args.hf_token
+            )
         else:
             model, tokenizer = hf_utils.get_model(args.model, token=args.hf_token)
-            self.apply_slicegpt(model, tokenizer, args)
+
+            if not args.baseline:
+                self.apply_slicegpt(model, tokenizer, args)
 
         self.model = model
         self.model.config.sparsity = args.sparsity
@@ -42,7 +46,6 @@ class SlicedLM(BaseLM):
 
     def apply_slicegpt(self, model, tokenizer, args):
         layernorm_fusion.replace_modules(model, model.config)
-        model = model.cpu()
         layernorm_fusion.fuse_modules(model)
 
         dataloader, _ = data_utils.get_loaders(
@@ -157,7 +160,9 @@ def parse_args():
         help="Use accelerate to put the model on multiple GPUs for evaluation. It is recommended to use it for models with 30B parameters and above.",
     )
 
-    parser.add_argument("--load_dir", type=str, default=None, help="Path to load the sliced model from.")
+    parser.add_argument("--load_model_path", type=str, default=None, help="Path to load the sliced model from.")
+
+    parser.add_argument("--baseline", action="store_true", help="Evalute the dense (un-sliced) model.")
 
     parser.add_argument('--hf_token', type=str, default=None)
 
@@ -170,7 +175,7 @@ def main() -> None:
     logging.info(f"Number of available cuda devices: {torch.cuda.device_count()}")
 
     try:
-        wandb.init(project="slicegpt", config=args)
+        wandb.init(project="slicegpt-zeroshot", config=args)
     except wandb.UsageError as e:
         # wandb.init will throw an error if the user is not logged in and the process is running in a non-shell
         # environment, e.g. notebook, IDE, no-shell process, etc. In this case, we want to continue without wandb.
@@ -180,6 +185,13 @@ def main() -> None:
     # Initialize the model for use in LM Eval Harness.
     model = SlicedLM(args)
 
+    model.model.eval()
+    if args.distribute_model:
+        # distribute model across available GPUs
+        gpu_utils.distribute_model(model.model)
+    else:
+        model.model = model.model.to(DEV)
+
     ### LM Eval Harness ###
     if args.tasks is None:
         task_names = tasks.ALL_TASKS
@@ -188,15 +200,8 @@ def main() -> None:
 
     logging.info(f"Selected Tasks: {task_names}")
 
-    if args.distribute_model:
-        # distribute model across available GPUs
-        gpu_utils.distribute_model(model.model)
-    else:
-        model.model = model.model.to(DEV)
-    model.model.eval()
-
     # Run the evaluation.
-    results = evaluator.simple_evaluate(model=model, tasks=task_names, no_cache=args.no_cache)
+    results = evaluator.simple_evaluate(model=model, tasks=task_names, no_cache=True)
     wandb.log(results['results'])
     logging.info(json.dumps(results, indent=2))
     logging.info(evaluator.make_table(results))

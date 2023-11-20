@@ -1,12 +1,14 @@
 import logging
 import time
 
+import numpy as np
 import torch
 from accelerate import dispatch_model, infer_auto_device_map
 from accelerate.utils import get_balanced_memory
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 
-from . import utils
+from . import model_utils, utils
 
 
 @torch.no_grad()
@@ -15,6 +17,9 @@ def evaluate_ppl(model, testloader: DataLoader[torch.Tensor], device: torch.devi
     Evaluate the model's perplexity on the test set using batch processing.
     It is expected that model is already on the correct device.
     """
+    if device == torch.device("cuda"):
+        sync_gpus()
+
     start_time = time.time()
 
     model.eval()
@@ -39,6 +44,9 @@ def evaluate_ppl(model, testloader: DataLoader[torch.Tensor], device: torch.devi
     nlls = torch.cat(nlls)
     ppl = torch.exp(nlls.sum() / nlls.numel())
 
+    if device == torch.device("cuda"):
+        sync_gpus()
+
     elapsed = time.time() - start_time
     logging.info(
         "Time spent on evaluation: %s",
@@ -49,7 +57,7 @@ def evaluate_ppl(model, testloader: DataLoader[torch.Tensor], device: torch.devi
 
 
 def distribute_model(model) -> None:
-    # infer device map, make sure each layer is not split across multiple GPUs
+    """Distribute the model across available GPUs."""
     no_split_modules = [
         "OPTDecoderLayer",
         "CompressedOPTDecoderLayer",
@@ -58,7 +66,6 @@ def distribute_model(model) -> None:
     ]
     max_memory = get_balanced_memory(
         model,
-        max_memory=None,
         no_split_module_classes=no_split_modules,
     )
 
@@ -70,3 +77,54 @@ def distribute_model(model) -> None:
 
     # Run GC and cleanup GPU memory
     utils.cleanup_memory()
+
+
+def sync_gpus() -> None:
+    """Sync all GPUs to make sure all operations are finished, needed for correct benchmarking of latency/throughput."""
+    for i in range(torch.cuda.device_count()):
+        torch.cuda.synchronize(device=i)
+
+
+def benchmark(model, input_batch: torch.tensor, device: torch.device) -> dict:
+    """Benchmark the model's latency and throughput on the given input batch."""
+    model.config.use_cache = True
+
+    cache = {"past": None}
+
+    def clear_past_cache(layer_idx):
+        def tmp(*_):
+            if cache["past"]:
+                cache["past"][layer_idx] = None
+
+        return tmp
+
+    layers = model_utils.get_layers(model)
+    for idx, layer in enumerate(layers):
+        # Clear past cache after each layer get called to get accurate timing of each forward pass.
+        layer.register_forward_hook(clear_past_cache(idx))
+
+    with torch.no_grad():
+        batch_size, input_seq_len = input_batch.shape[:2]
+        attention_mask = torch.ones((batch_size, input_seq_len))
+        time_measurements = []
+
+        for i in tqdm(range(input_seq_len), desc="Benchmarking"):
+            input_batch_i = input_batch[:, i].reshape((batch_size, 1)).to(device)
+            attention_mask_i = attention_mask[:, : (i + 1)].to(device)
+
+            sync_gpus()
+            start_time = time.time()
+            output = model(input_batch_i, past_key_values=cache["past"], attention_mask=attention_mask_i)
+            sync_gpus()
+            time_measurements.append(time.time() - start_time)
+
+            cache["past"] = list(output.past_key_values)
+            del output
+
+            input_batch_i, attention_mask_i = input_batch_i.to("cpu"), attention_mask_i.to("cpu")
+
+        median_time = np.median(time_measurements)
+        throughput = batch_size / median_time
+
+        results = {"median_time": median_time, "latency": 1 / throughput, "throughput": throughput}
+        return results

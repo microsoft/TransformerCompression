@@ -12,17 +12,47 @@ from .rotate import slice_rotated_model
 
 
 class UninitializedOPTForCausalLM(OPTForCausalLM):
-    def _init_weights(self, module):
+    def _init_weights(self, _):
         # Prevent weight initialization
         pass
 
 
 class UninitializedLlamaForCausalLM(LlamaForCausalLM):
-    def _init_weights(self, module):
+    def _init_weights(self, _):
         # Prevent weight initialization
         pass
 
 
+def skip(*args, **kwargs):
+    pass
+
+
+def do_not_initialize(func):
+    """
+    A decorator that prevents initalization of torch.nn modules.
+    """
+
+    def wrapper(*args, **kwargs):
+        kaiming_fn = torch.nn.init.kaiming_uniform_
+        uniform_fn = torch.nn.init.uniform_
+        normal_fn = torch.nn.init.normal_
+
+        torch.nn.init.kaiming_uniform_ = skip
+        torch.nn.init.uniform_ = skip
+        torch.nn.init.normal_ = skip
+
+        result = func(*args, **kwargs)
+
+        torch.nn.init.kaiming_uniform_ = kaiming_fn
+        torch.nn.init.uniform_ = uniform_fn
+        torch.nn.init.normal_ = normal_fn
+
+        return result
+
+    return wrapper
+
+
+@do_not_initialize
 def get_model(model_path: str, uninitialized: bool = False, dtype: torch.dtype = torch.float16, token=None):
     """Loads the model and the tokenizer from the given path."""
     if uninitialized:
@@ -41,7 +71,7 @@ def get_model(model_path: str, uninitialized: bool = False, dtype: torch.dtype =
             model = OPTForCausalLM.from_pretrained(model_path, torch_dtype=dtype)
     elif "meta-llama" in model_path:
         if uninitialized:
-            config = LlamaConfig.from_pretrained(model_path)
+            config = LlamaConfig.from_pretrained(model_path, token=token)
             model = UninitializedLlamaForCausalLM(config)
             model = model.to(dtype=dtype)
         else:
@@ -60,9 +90,10 @@ def get_model(model_path: str, uninitialized: bool = False, dtype: torch.dtype =
     return model, tokenizer
 
 
-def load_sliced_model(model_name: str, model_path: str, sparsity: float, device: torch.device) -> tuple:
+@do_not_initialize
+def load_sliced_model(model_name: str, model_path: str, sparsity: float, token: str) -> tuple:
     """Loads the sliced model and the tokenizer from the given path."""
-    model, tokenizer = get_model(model_name, uninitialized=True)
+    model, tokenizer = get_model(model_name, uninitialized=True, token=token)
     replace_modules(model, model.config)
     fuse_modules(model)
     new_embedding_dimension = int((1 - sparsity) * model.config.hidden_size)
@@ -75,7 +106,7 @@ def load_sliced_model(model_name: str, model_path: str, sparsity: float, device:
 
     slice_rotated_model(model, new_embedding_dimension)
 
-    model.load_state_dict(torch.load(model_path, map_location=device))
+    model.load_state_dict(torch.load(model_path, map_location="cpu"))
     model.eval()
 
     return model, tokenizer
