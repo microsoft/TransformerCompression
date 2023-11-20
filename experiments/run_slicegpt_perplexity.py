@@ -135,20 +135,17 @@ def main() -> None:
             gpu_utils.distribute_model(model)
         else:
             model = model.to(DEV)
+
         dataset_ppl = gpu_utils.evaluate_ppl(model, testloader, DEV)
         logging.info(f'Original ppl: {dataset_ppl:.4f}')
         wandb.log({"original_ppl": dataset_ppl})
         model = model.cpu()
         utils.cleanup_memory()
 
-    # fuse layernorms, add shortcuts, check perplexity
+    # replace modules with compressible equivalents
     layernorm_fusion.replace_modules(model, model.config)
 
-    model = model.cpu()
-
-    # Run GC and cleanup GPU memory
-    utils.cleanup_memory()
-
+    # fuse layernorms and add rotations to skip connections
     layernorm_fusion.fuse_modules(model)
 
     # don't run this on large and/or distributed models
@@ -161,13 +158,13 @@ def main() -> None:
 
         model = model.cpu()
 
-        # Run GC and cleanup GPU memory
+        # run GC and cleanup GPU memory
         utils.cleanup_memory()
 
     original_param_count = sum(int(p.nelement()) for p in model.parameters())
     logging.info(f'Original model parameters: {original_param_count:,d}')
 
-    # compute new embedding dimension given the slicegpt sparsity
+    # compute new embedding dimension given the desired sparsity level
     new_embedding_dimension = int((1 - args.sparsity) * model.config.hidden_size)
     logging.info(f"New embedding dimension: {new_embedding_dimension} (sparsity {args.sparsity})")
 
