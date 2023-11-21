@@ -72,7 +72,10 @@ def argparser():
 
     parser.add_argument('--no-wandb', action="store_true", help="Disable wandb.")
     parser.add_argument(
-        '--device', type=str, default=None, help="PyTorch device to use for compression and evaluation."
+        '--device',
+        type=str,
+        default=None,
+        help="PyTorch device to use. Example values are 'cpu', 'cuda', 'cuda:0'. If not specified it will be defaulted to 'cuda' if available and 'cpu' otherwise.",
     )
 
     args = parser.parse_args()
