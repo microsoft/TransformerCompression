@@ -2,6 +2,8 @@
 # Licensed under the MIT license.
 
 import logging
+from functools import partial
+from typing import Callable
 
 import torch
 from tqdm import tqdm
@@ -25,6 +27,8 @@ from .model_utils import (
 from .utils import cleanup_memory
 
 DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+SparsityProvider = Callable[[torch.Tensor], float]
 
 
 def rotate_attention_inputs(layer: LAYER, Q: torch.Tensor) -> None:
@@ -148,11 +152,22 @@ def rotate_and_slice(
     model: MODEL,
     dataloader: torch.utils.data.DataLoader[torch.Tensor],
     new_embedding_dimension: int,
+    sparsity_provider: SparsityProvider = None,
     do_slice_head: bool = False,
 ) -> None:
     """
-    Rotate and slice a model, with interleaved slicing and PCA calculations
+    Rotate and slice the model, with interleaved slicing and PCA calculations.
     """
+
+    cached_dimensions: dict[tuple[int, str], int] = {}  # cached new dimensions for each block
+
+    # layer-wise new dimension provider based on const or varying sparsity
+    get_sliced_dim = (
+        partial(get_sliced_dimension, sparsity_provider=sparsity_provider, cached_dimensions=cached_dimensions)
+        if sparsity_provider
+        else lambda *_: new_embedding_dimension
+    )
+
     model.eval()
     dtype = next(iter(model.parameters())).dtype
 
@@ -160,48 +175,50 @@ def rotate_and_slice(
         *[(inp.cpu(), attn_mask.cpu()) for inp, attn_mask in (get_layer0_inputs(model, batch) for batch in dataloader)]
     )
 
-    _, Q = pca_calc(inps)
+    eig_val_emb, Q = pca_calc(inps)
     Q = Q.to(device=DEV)
 
     rotate_embeddings(model, Q)
-    slice_embeddings(model, new_embedding_dimension)
+    slice_embeddings(model, get_sliced_dim(-1, 'emb', eig_val_emb))
 
     # rotate and slice inputs
-    inps = [torch.matmul(inp.to(device=DEV), Q.to(dtype=dtype))[:, :, :new_embedding_dimension].cpu() for inp in inps]
+    inps = [
+        torch.matmul(inp.to(device=DEV), Q.to(dtype=dtype))[:, :, : get_sliced_dim(-1, 'emb')].cpu() for inp in inps
+    ]
 
     logging.info("Rotate and slice layers")
     layers = get_layers(model)
-    for layer in tqdm(layers, unit="layer", desc="Rotating and slicing"):
+    for i, layer in enumerate(tqdm(layers, unit="layer", desc="Rotating and slicing")):
         layer.attn_shortcut_Q = Q.T.clone().to(dtype=dtype)
 
         # rotate and slice the attention inputs to match previous layer
         rotate_attention_inputs(layer, Q)
-        slice_attention_inputs(layer, new_embedding_dimension)
+        slice_attention_inputs(layer, get_sliced_dim(i - 1, 'emb'))
 
         # get signal between attention and mlp, rotate and slice
         mlp_ln_inputs, _ = get_signals(layer, inps, attn_masks)
-        _, Q = pca_calc(mlp_ln_inputs)
+        eig_val_attn, Q = pca_calc(mlp_ln_inputs)
         Q = Q.to(device=DEV, dtype=torch.float64)
 
         layer.attn_shortcut_Q = torch.matmul(layer.attn_shortcut_Q, Q.to(dtype=dtype))
         rotate_attention_output(layer, Q)
-        slice_attention_output(layer, new_embedding_dimension)
+        slice_attention_output(layer, get_sliced_dim(i, 'attn', eig_val_attn))
 
         layer.mlp_shortcut_Q = Q.T.clone().to(dtype=dtype)
         rotate_mlp_input(layer, Q)
-        slice_mlp_input(layer, new_embedding_dimension)
+        slice_mlp_input(layer, get_sliced_dim(i, 'attn'))
 
         # Run GC and cleanup GPU memory
         cleanup_memory()
 
         # now compute the outputs of the layer with slicing between Attention and mlp.
         _, outs = get_signals(layer, inps, attn_masks)
-        _, Q = pca_calc(outs)
+        eig_val_output, Q = pca_calc(outs)
 
         layer.mlp_shortcut_Q = torch.matmul(layer.mlp_shortcut_Q, Q.to(dtype=dtype))
 
         # optionally slice the mlp/head connection in the last layer
-        dim = new_embedding_dimension
+        dim = get_sliced_dim(i, 'emb', eig_val_output)
         if layer is layers[-1]:
             if not do_slice_head:
                 dim = model.config.hidden_size
@@ -213,7 +230,7 @@ def rotate_and_slice(
 
         layer = layer.to('cpu')
 
-        # Run GC and cleanup GPU memory
+        # run GC and cleanup GPU memory
         cleanup_memory()
 
     # rotate and slice head
@@ -318,7 +335,7 @@ def slice_rotated_model(model: MODEL, new_embedding_dimension: int, do_slice_hea
 
 
 @torch.no_grad()
-def pca_calc(X: list[torch.Tensor]) -> tuple[torch.Tensor, torch.Tensor]:
+def pca_calc(X: list[torch.Tensor], damp_factor: float = 0.01) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Run PCA on a list of batched data. Returns the eigenvalues and eigenvectors.
     """
@@ -331,7 +348,7 @@ def pca_calc(X: list[torch.Tensor]) -> tuple[torch.Tensor, torch.Tensor]:
         H_batch = torch.sum(X_batch.mT @ X_batch, dim=0)  # sum over the batch dimension.
         H = H_batch if H is None else H + H_batch
 
-    damp = 0.01 * torch.mean(torch.diag(H))
+    damp = damp_factor * torch.mean(torch.diag(H))
     diag = torch.arange(H.shape[-1]).to(device=DEV)
     H[diag, diag] = H[diag, diag] + damp
     X_eig = torch.linalg.eigh(H)
@@ -340,3 +357,89 @@ def pca_calc(X: list[torch.Tensor]) -> tuple[torch.Tensor, torch.Tensor]:
     eig_val = X_eig[0][index]
     eigen_vec = X_eig[1][:, index]
     return eig_val, eigen_vec
+
+
+def get_sliced_dimension(
+    layer_index: int,
+    location: str,
+    eig_values: torch.Tensor = None,
+    sparsity_provider: SparsityProvider = None,
+    cached_dimensions: dict[tuple[int, str], int] = None,
+) -> int:
+    """
+    Get the new dimension (after slicing) to for the given layer and location.
+    Args:
+        layer_index: The index of the layer.
+        location: The location of the slice.
+        eig_values: The eigenvalues of the covariance matrix.
+        sparsity_provider: The sparsity provider.
+        cached_dimensions: If provided, will be used to cache previously computed dimensions.
+
+    Returns:
+        The new dimension.
+    """
+    k = (layer_index, location)
+    if cached_dimensions is not None and k in cached_dimensions:
+        emb_dim = cached_dimensions[k]
+        return emb_dim
+
+    sparsity = sparsity_provider(eig_values)
+    sliced_dim = int(eig_values.shape[0] * (1.0 - sparsity))
+
+    assert 0 < sliced_dim <= eig_values.shape[0]
+    logging.debug(f'Dimension for layer {layer_index}:{location}: {sliced_dim}')
+
+    if cached_dimensions is not None:
+        cached_dimensions[k] = sliced_dim
+
+    return sliced_dim
+
+
+def compute_cev_sparsity(eig_values: torch.Tensor, threshold: float) -> float:
+    """
+    Compute sparsity based on the explained variance of the PCA.
+
+    Args:
+        eig_values: The eigenvalues of the covariance matrix.
+        threshold: The threshold for the remaining unexplained variance.
+
+    Returns:
+        The calculated sparsity.
+    """
+    dim = eig_values.shape[0]
+    assert dim > 0
+
+    total_var = torch.sum(eig_values)
+    explained_var = (eig_values / total_var).cumsum(dim=0)
+
+    # Find the index where the remaining unexplained variance drops below the threshold
+    unexplained_var = 1.0 - explained_var
+    idx = torch.where(unexplained_var < threshold)[0][0].item()
+
+    sparsity = idx / dim
+    return sparsity
+
+
+def get_sparsity_provider(
+    schedule: str = 'const',
+    sparsity: float = 0.0,
+    cev_threshold: float = 0.0,
+) -> SparsityProvider:
+    """
+    Get the layer-wise sparsity provider for the specified schedule.
+    Args:
+        schedule: The sparsity schedule - const or varying.
+        sparsity: The sparsity to use when the schedule is 'const'.
+        cev_threshold: The threshold to use when the schedule is 'cev'.
+
+    Returns:
+        The sparsity provider.
+    """
+
+    match schedule:
+        case 'const':
+            return lambda *_: sparsity
+        case 'cev':
+            return partial(compute_cev_sparsity, threshold=cev_threshold)
+        case _:
+            raise ValueError(f'Unknown sparsity schedule: {schedule}')

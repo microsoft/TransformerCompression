@@ -56,6 +56,18 @@ def argparser():
     parser.add_argument(
         "--sparsity", type=float, default=0.0, help="A measure of how much slicing is applied (in the range [0, 1])"
     )
+    parser.add_argument(
+        "--sparsity-schedule",
+        type=str,
+        default="const",
+        help="Sparsity schedule: const or cev (cumulative explained variance).",
+    )
+    parser.add_argument(
+        "--cev-threshold",
+        type=float,
+        default=0.3,
+        help="The threshold (in percent) for the unexplained variance cutoff.",
+    )
     parser.add_argument("--eval_baseline", action="store_true", help="Evaluate the baseline model.")
     parser.add_argument("--eval_fused_model", action="store_true", help="Evaluate the fused model.")
     parser.add_argument("--ppl_only", action="store_true", help="Evaluate the loaded model without doing compression.")
@@ -80,6 +92,8 @@ def argparser():
 
     if not 0 <= args.sparsity < 1:
         raise argparse.ArgumentTypeError(f"Sparsity should be in the range [0, 1)")
+
+    assert args.sparsity_schedule == 'const' or args.sparsity == 0
 
     return args
 
@@ -168,7 +182,16 @@ def main() -> None:
     new_embedding_dimension = int((1 - args.sparsity) * model.config.hidden_size)
     logging.info(f"New embedding dimension: {new_embedding_dimension} (sparsity {args.sparsity})")
 
-    rotate.rotate_and_slice(model, dataloader, new_embedding_dimension)
+    rotate.rotate_and_slice(
+        model,
+        dataloader,
+        new_embedding_dimension,
+        sparsity_provider=rotate.get_sparsity_provider(
+            schedule=args.sparsity_schedule,
+            sparsity=args.sparsity,
+            cev_threshold=args.cev_threshold / 100,
+        ),
+    )
 
     if args.save_dir:
         if not os.path.exists(args.save_dir):
