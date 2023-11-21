@@ -368,6 +368,7 @@ def get_sliced_dimension(
 ) -> int:
     """
     Get the new dimension (after slicing) to for the given layer and location.
+
     Args:
         layer_index: The index of the layer.
         location: The location of the slice.
@@ -380,8 +381,8 @@ def get_sliced_dimension(
     """
     k = (layer_index, location)
     if cached_dimensions is not None and k in cached_dimensions:
-        emb_dim = cached_dimensions[k]
-        return emb_dim
+        sliced_dim = cached_dimensions[k]
+        return sliced_dim
 
     sparsity = sparsity_provider(eig_values)
     sliced_dim = int(eig_values.shape[0] * (1.0 - sparsity))
@@ -432,6 +433,7 @@ def get_sparsity_provider(
 ) -> SparsityProvider:
     """
     Get the layer-wise sparsity provider for the specified schedule.
+
     Args:
         schedule: The sparsity schedule - const or varying.
         sparsity: The sparsity to use when the schedule is 'const'.
