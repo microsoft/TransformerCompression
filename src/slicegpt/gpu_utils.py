@@ -32,14 +32,14 @@ def evaluate_ppl(model: ModelAdapter, testloader: DataLoader[torch.Tensor]) -> f
     for batch in testloader:
         assert isinstance(batch, torch.Tensor)
         input_ids = batch.to(config.device)
-        logits = model.raw_model(input_ids=input_ids).logits
+        logits = model.compute_output_logits(input_ids=input_ids)
 
         # Shift outputs and labels autoregressively.
         logits = logits[:, :-1, :]
         shift_labels = input_ids[:, 1:]
 
         # CrossEntropyLoss demands data dimension is dimension 1.
-        nll = loss_fct(logits.permute(0, 2, 1), shift_labels).float().sum(dim=1) / model.raw_model.seqlen
+        nll = loss_fct(logits.permute(0, 2, 1), shift_labels).float().sum(dim=1) / model.seqlen
 
         nlls.append(nll)
 
