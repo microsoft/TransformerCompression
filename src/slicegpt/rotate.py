@@ -208,7 +208,7 @@ def rotate_and_slice(
         rotate_mlp_input(layer, Q)
         slice_mlp_input(layer, get_sliced_dim(i, 'attn'))
 
-        # Run GC and cleanup GPU memory
+        # run GC and cleanup GPU memory
         cleanup_memory()
 
         # now compute the outputs of the layer with slicing between Attention and mlp.
@@ -412,11 +412,16 @@ def compute_cev_sparsity(eig_values: torch.Tensor, threshold: float) -> float:
     total_var = torch.sum(eig_values)
     explained_var = (eig_values / total_var).cumsum(dim=0)
 
-    # Find the index where the remaining unexplained variance drops below the threshold
+    # find the index where the remaining unexplained variance drops below the threshold
     unexplained_var = 1.0 - explained_var
-    idx = torch.where(unexplained_var < threshold)[0][0].item()
+    idx = torch.where(unexplained_var < threshold)
 
-    sparsity = idx / dim
+    if len(idx[0]) == 0:  # unexplained variance never drops below the threshold
+        return 0.0
+
+    idx = idx[0][0].item()
+
+    sparsity = (dim - idx) / dim
     return sparsity
 
 
