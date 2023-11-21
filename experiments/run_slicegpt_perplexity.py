@@ -6,9 +6,11 @@ import logging
 import os
 
 import torch
-import wandb
+from transformers import LlamaForCausalLM, OPTForCausalLM
 
+import wandb
 from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate, utils
+from slicegpt.adapters import llama_adapter, opt_adapter
 from slicegpt.config import config
 
 utils.configure_logging()
@@ -126,11 +128,18 @@ def main() -> None:
 
         model, tokenizer = hf_utils.get_model(args.model, token=args.hf_token, dtype=config.dtype)
 
+    if isinstance(model, LlamaForCausalLM):
+        adapter = llama_adapter.LlamaModelAdapter(model)
+    elif isinstance(model, OPTForCausalLM):
+        adapter = opt_adapter.OPTModelAdapter(model)
+    else:
+        raise TypeError
+
     dataloader, testloader = data_utils.get_loaders(
         dataset_name=args.cal_dataset,
         tokenizer=tokenizer,
         nsamples=args.cal_nsamples,
-        seqlen=model.seqlen,
+        seqlen=adapter.seqlen,
         batch_size=args.batch_size,
         seed=args.seed,
     )
@@ -139,11 +148,11 @@ def main() -> None:
     if args.load_model_path or args.ppl_only:
         if args.distribute_model:
             # distribute model across available GPUs
-            gpu_utils.distribute_model(model)
+            gpu_utils.distribute_model(adapter)
         else:
             model = model.to(config.device)
 
-        dataset_ppl = gpu_utils.evaluate_ppl(model, testloader)
+        dataset_ppl = gpu_utils.evaluate_ppl(adapter, testloader)
         logging.info(f'Loaded model perplexity: {dataset_ppl}')
         wandb.log({"original_ppl": dataset_ppl})
         return
@@ -152,11 +161,11 @@ def main() -> None:
     if args.eval_baseline:
         if args.distribute_model:
             # distribute model across available GPUs
-            gpu_utils.distribute_model(model)
+            gpu_utils.distribute_model(adapter)
         else:
             model = model.to(config.device)
 
-        dataset_ppl = gpu_utils.evaluate_ppl(model, testloader)
+        dataset_ppl = gpu_utils.evaluate_ppl(adapter, testloader)
         logging.info(f'Original ppl: {dataset_ppl:.4f}')
         wandb.log({"original_ppl": dataset_ppl})
         model = model.cpu()
@@ -172,7 +181,7 @@ def main() -> None:
     if args.eval_fused_model and not args.distribute_model:
         model = model.to(config.device)
 
-        dataset_ppl = gpu_utils.evaluate_ppl(model, testloader)
+        dataset_ppl = gpu_utils.evaluate_ppl(adapter, testloader)
         logging.info(f'Post-fusion: {dataset_ppl:.4f}')
         wandb.log({"post_fusion_ppl": dataset_ppl})
 
@@ -199,11 +208,11 @@ def main() -> None:
         logging.info(f"Saved sliced model to {args.save_dir}")
 
     if args.distribute_model:
-        gpu_utils.distribute_model(model)
+        gpu_utils.distribute_model(adapter)
     else:
         model = model.to(config.device)
 
-    dataset_ppl = gpu_utils.evaluate_ppl(model, testloader)
+    dataset_ppl = gpu_utils.evaluate_ppl(adapter, testloader)
     logging.info(f'After rotating and slicing {dataset_ppl:.4f}')
     wandb.log({"sliced_ppl": dataset_ppl})
 
