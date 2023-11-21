@@ -39,38 +39,38 @@ def argparser():
         default="facebook/opt-125m",
     )
     parser.add_argument(
-        "--cal_dataset",
+        "--cal-dataset",
         type=str,
         help="Dataset to calibrate on.",
         choices=["wikitext2", "ptb", "c4"],
         default="wikitext2",
     )
     parser.add_argument(
-        "--cal_nsamples",
+        "--cal-nsamples",
         type=int,
         help="Number of samples of the calibration data to load.",
         default=128,
     )
-    parser.add_argument("--batch_size", type=int, default=1, help="Batch size for loading the calibration data.")
+    parser.add_argument("--batch-size", type=int, default=1, help="Batch size for loading the calibration data.")
     parser.add_argument("--seed", type=int, default=42, help="Seed for sampling the calibration data.")
     parser.add_argument(
-        "--sparsity", type=float, default=0.0, help="A measure of how much slicing is applied (in the range [0, 1])"
+        "--sparsity", type=float, default=0.0, help="A measure of how much slicing is applied (in the range [0, 1))"
     )
-    parser.add_argument("--eval_baseline", action="store_true", help="Evaluate the baseline model.")
-    parser.add_argument("--eval_fused_model", action="store_true", help="Evaluate the fused model.")
-    parser.add_argument("--ppl_only", action="store_true", help="Evaluate the loaded model without doing compression.")
+    parser.add_argument("--eval-baseline", action="store_true", help="Evaluate the baseline model.")
+    parser.add_argument("--eval-fused-model", action="store_true", help="Evaluate the fused model.")
+    parser.add_argument("--ppl-only", action="store_true", help="Evaluate the loaded model without doing compression.")
     parser.add_argument(
-        "--distribute_model",
+        "--distribute-model",
         action="store_true",
         help="Use accelerate to put the model on multiple GPUs for evaluation. It is recommended to use it for models with 30B parameters and above.",
     )
 
-    parser.add_argument("--save_dir", type=str, default=None, help="Path to save the model.")
-    parser.add_argument("--load_model_path", type=str, default=None, help="Path to load the sliced model from.")
+    parser.add_argument("--save-dir", type=str, default=None, help="Path to save the model.")
+    parser.add_argument("--load-model-path", type=str, default=None, help="Path to load the sliced model from.")
 
-    parser.add_argument('--hf_token', type=str, default=None)
+    parser.add_argument('--hf-token', type=str, default=None)
 
-    parser.add_argument('--no_wandb', action="store_true", help="Disable wandb.")
+    parser.add_argument('--no-wandb', action="store_true", help="Disable wandb.")
 
     args = parser.parse_args()
 

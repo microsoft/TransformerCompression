@@ -136,35 +136,35 @@ def parse_args():
         default="facebook/opt-125m",
     )
     parser.add_argument(
-        "--cal_dataset",
+        "--cal-dataset",
         type=str,
         help="Dataset to calibrate on.",
         choices=["wikitext2", "ptb", "c4"],
         default="wikitext2",
     )
     parser.add_argument(
-        "--cal_nsamples",
+        "--cal-nsamples",
         type=int,
         help="Number of samples of the calibration data to load.",
         default=128,
     )
     parser.add_argument("--tasks", default=None, choices=lm_eval_utils.MultiChoice(tasks.ALL_TASKS))
-    parser.add_argument("--no_cache", action="store_true")
+    parser.add_argument("--no-cache", action="store_true")
     parser.add_argument(
-        "--sparsity", type=float, default=0.0, help="A measure of how much slicing is applied (in the range [0, 1])"
+        "--sparsity", type=float, default=0.0, help="A measure of how much slicing is applied (in the range [0, 1))"
     )
-    parser.add_argument("--batch_size", type=int, default=1, help="Batch size for loading the calibration data.")
+    parser.add_argument("--batch-size", type=int, default=1, help="Batch size for loading the calibration data.")
     parser.add_argument(
-        "--distribute_model",
+        "--distribute-model",
         action="store_true",
         help="Use accelerate to put the model on multiple GPUs for evaluation. It is recommended to use it for models with 30B parameters and above.",
     )
 
-    parser.add_argument("--load_model_path", type=str, default=None, help="Path to load the sliced model from.")
+    parser.add_argument("--load-model-path", type=str, default=None, help="Path to load the sliced model from.")
 
-    parser.add_argument("--baseline", action="store_true", help="Evalute the dense (un-sliced) model.")
+    parser.add_argument("--baseline", action="store_true", help="Evaluate the dense (un-sliced) model.")
 
-    parser.add_argument('--hf_token', type=str, default=None)
+    parser.add_argument('--hf-token', type=str, default=None)
 
     return parser.parse_args()
 
