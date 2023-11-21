@@ -57,13 +57,13 @@ def argparser():
         "--sparsity", type=float, default=0.0, help="A measure of how much slicing is applied (in the range [0, 1])"
     )
     parser.add_argument(
-        "--sparsity_schedule",
+        "--sparsity-schedule",
         type=str,
         default="const",
         help="Sparsity schedule: const or cev (cumulative explained variance).",
     )
     parser.add_argument(
-        "--cev_threshold",
+        "--cev-threshold",
         type=float,
         default=0.3,
         help="The threshold (in percent) for the unexplained variance cutoff.",
