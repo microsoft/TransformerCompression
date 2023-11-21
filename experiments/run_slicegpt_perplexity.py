@@ -135,6 +135,13 @@ def main() -> None:
     else:
         raise TypeError
 
+    def reset_model_device() -> None:
+        if args.distribute_model:
+            # distribute model across available GPUs
+            gpu_utils.distribute_model(adapter)
+        else:
+            adapter.raw_model.to(config.device)
+
     dataloader, testloader = data_utils.get_loaders(
         dataset_name=args.cal_dataset,
         tokenizer=tokenizer,
@@ -146,12 +153,7 @@ def main() -> None:
 
     # evaluate perplexity and exit if sliced model is loaded or if ppl_only is set
     if args.load_model_path or args.ppl_only:
-        if args.distribute_model:
-            # distribute model across available GPUs
-            gpu_utils.distribute_model(adapter)
-        else:
-            model = model.to(config.device)
-
+        reset_model_device()
         dataset_ppl = gpu_utils.evaluate_ppl(adapter, testloader)
         logging.info(f'Loaded model perplexity: {dataset_ppl}')
         wandb.log({"original_ppl": dataset_ppl})
@@ -159,12 +161,7 @@ def main() -> None:
 
     # original ppl
     if args.eval_baseline:
-        if args.distribute_model:
-            # distribute model across available GPUs
-            gpu_utils.distribute_model(adapter)
-        else:
-            model = model.to(config.device)
-
+        reset_model_device()
         dataset_ppl = gpu_utils.evaluate_ppl(adapter, testloader)
         logging.info(f'Original ppl: {dataset_ppl:.4f}')
         wandb.log({"original_ppl": dataset_ppl})
@@ -207,11 +204,7 @@ def main() -> None:
         torch.save(model.state_dict(), model_file)
         logging.info(f"Saved sliced model to {args.save_dir}")
 
-    if args.distribute_model:
-        gpu_utils.distribute_model(adapter)
-    else:
-        model = model.to(config.device)
-
+    reset_model_device()
     dataset_ppl = gpu_utils.evaluate_ppl(adapter, testloader)
     logging.info(f'After rotating and slicing {dataset_ppl:.4f}')
     wandb.log({"sliced_ppl": dataset_ppl})
