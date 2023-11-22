@@ -8,6 +8,7 @@ from transformers.models.llama.modeling_llama import LlamaConfig, LlamaDecoderLa
 from transformers.models.opt.modeling_opt import OPTConfig, OPTDecoderLayer, OPTForCausalLM
 
 from . import utils
+from .config import config
 
 OPT_MODEL = OPTForCausalLM
 OPT_LAYER = OPTDecoderLayer
@@ -17,8 +18,6 @@ LLAMA_LAYER = LlamaDecoderLayer
 MODEL: TypeAlias = OPTForCausalLM | LlamaForCausalLM
 LAYER: TypeAlias = OPTDecoderLayer | LlamaDecoderLayer
 MODEL_CONFIG: TypeAlias = OPTConfig | LlamaConfig
-
-DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def get_embeddings(model: MODEL) -> list[torch.nn.Module]:
@@ -114,7 +113,7 @@ def get_layer0_inputs(model: MODEL, batch: torch.Tensor) -> tuple[list[torch.Ten
     """
     # Move embeddings to device.
     for W in get_embeddings(model):
-        W.weight = torch.nn.Parameter(W.weight.to(DEV))
+        W.weight = torch.nn.Parameter(W.weight.to(config.device))
 
     layers = get_layers(model)
 
@@ -131,7 +130,7 @@ def get_layer0_inputs(model: MODEL, batch: torch.Tensor) -> tuple[list[torch.Ten
     layers[0] = Catcher(layers[0])
 
     try:
-        model(batch.to(DEV))
+        model(batch.to(config.device))
     except ValueError:
         pass
 
@@ -158,7 +157,7 @@ def get_signals(
     Return the output of the layer (not layernormed) and the input to the MLP (pre-layernorm).
     """
     mlp_ln_inputs = []
-    layer = layer.to(DEV)
+    layer = layer.to(config.device)
     seqlen = inputs[0].shape[-2]
 
     def hook_fn(_, inp, _output):
@@ -170,7 +169,7 @@ def get_signals(
 
     hook = get_second_layernorm(layer).register_forward_hook(hook_fn)
     outs = [
-        layer(inp.to(device=DEV), attention_mask=attn_mask.to(device=DEV))[0].cpu()
+        layer(inp.to(device=config.device), attention_mask=attn_mask.to(device=config.device))[0].cpu()
         for inp, attn_mask in zip(inputs, attention_masks)
     ]
     hook.remove()

@@ -9,11 +9,11 @@ import torch
 import wandb
 
 from slicegpt import data_utils, gpu_utils, hf_utils, utils
+from slicegpt.config import config
 
 utils.configure_logging()
 
 os.environ["WANDB__SERVICE_WAIT"] = "300"
-DEV = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def argparser():
@@ -100,7 +100,7 @@ def main():
         # distribute model across available GPUs
         gpu_utils.distribute_model(model)
     else:
-        model = model.to(DEV)
+        model = model.to(config.device)
 
     dataloader, _ = data_utils.get_loaders(
         dataset_name=args.eval_dataset,
@@ -111,7 +111,7 @@ def main():
         batch_size=args.batch_size,
     )
 
-    results = gpu_utils.benchmark(model, next(iter(dataloader)), DEV)
+    results = gpu_utils.benchmark(model, next(iter(dataloader)))
     logging.info(f"Median time per batch: {results['median_time']} s/batch.")
     logging.info(f"Throughput: {results['throughput']} token/s.")
     logging.info(f"Latency: {results['latency']} s/token.")
