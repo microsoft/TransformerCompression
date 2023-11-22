@@ -9,16 +9,16 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from . import model_utils, utils
+from .config import config
 
 
 @torch.no_grad()
-def evaluate_ppl(model, testloader: DataLoader[torch.Tensor], device: torch.device) -> float:
+def evaluate_ppl(model, testloader: DataLoader[torch.Tensor]) -> float:
     """
     Evaluate the model's perplexity on the test set using batch processing.
     It is expected that model is already on the correct device.
     """
-    if device == torch.device("cuda"):
-        sync_gpus()
+    sync_gpus()
 
     start_time = time.time()
 
@@ -29,7 +29,7 @@ def evaluate_ppl(model, testloader: DataLoader[torch.Tensor], device: torch.devi
     nlls = []
 
     for batch in testloader:
-        input_ids = batch.to(device)
+        input_ids = batch.to(config.device)
         logits = model(input_ids=input_ids).logits
 
         # Shift outputs and labels autoregressively.
@@ -44,8 +44,7 @@ def evaluate_ppl(model, testloader: DataLoader[torch.Tensor], device: torch.devi
     nlls = torch.cat(nlls)
     ppl = torch.exp(nlls.sum() / nlls.numel())
 
-    if device == torch.device("cuda"):
-        sync_gpus()
+    sync_gpus()
 
     elapsed = time.time() - start_time
     logging.info(
@@ -85,7 +84,7 @@ def sync_gpus() -> None:
         torch.cuda.synchronize(device=i)
 
 
-def benchmark(model, input_batch: torch.tensor, device: torch.device) -> dict:
+def benchmark(model, input_batch: torch.Tensor) -> dict:
     """Benchmark the model's latency and throughput on the given input batch."""
     model.config.use_cache = True
 
@@ -109,8 +108,8 @@ def benchmark(model, input_batch: torch.tensor, device: torch.device) -> dict:
         time_measurements = []
 
         for i in tqdm(range(input_seq_len), desc="Benchmarking"):
-            input_batch_i = input_batch[:, i].reshape((batch_size, 1)).to(device)
-            attention_mask_i = attention_mask[:, : (i + 1)].to(device)
+            input_batch_i = input_batch[:, i].reshape((batch_size, 1)).to(config.device)
+            attention_mask_i = attention_mask[:, : (i + 1)].to(config.device)
 
             sync_gpus()
             start_time = time.time()

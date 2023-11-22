@@ -28,6 +28,7 @@ dependencies = [
     "tqdm",
     "transformers",
     "wandb",
+    "ml-collections",
 ]
 
 [project.optional-dependencies]
