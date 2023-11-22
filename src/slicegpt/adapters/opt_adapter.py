@@ -3,14 +3,14 @@
 from typing import cast
 
 from torch import FloatTensor, Tensor
-from torch.nn import Linear, Module
+from torch.nn import LayerNorm, Linear, Module
 from transformers.models.opt.modeling_opt import OPTConfig, OPTDecoderLayer, OPTForCausalLM
 
-from ..model_adapter import LayerAdapter, ModelAdapter
-from ..modules import CompressedOPTDecoderLayer
+from slicegpt.model_adapter import LayerAdapter, ModelAdapter
+from slicegpt.modules import CompressedOPTDecoderLayer
 
 
-class OPTLayerAdapter(LayerAdapter[OPTDecoderLayer, CompressedOPTDecoderLayer]):
+class OPTLayerAdapter(LayerAdapter[OPTDecoderLayer, CompressedOPTDecoderLayer, LayerNorm]):
     _layer: OPTDecoderLayer | CompressedOPTDecoderLayer
 
     def __init__(self, layer: OPTDecoderLayer | CompressedOPTDecoderLayer) -> None:
@@ -21,10 +21,10 @@ class OPTLayerAdapter(LayerAdapter[OPTDecoderLayer, CompressedOPTDecoderLayer]):
     def raw_layer(self) -> OPTDecoderLayer | CompressedOPTDecoderLayer:
         return self._layer
 
-    def get_first_layernorm(self) -> Module:
+    def get_first_layernorm(self) -> LayerNorm:
         return self._layer.self_attn_layer_norm
 
-    def get_second_layernorm(self) -> Module:
+    def get_second_layernorm(self) -> LayerNorm:
         return self._layer.final_layer_norm
 
     def get_attention_inputs(self) -> list[Linear]:
@@ -40,7 +40,7 @@ class OPTLayerAdapter(LayerAdapter[OPTDecoderLayer, CompressedOPTDecoderLayer]):
         return self._layer.fc2
 
 
-class OPTModelAdapter(ModelAdapter[OPTDecoderLayer, CompressedOPTDecoderLayer, OPTLayerAdapter]):
+class OPTModelAdapter(ModelAdapter[OPTDecoderLayer, CompressedOPTDecoderLayer, LayerNorm, OPTLayerAdapter]):
     _model: OPTForCausalLM
     _no_split_module_classes: list[str] = ["OPTDecoderLayer", "CompressedOPTDecoderLayer"]
 
@@ -58,7 +58,11 @@ class OPTModelAdapter(ModelAdapter[OPTDecoderLayer, CompressedOPTDecoderLayer, O
 
     @property
     def seqlen(self) -> int:
-        return self._model.seqlen
+        return cast(OPTConfig, self._model.config).max_position_embeddings
+
+    @property
+    def hidden_size(self) -> int:
+        return cast(OPTConfig, self._model.config).hidden_size
 
     @property
     def should_bake_mean_into_linear(self) -> bool:
@@ -72,10 +76,14 @@ class OPTModelAdapter(ModelAdapter[OPTDecoderLayer, CompressedOPTDecoderLayer, O
     def compressable_layer_type(self) -> type[CompressedOPTDecoderLayer]:
         return CompressedOPTDecoderLayer
 
+    @property
+    def layer_norm_type(self) -> type[LayerNorm]:
+        return LayerNorm
+
     def compute_output_logits(self, input_ids: Tensor) -> FloatTensor:
         return self._model(input_ids=input_ids).logits
 
-    def convert_layer_to_compressable(self, layer: OPTDecoderLayer) -> CompressedOPTDecoderLayer:
+    def convert_layer_to_compressible(self, layer: OPTDecoderLayer) -> CompressedOPTDecoderLayer:
         config = cast(OPTConfig, self._model.config)
         compressed_layer = CompressedOPTDecoderLayer(config).to(config.torch_dtype)
         compressed_layer.load_state_dict(layer.state_dict(), strict=True)
@@ -90,7 +98,7 @@ class OPTModelAdapter(ModelAdapter[OPTDecoderLayer, CompressedOPTDecoderLayer, O
     def get_embeddings(self) -> list[Module]:
         return [self._model.model.decoder.embed_tokens, self._model.model.decoder.embed_positions]
 
-    def get_pre_head_layernorm(self) -> Module:
+    def get_pre_head_layernorm(self) -> LayerNorm:
         pre_head_layernorm = self._model.model.decoder.final_layer_norm
         assert pre_head_layernorm is not None
         return pre_head_layernorm

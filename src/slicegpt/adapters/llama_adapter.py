@@ -6,11 +6,11 @@ from torch import FloatTensor, Tensor
 from torch.nn import Linear, Module
 from transformers.models.llama.modeling_llama import LlamaConfig, LlamaDecoderLayer, LlamaForCausalLM, LlamaRMSNorm
 
-from ..model_adapter import LayerAdapter, ModelAdapter
-from ..modules import CompressedLlamaDecoderLayer
+from slicegpt.model_adapter import LayerAdapter, ModelAdapter
+from slicegpt.modules import CompressedLlamaDecoderLayer
 
 
-class LlamaLayerAdapter(LayerAdapter[LlamaDecoderLayer, CompressedLlamaDecoderLayer]):
+class LlamaLayerAdapter(LayerAdapter[LlamaDecoderLayer, CompressedLlamaDecoderLayer, LlamaRMSNorm]):
     _layer: LlamaDecoderLayer | CompressedLlamaDecoderLayer
 
     def __init__(self, layer: LlamaDecoderLayer | CompressedLlamaDecoderLayer) -> None:
@@ -21,10 +21,10 @@ class LlamaLayerAdapter(LayerAdapter[LlamaDecoderLayer, CompressedLlamaDecoderLa
     def raw_layer(self) -> LlamaDecoderLayer | CompressedLlamaDecoderLayer:
         return self._layer
 
-    def get_first_layernorm(self) -> Module:
+    def get_first_layernorm(self) -> LlamaRMSNorm:
         return self._layer.input_layernorm
 
-    def get_second_layernorm(self) -> Module:
+    def get_second_layernorm(self) -> LlamaRMSNorm:
         return self._layer.post_attention_layernorm
 
     def get_attention_inputs(self) -> list[Linear]:
@@ -40,7 +40,7 @@ class LlamaLayerAdapter(LayerAdapter[LlamaDecoderLayer, CompressedLlamaDecoderLa
         return self._layer.mlp.down_proj
 
 
-class LlamaModelAdapter(ModelAdapter[LlamaDecoderLayer, CompressedLlamaDecoderLayer, LlamaLayerAdapter]):
+class LlamaModelAdapter(ModelAdapter[LlamaDecoderLayer, CompressedLlamaDecoderLayer, LlamaRMSNorm, LlamaLayerAdapter]):
     _model: LlamaForCausalLM
     _no_split_module_classes: list[str] = ["LlamaDecoderLayer", "CompressedLlamaDecoderLayer"]
 
@@ -58,7 +58,11 @@ class LlamaModelAdapter(ModelAdapter[LlamaDecoderLayer, CompressedLlamaDecoderLa
 
     @property
     def seqlen(self) -> int:
-        return self._model.seqlen
+        return cast(LlamaConfig, self._model.config).max_position_embeddings
+
+    @property
+    def hidden_size(self) -> int:
+        return cast(LlamaConfig, self._model.config).hidden_size
 
     @property
     def should_bake_mean_into_linear(self) -> bool:
@@ -72,10 +76,14 @@ class LlamaModelAdapter(ModelAdapter[LlamaDecoderLayer, CompressedLlamaDecoderLa
     def compressable_layer_type(self) -> type[CompressedLlamaDecoderLayer]:
         return CompressedLlamaDecoderLayer
 
+    @property
+    def layer_norm_type(self) -> type[LlamaRMSNorm]:
+        return LlamaRMSNorm
+
     def compute_output_logits(self, input_ids: Tensor) -> FloatTensor:
         return self._model(input_ids=input_ids).logits
 
-    def convert_layer_to_compressable(self, layer: LlamaDecoderLayer) -> CompressedLlamaDecoderLayer:
+    def convert_layer_to_compressible(self, layer: LlamaDecoderLayer) -> CompressedLlamaDecoderLayer:
         config = cast(LlamaConfig, self._model.config)
         compressed_layer = CompressedLlamaDecoderLayer(config).to(config.torch_dtype)
         compressed_layer.load_state_dict(layer.state_dict(), strict=True)
@@ -90,7 +98,7 @@ class LlamaModelAdapter(ModelAdapter[LlamaDecoderLayer, CompressedLlamaDecoderLa
     def get_embeddings(self) -> list[Module]:
         return [self._model.model.embed_tokens]
 
-    def get_pre_head_layernorm(self) -> Module:
+    def get_pre_head_layernorm(self) -> LlamaRMSNorm:
         pre_head_layernorm = self._model.model.norm
         assert isinstance(pre_head_layernorm, LlamaRMSNorm)
         return pre_head_layernorm
