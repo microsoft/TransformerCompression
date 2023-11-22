@@ -3,7 +3,7 @@
 
 from abc import ABC, ABCMeta, abstractmethod
 from collections.abc import Sequence
-from typing import Any, Generic, Protocol, TypeVar, final, runtime_checkable
+from typing import Any, Generic, Protocol, TypeVar, cast, final, runtime_checkable
 
 from torch import FloatTensor, Tensor
 from torch.nn import Linear, Module
@@ -16,8 +16,10 @@ class HasShortcuts(Protocol):
 
 
 class _ModuleWithShortcutsMeta(ABCMeta):
-    def __call__(self, *args, **kwargs) -> Any:
-        cls = ABCMeta.__call__(self, *args, **kwargs)
+    def __call__(cls, *args: Any, **kwargs: Any) -> Any:
+        cls = ABCMeta.__call__(cls, *args, **kwargs)
+        if not isinstance(cls, Module):
+            raise TypeError("This metaclass can be applied only to descendants of torch.nn.Module")
 
         cls.register_buffer("mlp_shortcut_Q", None)
         cls.register_buffer("attn_shortcut_Q", None)
@@ -27,26 +29,27 @@ class _ModuleWithShortcutsMeta(ABCMeta):
 
 class ModuleWithShortcuts(ABC, metaclass=_ModuleWithShortcutsMeta):
     @abstractmethod
-    def forward(self, *args, **kwargs) -> Any:
+    def forward(self, *args: Any, **kwargs: Any) -> Any:
         pass
 
 
-TLayer = TypeVar("TLayer", bound=Module)
-TCompressableLayer = TypeVar("TCompressableLayer", bound=Module)
+AnyLayer = TypeVar("AnyLayer", bound=Module)
+AnyCompressableLayer = TypeVar("AnyCompressableLayer", bound=Module)
+AnyLayerNorm = TypeVar("AnyLayerNorm", bound=Module)
 
 
-class LayerAdapter(ABC, Generic[TLayer, TCompressableLayer]):
+class LayerAdapter(ABC, Generic[AnyLayer, AnyCompressableLayer, AnyLayerNorm]):
     @property
     @abstractmethod
-    def raw_layer(self) -> TLayer | TCompressableLayer:
+    def raw_layer(self) -> AnyLayer | AnyCompressableLayer:
         pass
 
     @abstractmethod
-    def get_first_layernorm(self) -> Module:
+    def get_first_layernorm(self) -> AnyLayerNorm:
         pass
 
     @abstractmethod
-    def get_second_layernorm(self) -> Module:
+    def get_second_layernorm(self) -> AnyLayerNorm:
         pass
 
     @abstractmethod
@@ -66,10 +69,10 @@ class LayerAdapter(ABC, Generic[TLayer, TCompressableLayer]):
         pass
 
 
-TLayerAdapter = TypeVar("TLayerAdapter", bound=LayerAdapter)
+AnyLayerAdapter = TypeVar("AnyLayerAdapter", bound=LayerAdapter)
 
 
-class ModelAdapter(ABC, Generic[TLayer, TCompressableLayer, TLayerAdapter]):
+class ModelAdapter(ABC, Generic[AnyLayer, AnyCompressableLayer, AnyLayerNorm, AnyLayerAdapter]):
     @property
     @abstractmethod
     def raw_model(self) -> Module:
@@ -87,17 +90,27 @@ class ModelAdapter(ABC, Generic[TLayer, TCompressableLayer, TLayerAdapter]):
 
     @property
     @abstractmethod
+    def hidden_size(self) -> int:
+        pass
+
+    @property
+    @abstractmethod
     def should_bake_mean_into_linear(self) -> bool:
         pass
 
     @property
     @abstractmethod
-    def original_layer_type(self) -> type[TLayer]:
+    def original_layer_type(self) -> type[AnyLayer]:
         pass
 
     @property
     @abstractmethod
-    def compressable_layer_type(self) -> type[TCompressableLayer]:
+    def compressable_layer_type(self) -> type[AnyCompressableLayer]:
+        pass
+
+    @property
+    @abstractmethod
+    def layer_norm_type(self) -> type[AnyLayerNorm]:
         pass
 
     @abstractmethod
@@ -105,17 +118,17 @@ class ModelAdapter(ABC, Generic[TLayer, TCompressableLayer, TLayerAdapter]):
         pass
 
     @abstractmethod
-    def convert_layer_to_compressable(self, layer: TLayer) -> TCompressableLayer:
+    def convert_layer_to_compressible(self, layer: AnyLayer) -> AnyCompressableLayer:
         pass
 
     @final
-    def convert_layer_to_compressable_and_validate(self, layer: TLayer) -> TCompressableLayer:
-        compressed_layer = self.convert_layer_to_compressable(layer)
+    def convert_layer_to_compressible_and_validate(self, layer: AnyLayer) -> AnyCompressableLayer:
+        compressed_layer = self.convert_layer_to_compressible(layer)
         assert isinstance(compressed_layer, HasShortcuts)
-        return compressed_layer
+        return cast(AnyCompressableLayer, compressed_layer)
 
     @abstractmethod
-    def get_layers(self) -> Sequence[TLayerAdapter]:
+    def get_layers(self) -> Sequence[AnyLayerAdapter]:
         pass
 
     @abstractmethod
@@ -123,7 +136,7 @@ class ModelAdapter(ABC, Generic[TLayer, TCompressableLayer, TLayerAdapter]):
         pass
 
     @abstractmethod
-    def get_pre_head_layernorm(self) -> Module:
+    def get_pre_head_layernorm(self) -> AnyLayerNorm:
         pass
 
     @abstractmethod

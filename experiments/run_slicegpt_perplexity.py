@@ -12,13 +12,14 @@ import wandb
 from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate, utils
 from slicegpt.adapters import llama_adapter, opt_adapter
 from slicegpt.config import config
+from slicegpt.model_adapter import ModelAdapter
 
 utils.configure_logging()
 
 os.environ["WANDB__SERVICE_WAIT"] = "300"
 
 
-def argparser():
+def argparser() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--model",
@@ -129,7 +130,7 @@ def main() -> None:
         model, tokenizer = hf_utils.get_model(args.model, token=args.hf_token, dtype=config.dtype)
 
     if isinstance(model, LlamaForCausalLM):
-        adapter = llama_adapter.LlamaModelAdapter(model)
+        adapter: ModelAdapter = llama_adapter.LlamaModelAdapter(model)
     elif isinstance(model, OPTForCausalLM):
         adapter = opt_adapter.OPTModelAdapter(model)
     else:
@@ -169,10 +170,10 @@ def main() -> None:
         utils.cleanup_memory()
 
     # replace modules with compressible equivalents
-    layernorm_fusion.replace_modules(model, model.config)
+    layernorm_fusion.replace_modules(adapter)
 
     # fuse layernorms and add rotations to skip connections
-    layernorm_fusion.fuse_modules(model)
+    layernorm_fusion.fuse_modules(adapter)
 
     # don't run this on large and/or distributed models
     if args.eval_fused_model and not args.distribute_model:
