@@ -7,11 +7,11 @@ import logging
 import os
 
 import torch
+import wandb
 from lm_eval import evaluator, tasks
 from lm_eval import utils as lm_eval_utils
 from lm_eval.base import BaseLM
 
-import wandb
 from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate, utils
 from slicegpt.config import config
 
