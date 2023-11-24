@@ -90,7 +90,7 @@ def argparser():
 
     if args.device:
         config.device = torch.device(args.device)
-        
+
     if args.dtype == "fp16":
         config.dtype = torch.float16
     elif args.dtype == "fp32":
@@ -123,7 +123,7 @@ def main() -> None:
         model, tokenizer = hf_utils.load_sliced_model(args.model, args.load_model_path, args.sparsity)
     else:
         # load one of the pre-trained models
-        
+
         model, tokenizer = hf_utils.get_model(args.model, token=args.hf_token, dtype=config.dtype)
 
     dataloader, testloader = data_utils.get_loaders(
