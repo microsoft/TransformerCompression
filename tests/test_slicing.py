@@ -11,7 +11,7 @@ def test_layernorm_fusion_replaces_modules() -> None:
 
     orig_modules = get_module_names(model)
 
-    layernorm_fusion.replace_modules(model, model.config)
+    layernorm_fusion.replace_layers(model, model.config)
     layernorm_fusion.fuse_modules(model)
 
     assert orig_modules != get_module_names(model)

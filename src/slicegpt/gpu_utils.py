@@ -1,6 +1,5 @@
 import logging
 import time
-from typing import Callable, cast
 
 import numpy as np
 import torch
@@ -88,9 +87,9 @@ def sync_gpus() -> None:
         torch.cuda.synchronize(device=i)
 
 
-def benchmark(model, input_batch: torch.Tensor) -> dict:
+def benchmark(model: ModelAdapter, input_batch: torch.Tensor) -> dict:
     """Benchmark the model's latency and throughput on the given input batch."""
-    model.config.use_cache = True
+    model.raw_model.config.use_cache = True  # TODO: consider adding to interface
 
     cache = {"past": None}
 
@@ -101,10 +100,10 @@ def benchmark(model, input_batch: torch.Tensor) -> dict:
 
         return tmp
 
-    layers = model_utils.get_layers(model)
+    layers = model.get_layers()
     for idx, layer in enumerate(layers):
         # Clear past cache after each layer get called to get accurate timing of each forward pass.
-        layer.register_forward_hook(clear_past_cache(idx))
+        layer.raw_layer.register_forward_hook(clear_past_cache(idx))
 
     with torch.no_grad():
         batch_size, input_seq_len = input_batch.shape[:2]
@@ -117,7 +116,7 @@ def benchmark(model, input_batch: torch.Tensor) -> dict:
 
             sync_gpus()
             start_time = time.time()
-            output = model(input_batch_i, past_key_values=cache["past"], attention_mask=attention_mask_i)
+            output = model.raw_model(input_batch_i, past_key_values=cache["past"], attention_mask=attention_mask_i)
             sync_gpus()
             time_measurements.append(time.time() - start_time)
 

@@ -7,47 +7,33 @@ import torch
 from tqdm import tqdm
 
 from .config import config
-from .model_utils import (
-    LAYER,
-    MODEL,
-    get_attention_inputs,
-    get_attention_output,
-    get_embeddings,
-    get_first_layernorm,
-    get_layer0_inputs,
-    get_layers,
-    get_lm_head,
-    get_mlp_inputs,
-    get_mlp_output,
-    get_pre_head_layernorm,
-    get_second_layernorm,
-    get_signals,
-)
+from .model_adapter import LayerAdapter, ModelAdapter
+from .model_utils import get_layer0_inputs, get_signals
 from .utils import cleanup_memory
 
 
-def rotate_attention_inputs(layer: LAYER, Q: torch.Tensor) -> None:
+def rotate_attention_inputs(layer: LayerAdapter, Q: torch.Tensor) -> None:
     # Rotate the WQ, WK and WV matrices of the self-attention layer.
-    for W in get_attention_inputs(layer):
+    for W in layer.get_attention_inputs():
         dtype = W.weight.dtype
         W_ = W.weight.to(device=config.device, dtype=torch.float64)
         W.weight.data = torch.matmul(W_, Q).to(device="cpu", dtype=dtype)
 
 
-def slice_attention_inputs(layer: LAYER, new_embedding_dimension: int) -> None:
+def slice_attention_inputs(layer: LayerAdapter, new_embedding_dimension: int) -> None:
     # Slice the  WQ, WK and WV matrices of the self-attention layer.
-    for W in get_attention_inputs(layer):
+    for W in layer.get_attention_inputs():
         W.weight.data = W.weight.data[:, :new_embedding_dimension]
         W.in_features = new_embedding_dimension
 
-    layer.attn_shortcut_Q = layer.attn_shortcut_Q[:new_embedding_dimension, :]
+    layer.raw_layer.attn_shortcut_Q = layer.raw_layer.attn_shortcut_Q[:new_embedding_dimension, :]
 
-    get_first_layernorm(layer).normalized_shape = (new_embedding_dimension,)
+    layer.get_first_layernorm().normalized_shape = (new_embedding_dimension,)  # TODO: remove?
 
 
-def rotate_attention_output(layer: LAYER, Q: torch.Tensor) -> None:
+def rotate_attention_output(layer: LayerAdapter, Q: torch.Tensor) -> None:
     # Rotate output matrix of the self-attention layer.
-    W = get_attention_output(layer)
+    W = layer.get_attention_output()
 
     dtype = W.weight.data.dtype
     W_ = W.weight.data.to(device=config.device, dtype=torch.float64)
@@ -57,41 +43,41 @@ def rotate_attention_output(layer: LAYER, Q: torch.Tensor) -> None:
         W.bias.data = torch.matmul(Q.T, b).to(device="cpu", dtype=dtype)
 
 
-def slice_attention_output(layer: LAYER, new_embedding_dimension: int) -> None:
+def slice_attention_output(layer: LayerAdapter, new_embedding_dimension: int) -> None:
     # Slice output matrix of the self-attention layer.
-    W = get_attention_output(layer)
+    W = layer.get_attention_output()
     W.weight.data = W.weight.data[:new_embedding_dimension, :]
     if W.bias is not None:
         W.bias.data = W.bias.data[:new_embedding_dimension]
     W.out_features = new_embedding_dimension
 
-    layer.attn_shortcut_Q = layer.attn_shortcut_Q[:, :new_embedding_dimension]
+    layer.raw_layer.attn_shortcut_Q = layer.raw_layer.attn_shortcut_Q[:, :new_embedding_dimension]
 
 
-def rotate_mlp_input(layer: LAYER, Q: torch.Tensor) -> None:
+def rotate_mlp_input(layer: LayerAdapter, Q: torch.Tensor) -> None:
     # Rotate the MLP input weights.
-    for W in get_mlp_inputs(layer):
+    for W in layer.get_mlp_inputs():
         dtype = W.weight.dtype
         W_ = W.weight.data.to(device=config.device, dtype=torch.float64)
         W.weight.data = torch.matmul(W_, Q).to(device="cpu", dtype=dtype)
 
 
-def slice_mlp_input(layer: LAYER, new_embedding_dimension: int) -> None:
+def slice_mlp_input(layer: LayerAdapter, new_embedding_dimension: int) -> None:
     # Slice the MLP input weights.
-    for W in get_mlp_inputs(layer):
+    for W in layer.get_mlp_inputs():
         W.weight.data = W.weight.data[:, :new_embedding_dimension]
         W.in_features = new_embedding_dimension
 
     # slice shortcut
-    layer.mlp_shortcut_Q = layer.mlp_shortcut_Q[:new_embedding_dimension, :]
+    layer.raw_layer.mlp_shortcut_Q = layer.raw_layer.mlp_shortcut_Q[:new_embedding_dimension, :]
 
     # modify layernorm
-    get_second_layernorm(layer).normalized_shape = (new_embedding_dimension,)
+    layer.get_second_layernorm().normalized_shape = (new_embedding_dimension,)  # TODO: is this needed?
 
 
-def rotate_mlp_output(layer: LAYER, Q: torch.Tensor) -> None:
+def rotate_mlp_output(layer: LayerAdapter, Q: torch.Tensor) -> None:
     # Rotate the MLP output weights and bias.
-    W = get_mlp_output(layer)
+    W = layer.get_mlp_output()
     dtype = W.weight.data.dtype
     W_ = W.weight.data.to(device=config.device, dtype=torch.float64)
     W.weight.data = torch.matmul(Q.T, W_).to(device="cpu", dtype=dtype)
@@ -100,20 +86,20 @@ def rotate_mlp_output(layer: LAYER, Q: torch.Tensor) -> None:
         W.bias.data = torch.matmul(Q.T, b).to(device="cpu", dtype=dtype)
 
 
-def slice_mlp_output(layer: LAYER, new_embedding_dimension: int) -> None:
+def slice_mlp_output(layer: LayerAdapter, new_embedding_dimension: int) -> None:
     # Slice the MLP output weights and bias.
-    W = get_mlp_output(layer)
+    W = layer.get_mlp_output()
     W.weight.data = W.weight.data[:new_embedding_dimension, :]
     if W.bias is not None:
         W.bias.data = W.bias.data[:new_embedding_dimension]
     W.out_features = new_embedding_dimension
 
-    layer.mlp_shortcut_Q = layer.mlp_shortcut_Q[:, :new_embedding_dimension]
+    layer.raw_layer.mlp_shortcut_Q = layer.raw_layer.mlp_shortcut_Q[:, :new_embedding_dimension]
 
 
-def rotate_embeddings(model: MODEL, Q: torch.Tensor) -> None:
+def rotate_embeddings(model: ModelAdapter, Q: torch.Tensor) -> None:
     # Rotate the embeddings.
-    for W in get_embeddings(model):
+    for W in model.get_embeddings():
         dtype = W.weight.data.dtype
         W_ = W.weight.data.to(device=config.device, dtype=torch.float64)
         W.weight.data = torch.matmul(W_, Q).to(device="cpu", dtype=dtype)
@@ -122,29 +108,30 @@ def rotate_embeddings(model: MODEL, Q: torch.Tensor) -> None:
     cleanup_memory()
 
 
-def slice_embeddings(model: MODEL, new_embedding_dimension: int) -> None:
+def slice_embeddings(model: ModelAdapter, new_embedding_dimension: int) -> None:
     # Slice the embeddings.
-    for W in get_embeddings(model):
+    for W in model.get_embeddings():
         W.weight.data = W.weight.data[:, :new_embedding_dimension]
 
 
-def rotate_head(model: MODEL, Q: torch.Tensor) -> None:
+def rotate_head(model: ModelAdapter, Q: torch.Tensor) -> None:
     # Rotate the head.
-    W = get_lm_head(model)
+    W = model.get_lm_head()
     dtype = W.weight.data.dtype
     W_ = W.weight.data.to(device=config.device, dtype=torch.float64)
     W.weight.data = torch.matmul(W_, Q).to(device="cpu", dtype=dtype)
 
 
-def slice_head(model: MODEL, new_embedding_dimension: int) -> None:
+def slice_head(model: ModelAdapter, new_embedding_dimension: int) -> None:
     # Slice the head.
-    model.lm_head.weight.data = model.lm_head.weight.data[:, :new_embedding_dimension]
-    model.lm_head.in_features = new_embedding_dimension
+    lm_head = model.get_lm_head()
+    lm_head.weight.data = lm_head.weight.data[:, :new_embedding_dimension]
+    lm_head.in_features = new_embedding_dimension
 
 
 @torch.no_grad()
 def rotate_and_slice(
-    model: MODEL,
+    model: ModelAdapter,
     dataloader: torch.utils.data.DataLoader[torch.Tensor],
     new_embedding_dimension: int,
     do_slice_head: bool = False,
@@ -152,8 +139,8 @@ def rotate_and_slice(
     """
     Rotate and slice a model, with interleaved slicing and PCA calculations
     """
-    model.eval()
-    dtype = next(iter(model.parameters())).dtype
+    model.raw_model.eval()
+    dtype = next(iter(model.raw_model.parameters())).dtype
 
     inps, args, kwargs = [], [], []
     for batch in dataloader:
@@ -175,9 +162,9 @@ def rotate_and_slice(
     ]
 
     logging.info("Rotate and slice layers")
-    layers = get_layers(model)
+    layers = model.get_layers()
     for layer in tqdm(layers, unit="layer", desc="Rotating and slicing"):
-        layer.attn_shortcut_Q = Q.T.clone().to(dtype=dtype)
+        layer.raw_layer.attn_shortcut_Q = Q.T.clone().to(dtype=dtype)
 
         # rotate and slice the attention inputs to match previous layer
         rotate_attention_inputs(layer, Q)
@@ -189,11 +176,11 @@ def rotate_and_slice(
         _, Q = pca_calc(mlp_ln_inputs)
         Q = Q.to(device=config.device, dtype=torch.float64)
 
-        layer.attn_shortcut_Q = torch.matmul(layer.attn_shortcut_Q, Q.to(dtype=dtype))
+        layer.raw_layer.attn_shortcut_Q = torch.matmul(layer.raw_layer.attn_shortcut_Q, Q.to(dtype=dtype))
         rotate_attention_output(layer, Q)
         slice_attention_output(layer, new_embedding_dimension)
 
-        layer.mlp_shortcut_Q = Q.T.clone().to(dtype=dtype)
+        layer.raw_layer.mlp_shortcut_Q = Q.T.clone().to(dtype=dtype)
         rotate_mlp_input(layer, Q)
         slice_mlp_input(layer, new_embedding_dimension)
 
@@ -204,20 +191,20 @@ def rotate_and_slice(
         _, outs = get_signals(layer, inps, args, kwargs)
         _, Q = pca_calc(outs)
 
-        layer.mlp_shortcut_Q = torch.matmul(layer.mlp_shortcut_Q, Q.to(dtype=dtype))
+        layer.raw_layer.mlp_shortcut_Q = torch.matmul(layer.raw_layer.mlp_shortcut_Q, Q.to(dtype=dtype))
 
         # optionally slice the mlp/head connection in the last layer
         dim = new_embedding_dimension
         if layer is layers[-1]:
             if not do_slice_head:
-                dim = model.config.hidden_size
+                dim = model.hidden_size
 
         rotate_mlp_output(layer, Q)
         slice_mlp_output(layer, dim)
 
         inps = [torch.matmul(out.to(device=config.device), Q.to(dtype=dtype))[:, :, :dim].cpu() for out in outs]
 
-        layer = layer.to('cpu')
+        layer.raw_layer.to('cpu')
 
         # Run GC and cleanup GPU memory
         cleanup_memory()
@@ -231,16 +218,16 @@ def rotate_and_slice(
 
 
 @torch.no_grad()
-def rotate(model: MODEL, dataloader: torch.utils.data.DataLoader[torch.Tensor]) -> None:
+def rotate(model: ModelAdapter, dataloader: torch.utils.data.DataLoader[torch.Tensor]) -> None:
     """
     Rotate a model.
     TODO: Make this gpu memory efficient.
     """
-    model.eval()
-    dtype = next(iter(model.parameters())).dtype  # Get the dtype of the model.
+    model.raw_model.eval()
+    dtype = next(iter(model.raw_model.parameters())).dtype  # Get the dtype of the model.
 
     # List of layers to rotate.
-    layers = get_layers(model)
+    layers = model.get_layers()
 
     # Get the input of the first layer norm and calculate the Q_1
     inps, attn_masks = get_layer0_inputs(model, dataloader)
@@ -264,7 +251,7 @@ def rotate(model: MODEL, dataloader: torch.utils.data.DataLoader[torch.Tensor]) 
         rotate_attention_inputs(layer, Q_1)
 
         # Set the shortcut rotation matrix of the self-attention layer.
-        layer.attn_shortcut_Q = torch.matmul(Q_1.clone().T, Q_3.clone()).to(device="cpu", dtype=dtype)
+        layer.raw_layer.attn_shortcut_Q = torch.matmul(Q_1.clone().T, Q_3.clone()).to(device="cpu", dtype=dtype)
 
         # Rotate the Attention output matrix
         rotate_attention_output(layer, Q_3)
@@ -273,7 +260,7 @@ def rotate(model: MODEL, dataloader: torch.utils.data.DataLoader[torch.Tensor]) 
         rotate_mlp_input(layer, Q_3)
 
         # Set the shortcut rotation matrix of the MLP.
-        layer.mlp_shortcut_Q = torch.matmul(Q_3.clone().T, Q_5.clone()).to(device="cpu", dtype=dtype)
+        layer.raw_layer.mlp_shortcut_Q = torch.matmul(Q_3.clone().T, Q_5.clone()).to(device="cpu", dtype=dtype)
 
         # Rotate MLP output
         rotate_mlp_output(layer, Q_5)
@@ -288,24 +275,26 @@ def rotate(model: MODEL, dataloader: torch.utils.data.DataLoader[torch.Tensor]) 
     logging.info("Rotate layers done")
 
 
-def slice_rotated_model(model: MODEL, new_embedding_dimension: int, do_slice_head: bool = False) -> None:
+def slice_rotated_model(model: ModelAdapter, new_embedding_dimension: int, do_slice_head: bool = False) -> None:
     """
     TODO: Make this gpu memory efficient.
     """
-    model.eval()
+    model.raw_model.eval()
 
     # slice embeddings
     slice_embeddings(model, new_embedding_dimension)
 
     # List of layers to sice.
-    layers = get_layers(model)
+    layers = model.get_layers()
 
     for layer in layers:
         slice_attention_inputs(layer, new_embedding_dimension)
         slice_attention_output(layer, new_embedding_dimension)
 
         # Slice attention shortcut matrix
-        layer.attn_shortcut_Q = layer.attn_shortcut_Q[:new_embedding_dimension, :new_embedding_dimension]
+        layer.raw_layer.attn_shortcut_Q = layer.raw_layer.attn_shortcut_Q[
+            :new_embedding_dimension, :new_embedding_dimension
+        ]
 
         slice_mlp_input(layer, new_embedding_dimension)
 
@@ -313,13 +302,13 @@ def slice_rotated_model(model: MODEL, new_embedding_dimension: int, do_slice_hea
         dim = new_embedding_dimension
         if layer is layers[-1]:
             if not do_slice_head:
-                dim = model.config.hidden_size
+                dim = model.hidden_size
 
         slice_mlp_output(layer, dim)
-        layer.mlp_shortcut_Q = layer.mlp_shortcut_Q[:new_embedding_dimension, :dim]
+        layer.raw_layer.mlp_shortcut_Q = layer.raw_layer.mlp_shortcut_Q[:new_embedding_dimension, :dim]
 
     if do_slice_head:
-        get_pre_head_layernorm(model).normalized_shape = (new_embedding_dimension,)
+        model.get_pre_head_layernorm().normalized_shape = (new_embedding_dimension,)  # TODO: remove?
         slice_head(model, new_embedding_dimension)
 
 
