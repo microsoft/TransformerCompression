@@ -29,9 +29,9 @@ def get_loaders(
     elif dataset_name == "c4":
         path = "allenai/c4"
         name = "allenai--c4"
+        data_name = "text"
         train_data_files = {"train": "en/c4-train.00000-of-01024.json.gz"}
         test_data_files = {"validation": "en/c4-validation.00000-of-00008.json.gz"}
-        data_name = "text"
         test_split = "validation"
     else:
         raise NotImplementedError("The provided dataset is not supported")
