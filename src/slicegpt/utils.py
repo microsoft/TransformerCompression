@@ -66,6 +66,7 @@ def cleanup_memory() -> None:
             f" ({(memory_after - memory_before) / (1024 ** 3):.2f} GB)"
         )
 
+
 def map_tensors(obj, device=None, dtype=None):
     """Recursively map tensors to device and dtype."""
     if isinstance(obj, torch.Tensor):
