@@ -3,7 +3,6 @@ import time
 
 import numpy as np
 import torch
-import transformers
 from accelerate import dispatch_model, infer_auto_device_map
 from accelerate.utils import get_balanced_memory
 from torch.utils.data import DataLoader
@@ -11,9 +10,6 @@ from tqdm import tqdm
 
 from . import model_utils, utils
 from .config import config
-import transformers
-
-import numpy as np
 
 
 @torch.no_grad()
