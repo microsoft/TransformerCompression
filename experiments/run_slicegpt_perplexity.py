@@ -141,7 +141,7 @@ def main() -> None:
         dataset_name=args.cal_dataset,
         tokenizer=tokenizer,
         nsamples=args.cal_nsamples,
-        seqlen=model_adapter.seqlen,
+        max_seqlen=model_adapter.seqlen,
         batch_size=args.batch_size,
         seed=args.seed,
     )
