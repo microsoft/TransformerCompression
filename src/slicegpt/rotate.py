@@ -184,7 +184,7 @@ def rotate_and_slice(
         slice_attention_inputs(layer, new_embedding_dimension)
 
         # get signal between attention and mlp, rotate and slice
-        
+
         mlp_ln_inputs, _ = get_signals(layer, inps, args, kwargs)
         _, Q = pca_calc(mlp_ln_inputs)
         Q = Q.to(device=config.device, dtype=torch.float64)

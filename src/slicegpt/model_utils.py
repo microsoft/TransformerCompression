@@ -109,13 +109,13 @@ def get_lm_head(model: MODEL) -> torch.nn.Linear:
 def get_layer0_inputs(model: MODEL, batch: torch.Tensor) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
     """
     Returns the inputs to the first layer of the model (after embeddings).
-    
+
     Also returns the additional args and kwargs that are passed to
     the first layer (such as the attention mask, or caches K/V values).
-    
+
     This relies on the layer taking the hidden states as the first argument,
     and all arguments to subsequent layers being the same.
-    
+
     NB: this won't work from OPT 350m.
     """
     # Move embeddings to device.
@@ -142,17 +142,16 @@ def get_layer0_inputs(model: MODEL, batch: torch.Tensor) -> tuple[list[torch.Ten
     except ValueError:
         pass
 
-    
     # grab the inputs and caught arguments
     inps = layers[0].saved_inps
     args = layers[0].saved_args
     kwargs = layers[0].saved_kwargs
-    
+
     # put the caught stuff on cpu
     inps = utils.map_tensors(inps, device='cpu')
     args = utils.map_tensors(args, device='cpu')
     kwargs = utils.map_tensors(kwargs, device='cpu')
-    
+
     # put the layer back to normal
     layers[0] = layers[0].module
 
@@ -175,7 +174,7 @@ def get_signals(
     """
     mlp_ln_inputs = []
     outputs = []
-    
+
     layer = layer.to(config.device)
     seqlen = inputs[0].shape[-2]
 
@@ -193,7 +192,7 @@ def get_signals(
         )
         out = layer(inp, *layer_args_batch, **layer_kwargs_batch)[0].cpu()
         outputs.append(out)
-    
+
     hook.remove()
 
     return mlp_ln_inputs, outputs
