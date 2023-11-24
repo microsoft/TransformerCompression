@@ -27,13 +27,13 @@ def evaluate_ppl(model: ModelAdapter, testloader: DataLoader[Tensor]) -> float:
 
     model.raw_model.eval()
 
-    loss_fct = cast(Callable[[Tensor, Tensor], Tensor], torch.nn.CrossEntropyLoss(reduction="none"))
+    loss_fct = torch.nn.CrossEntropyLoss(reduction="none")
 
     nlls = []
 
     for batch in testloader:
         assert isinstance(batch, Tensor)
-        input_ids = batch.to(cast(torch.device, config.device))
+        input_ids = batch.to(config.device)  # type: ignore
         logits: Tensor = model.compute_output_logits(input_ids=input_ids)
 
         # Shift outputs and labels autoregressively.
