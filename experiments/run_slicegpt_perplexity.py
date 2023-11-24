@@ -38,6 +38,7 @@ def argparser():
         ],
         default="facebook/opt-125m",
     )
+    parser.add_argument("--dtype", type=str, help="Data type to use.", choices=["fp32", "fp16"], default="fp16")
     parser.add_argument(
         "--cal-dataset",
         type=str,
@@ -89,6 +90,13 @@ def argparser():
 
     if args.device:
         config.device = torch.device(args.device)
+        
+    if args.dtype == "fp16":
+        config.dtype = torch.float16
+    elif args.dtype == "fp32":
+        config.dtype = torch.float32
+    else:
+        raise argparse.ArgumentTypeError(f"Data type should be one of 'fp16', 'fp32'")
 
     return args
 
@@ -115,7 +123,8 @@ def main() -> None:
         model, tokenizer = hf_utils.load_sliced_model(args.model, args.load_model_path, args.sparsity)
     else:
         # load one of the pre-trained models
-        model, tokenizer = hf_utils.get_model(args.model, token=args.hf_token)
+        
+        model, tokenizer = hf_utils.get_model(args.model, token=args.hf_token, dtype=config.dtype)
 
     dataloader, testloader = data_utils.get_loaders(
         dataset_name=args.cal_dataset,
