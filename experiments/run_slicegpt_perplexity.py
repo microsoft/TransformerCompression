@@ -136,6 +136,8 @@ def main() -> None:
     else:
         raise TypeError
 
+    del model
+
     def reset_model_device() -> None:
         if args.distribute_model:
             # distribute model across available GPUs
@@ -166,43 +168,43 @@ def main() -> None:
         dataset_ppl = gpu_utils.evaluate_ppl(adapter, testloader)
         logging.info(f'Original ppl: {dataset_ppl:.4f}')
         wandb.log({"original_ppl": dataset_ppl})
-        model = model.cpu()
+        adapter.raw_model.cpu()
         utils.cleanup_memory()
 
     # replace modules with compressible equivalents
-    layernorm_fusion.replace_modules(adapter)
+    layernorm_fusion.replace_layers(adapter)
 
     # fuse layernorms and add rotations to skip connections
     layernorm_fusion.fuse_modules(adapter)
 
     # don't run this on large and/or distributed models
     if args.eval_fused_model and not args.distribute_model:
-        model = model.to(config.device)
+        adapter.raw_model.to(config.device)
 
         dataset_ppl = gpu_utils.evaluate_ppl(adapter, testloader)
         logging.info(f'Post-fusion: {dataset_ppl:.4f}')
         wandb.log({"post_fusion_ppl": dataset_ppl})
 
-        model = model.cpu()
+        adapter.raw_model.cpu()
 
         # run GC and cleanup GPU memory
         utils.cleanup_memory()
 
-    original_param_count = sum(int(p.nelement()) for p in model.parameters())
+    original_param_count = sum(int(p.nelement()) for p in adapter.raw_model.parameters())
     logging.info(f'Original model parameters: {original_param_count:,d}')
 
     # compute new embedding dimension given the desired sparsity level
-    new_embedding_dimension = int((1 - args.sparsity) * model.config.hidden_size)
+    new_embedding_dimension = int((1 - args.sparsity) * adapter.hidden_size)
     logging.info(f"New embedding dimension: {new_embedding_dimension} (sparsity {args.sparsity})")
 
-    rotate.rotate_and_slice(model, dataloader, new_embedding_dimension)
+    rotate.rotate_and_slice(adapter, dataloader, new_embedding_dimension)
 
     if args.save_dir:
         if not os.path.exists(args.save_dir):
             os.makedirs(args.save_dir)
 
         model_file = os.path.join(args.save_dir, os.path.basename(args.model) + "_" + str(args.sparsity) + ".pt")
-        torch.save(model.state_dict(), model_file)
+        torch.save(adapter.raw_model.state_dict(), model_file)
         logging.info(f"Saved sliced model to {args.save_dir}")
 
     reset_model_device()
@@ -210,7 +212,7 @@ def main() -> None:
     logging.info(f'After rotating and slicing {dataset_ppl:.4f}')
     wandb.log({"sliced_ppl": dataset_ppl})
 
-    sliced_param_count = sum(int(p.nelement()) for p in model.parameters())
+    sliced_param_count = sum(int(p.nelement()) for p in adapter.raw_model.parameters())
     sliced_fraction = 1.0 - sliced_param_count / original_param_count
     logging.info(f'Sliced model parameters: {sliced_param_count:,d} (sliced fraction {sliced_fraction:.4f})')
 

@@ -2,7 +2,7 @@
 # Licensed under the MIT license.
 
 import logging
-from typing import Callable, TypeVar
+from typing import Callable, Iterable, TypeVar
 
 import torch
 from torch.nn import Linear, Module, Parameter
@@ -11,7 +11,7 @@ from .model_adapter import ModelAdapter
 from .modules import RMSN
 
 
-def replace_modules(model: ModelAdapter, verbose: bool = True) -> None:
+def replace_layers(model: ModelAdapter, verbose: bool = True) -> None:
     """Replace layers with compressible versions.
 
     This adds a 'shortcut operation' to each block.
@@ -63,7 +63,7 @@ def fuse_modules(model: ModelAdapter) -> None:
     head.weight = Parameter(head.weight.clone())
 
     # We add the mean subtraction to the first embeddings
-    for W in model.get_embeddings():
+    for W in model.get_validated_embeddings():
         W_ = W.weight.data.double()
         W.weight.data = (W_ - W_.mean(dim=-1, keepdim=True)).to(W.weight.data.dtype)
 
@@ -101,7 +101,7 @@ def bake_mean_into_linear(linear: Linear) -> None:
         linear.bias.data = linear.bias.data.to(linear_dtype)
 
 
-def fuse_ln_linear(layernorm: Module, linear_layers: list[Linear]) -> None:
+def fuse_ln_linear(layernorm: Module, linear_layers: Iterable[Linear]) -> None:
     """
     fuse the linear operations in Layernorm into the adjacent linear blocks.
     """

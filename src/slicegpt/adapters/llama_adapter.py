@@ -10,7 +10,7 @@ from slicegpt.model_adapter import LayerAdapter, ModelAdapter
 from slicegpt.modules import CompressedLlamaDecoderLayer
 
 
-class LlamaLayerAdapter(LayerAdapter[LlamaDecoderLayer, CompressedLlamaDecoderLayer, LlamaRMSNorm]):
+class LlamaLayerAdapter(LayerAdapter):
     _layer: LlamaDecoderLayer | CompressedLlamaDecoderLayer
 
     def __init__(self, layer: LlamaDecoderLayer | CompressedLlamaDecoderLayer) -> None:
@@ -40,7 +40,7 @@ class LlamaLayerAdapter(LayerAdapter[LlamaDecoderLayer, CompressedLlamaDecoderLa
         return self._layer.mlp.down_proj
 
 
-class LlamaModelAdapter(ModelAdapter[LlamaDecoderLayer, CompressedLlamaDecoderLayer, LlamaRMSNorm, LlamaLayerAdapter]):
+class LlamaModelAdapter(ModelAdapter):
     _model: LlamaForCausalLM
     _no_split_module_classes: list[str] = ["LlamaDecoderLayer", "CompressedLlamaDecoderLayer"]
 
@@ -73,10 +73,6 @@ class LlamaModelAdapter(ModelAdapter[LlamaDecoderLayer, CompressedLlamaDecoderLa
         return LlamaDecoderLayer
 
     @property
-    def compressable_layer_type(self) -> type[CompressedLlamaDecoderLayer]:
-        return CompressedLlamaDecoderLayer
-
-    @property
     def layer_norm_type(self) -> type[LlamaRMSNorm]:
         return LlamaRMSNorm
 
@@ -94,6 +90,12 @@ class LlamaModelAdapter(ModelAdapter[LlamaDecoderLayer, CompressedLlamaDecoderLa
             LlamaLayerAdapter(cast(LlamaDecoderLayer | CompressedLlamaDecoderLayer, layer))
             for layer in self._model.model.layers
         ]
+
+    def get_raw_layer_at(self, index: int) -> Module:
+        return self._model.model.layers[index]
+
+    def set_raw_layer_at(self, index: int, new_layer: Module) -> None:
+        self._model.model.layers[index] = new_layer
 
     def get_embeddings(self) -> list[Module]:
         return [self._model.model.embed_tokens]

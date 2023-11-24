@@ -1,112 +1,17 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
-from typing import TypeAlias
+from typing import cast
 
 import torch
-from transformers.models.llama.modeling_llama import LlamaConfig, LlamaDecoderLayer, LlamaForCausalLM
-from transformers.models.opt.modeling_opt import OPTConfig, OPTDecoderLayer, OPTForCausalLM
+from torch import Tensor
 
 from . import utils
 from .config import config
-
-OPT_MODEL = OPTForCausalLM
-OPT_LAYER = OPTDecoderLayer
-LLAMA_MODEL = LlamaForCausalLM
-LLAMA_LAYER = LlamaDecoderLayer
-
-MODEL: TypeAlias = OPTForCausalLM | LlamaForCausalLM
-LAYER: TypeAlias = OPTDecoderLayer | LlamaDecoderLayer
-MODEL_CONFIG: TypeAlias = OPTConfig | LlamaConfig
+from .model_adapter import LayerAdapter, ModelAdapter
 
 
-def get_embeddings(model: MODEL) -> list[torch.nn.Module]:
-    if isinstance(model, OPT_MODEL):
-        return [model.model.decoder.embed_tokens, model.model.decoder.embed_positions]
-    if isinstance(model, LLAMA_MODEL):
-        return [model.model.embed_tokens]
-
-    raise NotImplementedError
-
-
-def get_layers(model: MODEL) -> list[torch.nn.Module]:
-    if isinstance(model, OPT_MODEL):
-        return model.model.decoder.layers
-    if isinstance(model, LLAMA_MODEL):
-        return model.model.layers
-
-    raise NotImplementedError
-
-
-def get_first_layernorm(layer: LAYER) -> torch.nn.Module:
-    if isinstance(layer, OPT_LAYER):
-        return layer.self_attn_layer_norm
-    if isinstance(layer, LLAMA_LAYER):
-        return layer.input_layernorm
-
-    raise NotImplementedError
-
-
-def get_second_layernorm(layer: LAYER) -> torch.nn.Module:
-    if isinstance(layer, OPT_LAYER):
-        return layer.final_layer_norm
-    if isinstance(layer, LLAMA_LAYER):
-        return layer.post_attention_layernorm
-
-    raise NotImplementedError
-
-
-def get_pre_head_layernorm(model: MODEL) -> torch.nn.Module:
-    if isinstance(model, OPT_MODEL):
-        return model.model.decoder.final_layer_norm
-    if isinstance(model, LLAMA_MODEL):
-        return model.model.norm
-
-    raise NotImplementedError
-
-
-def get_attention_inputs(layer: LAYER) -> list[torch.nn.Linear]:
-    if isinstance(layer, (OPT_LAYER, LLAMA_LAYER)):
-        return [layer.self_attn.q_proj, layer.self_attn.k_proj, layer.self_attn.v_proj]
-
-    raise NotImplementedError
-
-
-def get_attention_output(layer: LAYER) -> torch.nn.Linear:
-    if isinstance(layer, OPT_LAYER):
-        return layer.self_attn.out_proj
-    if isinstance(layer, LLAMA_LAYER):
-        return layer.self_attn.o_proj
-
-    raise NotImplementedError
-
-
-def get_mlp_inputs(layer: LAYER) -> list[torch.nn.Linear]:
-    if isinstance(layer, OPT_LAYER):
-        return [layer.fc1]
-    if isinstance(layer, LLAMA_LAYER):
-        return [layer.mlp.gate_proj, layer.mlp.up_proj]
-
-    raise NotImplementedError
-
-
-def get_mlp_output(layer: LAYER) -> torch.nn.Linear:
-    if isinstance(layer, OPT_LAYER):
-        return layer.fc2
-    if isinstance(layer, LLAMA_LAYER):
-        return layer.mlp.down_proj
-
-    raise NotImplementedError
-
-
-def get_lm_head(model: MODEL) -> torch.nn.Linear:
-    if isinstance(model, (OPT_MODEL, LLAMA_MODEL)):
-        return model.lm_head
-
-    raise NotImplementedError
-
-
-def get_layer0_inputs(model: MODEL, batch: torch.Tensor) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
+def get_layer0_inputs(model: ModelAdapter, batch: Tensor) -> tuple[list[Tensor], list[Tensor]]:
     """
     Returns the inputs to the first layer of the model (after embeddings).
 
@@ -118,11 +23,10 @@ def get_layer0_inputs(model: MODEL, batch: torch.Tensor) -> tuple[list[torch.Ten
 
     NB: this won't work from OPT 350m.
     """
+    device = cast(torch.device, config.device)
     # Move embeddings to device.
-    for W in get_embeddings(model):
-        W.weight = torch.nn.Parameter(W.weight.to(config.device))
-
-    layers = get_layers(model)
+    for W in model.get_validated_embeddings():
+        W.weight = torch.nn.Parameter(W.weight.to(device))
 
     class Catcher(torch.nn.Module):
         def __init__(self, module):
@@ -135,17 +39,18 @@ def get_layer0_inputs(model: MODEL, batch: torch.Tensor) -> tuple[list[torch.Ten
             self.saved_kwargs = kwargs
             raise ValueError
 
-    layers[0] = Catcher(layers[0])
+    layer0_catcher = Catcher(model.get_raw_layer_at(0))
+    model.set_raw_layer_at(0, layer0_catcher)
 
     try:
-        model(batch.to(config.device))
+        model.raw_model(batch.to(device))
     except ValueError:
         pass
 
     # grab the inputs and caught arguments
-    inps = layers[0].saved_inps
-    args = layers[0].saved_args
-    kwargs = layers[0].saved_kwargs
+    inps = layer0_catcher.saved_inps
+    args = layer0_catcher.saved_args
+    kwargs = layer0_catcher.saved_kwargs
 
     # put the caught stuff on cpu
     inps = utils.map_tensors(inps, device='cpu')
@@ -153,10 +58,10 @@ def get_layer0_inputs(model: MODEL, batch: torch.Tensor) -> tuple[list[torch.Ten
     kwargs = utils.map_tensors(kwargs, device='cpu')
 
     # put the layer back to normal
-    layers[0] = layers[0].module
+    model.set_raw_layer_at(0, layer0_catcher.module)
 
     # Move embeddings back to cpu, and clear GPU cache.
-    for W in get_embeddings(model):
+    for W in model.get_validated_embeddings():
         W.weight = torch.nn.Parameter(W.weight.to('cpu'))
 
     # Run GC and cleanup GPU memory
@@ -166,7 +71,7 @@ def get_layer0_inputs(model: MODEL, batch: torch.Tensor) -> tuple[list[torch.Ten
 
 
 def get_signals(
-    layer: LAYER, inputs: list[torch.Tensor], layer_args, layer_kwargs
+    layer: LayerAdapter, inputs: list[torch.Tensor], layer_args, layer_kwargs
 ) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
     """
     Take the input signals ("activations") for a layer, run the layer forward.
@@ -175,7 +80,7 @@ def get_signals(
     mlp_ln_inputs = []
     outputs = []
 
-    layer = layer.to(config.device)
+    layer.raw_layer.to(config.device)
     seqlen = inputs[0].shape[-2]
 
     def hook_fn(_, inp, _output):
@@ -185,12 +90,12 @@ def get_signals(
         # The mlp operates on (batch_size * seqlen, hidden_size) tensors, so recover batch dimension.
         mlp_ln_inputs.append(inp.cpu().reshape(-1, seqlen, inp.shape[-1]))
 
-    hook = get_second_layernorm(layer).register_forward_hook(hook_fn)
+    hook = layer.get_second_layernorm().register_forward_hook(hook_fn)
     for inp, layer_args_batch, layer_kwargs_batch in zip(inputs, layer_args, layer_kwargs):
         inp, layer_args_batch, layer_kwargs_batch = utils.map_tensors(
             [inp, layer_args_batch, layer_kwargs_batch], device=config.device
         )
-        out = layer(inp, *layer_args_batch, **layer_kwargs_batch)[0].cpu()
+        out = layer.raw_layer(inp, *layer_args_batch, **layer_kwargs_batch)[0].cpu()
         outputs.append(out)
 
     hook.remove()

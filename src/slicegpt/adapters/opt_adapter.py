@@ -10,7 +10,7 @@ from slicegpt.model_adapter import LayerAdapter, ModelAdapter
 from slicegpt.modules import CompressedOPTDecoderLayer
 
 
-class OPTLayerAdapter(LayerAdapter[OPTDecoderLayer, CompressedOPTDecoderLayer, LayerNorm]):
+class OPTLayerAdapter(LayerAdapter):
     _layer: OPTDecoderLayer | CompressedOPTDecoderLayer
 
     def __init__(self, layer: OPTDecoderLayer | CompressedOPTDecoderLayer) -> None:
@@ -40,7 +40,7 @@ class OPTLayerAdapter(LayerAdapter[OPTDecoderLayer, CompressedOPTDecoderLayer, L
         return self._layer.fc2
 
 
-class OPTModelAdapter(ModelAdapter[OPTDecoderLayer, CompressedOPTDecoderLayer, LayerNorm, OPTLayerAdapter]):
+class OPTModelAdapter(ModelAdapter):
     _model: OPTForCausalLM
     _no_split_module_classes: list[str] = ["OPTDecoderLayer", "CompressedOPTDecoderLayer"]
 
@@ -73,10 +73,6 @@ class OPTModelAdapter(ModelAdapter[OPTDecoderLayer, CompressedOPTDecoderLayer, L
         return OPTDecoderLayer
 
     @property
-    def compressable_layer_type(self) -> type[CompressedOPTDecoderLayer]:
-        return CompressedOPTDecoderLayer
-
-    @property
     def layer_norm_type(self) -> type[LayerNorm]:
         return LayerNorm
 
@@ -94,6 +90,12 @@ class OPTModelAdapter(ModelAdapter[OPTDecoderLayer, CompressedOPTDecoderLayer, L
             OPTLayerAdapter(cast(OPTDecoderLayer | CompressedOPTDecoderLayer, layer))
             for layer in self._model.model.decoder.layers
         ]
+
+    def get_raw_layer_at(self, index: int) -> Module:
+        return self._model.model.decoder.layers[index]
+
+    def set_raw_layer_at(self, index: int, new_layer: Module) -> None:
+        self._model.model.decoder.layers[index] = new_layer
 
     def get_embeddings(self) -> list[Module]:
         return [self._model.model.decoder.embed_tokens, self._model.model.decoder.embed_positions]

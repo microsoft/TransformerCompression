@@ -6,9 +6,10 @@ import logging
 import torch
 from transformers import AutoTokenizer, LlamaConfig, LlamaForCausalLM, OPTConfig, OPTForCausalLM
 
-from .layernorm_fusion import fuse_modules, replace_modules
-from .model_utils import get_layers
-from .rotate import slice_rotated_model
+from .layernorm_fusion import fuse_modules, replace_layers
+
+# from .model_utils import get_layers
+# from .rotate import slice_rotated_model
 
 
 class UninitializedOPTForCausalLM(OPTForCausalLM):
@@ -96,7 +97,7 @@ def get_model(model_path: str, uninitialized: bool = False, dtype: torch.dtype =
 def load_sliced_model(model_name: str, model_path: str, sparsity: float, token: str) -> tuple:
     """Loads the sliced model and the tokenizer from the given path."""
     model, tokenizer = get_model(model_name, uninitialized=True, token=token)
-    replace_modules(model, model.config)
+    replace_layers(model, model.config)
     fuse_modules(model)
     new_embedding_dimension = int((1 - sparsity) * model.config.hidden_size)
 

@@ -6,10 +6,13 @@ import logging
 import os
 
 import torch
-import wandb
+from transformers import LlamaForCausalLM, OPTForCausalLM
 
+import wandb
 from slicegpt import data_utils, gpu_utils, hf_utils, utils
+from slicegpt.adapters import llama_adapter, opt_adapter
 from slicegpt.config import config
+from slicegpt.model_adapter import ModelAdapter
 
 utils.configure_logging()
 
@@ -96,9 +99,16 @@ def main():
         # load one of the pre-trained models
         model, tokenizer = hf_utils.get_model(args.model, token=args.hf_token)
 
+    if isinstance(model, LlamaForCausalLM):
+        adapter: ModelAdapter = llama_adapter.LlamaModelAdapter(model)
+    elif isinstance(model, OPTForCausalLM):
+        adapter = opt_adapter.OPTModelAdapter(model)
+    else:
+        raise TypeError
+
     if args.distribute_model:
         # distribute model across available GPUs
-        gpu_utils.distribute_model(model)
+        gpu_utils.distribute_model(adapter)
     else:
         model = model.to(config.device)
 
@@ -111,7 +121,7 @@ def main():
         batch_size=args.batch_size,
     )
 
-    results = gpu_utils.benchmark(model, next(iter(dataloader)))
+    results = gpu_utils.benchmark(adapter, next(iter(dataloader)))
     logging.info(f"Median time per batch: {results['median_time']} s/batch.")
     logging.info(f"Throughput: {results['throughput']} token/s.")
     logging.info(f"Latency: {results['latency']} s/token.")

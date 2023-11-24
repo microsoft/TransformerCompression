@@ -7,13 +7,16 @@ import logging
 import os
 
 import torch
-import wandb
 from lm_eval import evaluator, tasks
 from lm_eval import utils as lm_eval_utils
 from lm_eval.base import BaseLM
+from transformers import LlamaForCausalLM, OPTForCausalLM
 
+import wandb
 from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate, utils
+from slicegpt.adapters import llama_adapter, opt_adapter
 from slicegpt.config import config
+from slicegpt.model_adapter import ModelAdapter
 
 utils.configure_logging()
 
@@ -33,9 +36,6 @@ class SlicedLM(BaseLM):
         else:
             model, tokenizer = hf_utils.get_model(args.model, token=args.hf_token)
 
-            if not args.baseline:
-                self.apply_slicegpt(model, tokenizer, args)
-
         self.model = model
         self.model.config.sparsity = args.sparsity
         self.model.config.model_name = args.model
@@ -44,22 +44,32 @@ class SlicedLM(BaseLM):
         self.batch_size_per_gpu = args.batch_size
         self.seqlen = self.model.config.max_position_embeddings
 
-    def apply_slicegpt(self, model, tokenizer, args):
-        layernorm_fusion.replace_modules(model, model.config)
-        layernorm_fusion.fuse_modules(model)
+        if isinstance(model, LlamaForCausalLM):
+            self.adapter: ModelAdapter = llama_adapter.LlamaModelAdapter(model)
+        elif isinstance(model, OPTForCausalLM):
+            self.adapter = opt_adapter.OPTModelAdapter(model)
+        else:
+            raise TypeError
+
+        if (not args.load_model_path) and (not args.baseline):
+            self.apply_slicegpt(self.adapter, tokenizer, args)
+
+    def apply_slicegpt(self, adapter: ModelAdapter, tokenizer, args):
+        layernorm_fusion.replace_layers(adapter)
+        layernorm_fusion.fuse_modules(adapter)
 
         dataloader, _ = data_utils.get_loaders(
             dataset_name=args.cal_dataset,
             nsamples=args.cal_nsamples,
             batch_size=args.batch_size,
-            seqlen=model.config.max_position_embeddings,
+            seqlen=adapter.seqlen,
             tokenizer=tokenizer,
         )
 
-        new_embedding_dimension = int((1 - args.sparsity) * model.config.hidden_size)
+        new_embedding_dimension = int((1 - args.sparsity) * adapter.hidden_size)
         logging.info(f"New embedding dimension: {new_embedding_dimension} (sparsity {args.sparsity})")
 
-        rotate.rotate_and_slice(model, dataloader, new_embedding_dimension)
+        rotate.rotate_and_slice(adapter, dataloader, new_embedding_dimension)
 
     @classmethod
     def create_from_arg_string(cls, args, kwargs):
@@ -188,7 +198,7 @@ def main() -> None:
     model.model.eval()
     if args.distribute_model:
         # distribute model across available GPUs
-        gpu_utils.distribute_model(model.model)
+        gpu_utils.distribute_model(model.adapter)
     else:
         model.model = model.model.to(config.device)
 
