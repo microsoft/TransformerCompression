@@ -201,7 +201,7 @@ def rotate_and_slice(
         cleanup_memory()
 
         # now compute the outputs of the layer with slicing between Attention and mlp.
-        _, outs = get_signals(layer, inps, attn_masks)
+        _, outs = get_signals(layer, inps, args, kwargs)
         _, Q = pca_calc(outs)
 
         layer.mlp_shortcut_Q = torch.matmul(layer.mlp_shortcut_Q, Q.to(dtype=dtype))
