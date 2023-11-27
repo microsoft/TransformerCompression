@@ -1,24 +1,109 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
+#
+# This file contains derivations from
+# https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
+# Copyright 2022 EleutherAI and the HuggingFace Inc. team. All rights reserved.
+# https://www.apache.org/licenses/LICENSE-2.0
 from typing import cast
 
-from torch import FloatTensor, Tensor
+from torch import FloatTensor, LongTensor, Tensor, matmul
 from torch.nn import Linear, Module
 from transformers.models.llama.modeling_llama import LlamaConfig, LlamaDecoderLayer, LlamaForCausalLM, LlamaRMSNorm
 
 from slicegpt.model_adapter import LayerAdapter, ModelAdapter
-from slicegpt.modules import CompressedLlamaDecoderLayer
+
+
+class CompressibleLlamaDecoderLayer(LlamaDecoderLayer):
+
+    '''
+    This class simulates the LlamaDecoderLayer class from transformers
+    (https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py#L376)
+    but with the addition of a shortcut_Q attribute. This attribute is used to rotate the residual tensors.
+    '''
+
+    def __init__(self, config: LlamaConfig):
+        super().__init__(config)
+        self.register_buffer('mlp_shortcut_Q', None)
+        self.register_buffer('attn_shortcut_Q', None)
+
+    def forward(
+        self,
+        hidden_states: Tensor,
+        attention_mask: Tensor | None = None,
+        position_ids: LongTensor | None = None,
+        past_key_value: tuple[Tensor] | None = None,
+        output_attentions: bool | None = False,
+        use_cache: bool | None = False,
+        padding_mask: LongTensor | None = None,
+    ) -> tuple[Tensor] | tuple[Tensor, Tensor] | tuple[Tensor, tuple[Tensor] | None] | tuple[
+        Tensor, Tensor, tuple[Tensor] | None
+    ]:
+        """
+        Args:
+            hidden_states (`torch.FloatTensor`): input to the layer of shape `(batch, seq_len, embed_dim)`
+            attention_mask (`torch.FloatTensor`, *optional*): attention mask of size
+                `(batch, 1, tgt_len, src_len)` where padding elements are indicated by very large negative values.
+            output_attentions (`bool`, *optional*):
+                Whether or not to return the attentions tensors of all attention layers. See `attentions` under
+                returned tensors for more detail.
+            use_cache (`bool`, *optional*):
+                If set to `True`, `past_key_values` key value states are returned and can be used to speed up decoding
+                (see `past_key_values`).
+            past_key_value (`tuple(torch.FloatTensor)`, *optional*): cached past key and value projection states
+        """
+
+        residual = hidden_states
+
+        hidden_states = self.input_layernorm(hidden_states)
+
+        # Self Attention
+        hidden_states, self_attn_weights, present_key_value = self.self_attn(
+            hidden_states=hidden_states,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            past_key_value=past_key_value,
+            output_attentions=output_attentions,
+            use_cache=use_cache,
+            padding_mask=padding_mask,
+        )
+        if self.attn_shortcut_Q is not None:
+            rotated_residual = matmul(residual, self.attn_shortcut_Q)
+            hidden_states = rotated_residual + hidden_states
+        else:
+            hidden_states = residual + hidden_states
+
+        # Fully Connected
+        residual = hidden_states
+        hidden_states = self.post_attention_layernorm(hidden_states)
+        hidden_states = self.mlp(hidden_states)
+
+        if self.mlp_shortcut_Q is not None:
+            rotated_residual = matmul(residual, self.mlp_shortcut_Q)
+            hidden_states = rotated_residual + hidden_states
+        else:
+            hidden_states = residual + hidden_states
+
+        outputs = (hidden_states,)
+
+        if output_attentions:
+            outputs += (self_attn_weights,)
+
+        if use_cache:
+            outputs += (present_key_value,)
+
+        return outputs  # type: ignore
 
 
 class LlamaLayerAdapter(LayerAdapter):
-    _layer: LlamaDecoderLayer | CompressedLlamaDecoderLayer
+    _layer: LlamaDecoderLayer | CompressibleLlamaDecoderLayer
 
-    def __init__(self, layer: LlamaDecoderLayer | CompressedLlamaDecoderLayer) -> None:
+    def __init__(self, layer: LlamaDecoderLayer | CompressibleLlamaDecoderLayer) -> None:
         super().__init__()
         self._layer = layer
 
     @property
-    def raw_layer(self) -> LlamaDecoderLayer | CompressedLlamaDecoderLayer:
+    def raw_layer(self) -> LlamaDecoderLayer | CompressibleLlamaDecoderLayer:
         return self._layer
 
     @property
@@ -87,15 +172,15 @@ class LlamaModelAdapter(ModelAdapter):
     def compute_output_logits(self, input_ids: Tensor) -> FloatTensor:
         return self._model(input_ids=input_ids).logits
 
-    def convert_layer_to_compressible(self, layer: LlamaDecoderLayer) -> CompressedLlamaDecoderLayer:
+    def convert_layer_to_compressible(self, layer: LlamaDecoderLayer) -> CompressibleLlamaDecoderLayer:
         config = cast(LlamaConfig, self._model.config)
-        compressed_layer = CompressedLlamaDecoderLayer(config).to(config.torch_dtype)
+        compressed_layer = CompressibleLlamaDecoderLayer(config).to(config.torch_dtype)
         compressed_layer.load_state_dict(layer.state_dict(), strict=True)
         return compressed_layer
 
     def get_layers(self) -> list[LlamaLayerAdapter]:
         return [
-            LlamaLayerAdapter(cast(LlamaDecoderLayer | CompressedLlamaDecoderLayer, layer))
+            LlamaLayerAdapter(cast(LlamaDecoderLayer | CompressibleLlamaDecoderLayer, layer))
             for layer in self._model.model.layers
         ]
 
