@@ -71,7 +71,7 @@ def cleanup_memory() -> None:
 T = TypeVar('T')
 
 
-def map_tensors(obj: T, device: torch.device | None = None, dtype: torch.dtype | None = None) -> T:
+def map_tensors(obj: T, device: torch.device | str | None = None, dtype: torch.dtype | None = None) -> T:
     """Recursively map tensors to device and dtype."""
     if isinstance(obj, torch.Tensor):
         if device is not None:

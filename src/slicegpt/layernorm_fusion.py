@@ -81,7 +81,7 @@ def fuse_modules(model: ModelAdapter) -> None:
 
     fuse_ln_linear(model.get_pre_head_layernorm(), [model.get_lm_head()])
 
-    _replace_modules(model.raw_model, model.layer_norm_type, lambda _: RMSN(model.hidden_size))
+    _replace_modules(model.raw_model, model.original_layer_norm_type, lambda _: RMSN(model.hidden_size))
     logging.info("Fusing layernorm modules done")
 
 

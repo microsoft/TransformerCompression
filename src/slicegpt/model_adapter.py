@@ -58,6 +58,16 @@ class LayerAdapter(ABC):
     def raw_layer(self) -> Module:
         raise NotImplementedError
 
+    @property
+    @abstractmethod
+    def hidden_states_args_position(self) -> int:
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def hidden_states_output_position(self) -> int:
+        raise NotImplementedError
+
     @abstractmethod
     def get_first_layernorm(self) -> Module:
         raise NotImplementedError
@@ -94,6 +104,11 @@ class LayerAdapter(ABC):
         _validate_protocol_attr(layer_norm, HasWeight, "Layer has invalid second layer norm")
         return cast(HasWeight, layer_norm)
 
+    def get_args_with_updated_hidden_states(self, hidden_states: Any, args: tuple[Any, ...]) -> tuple[Any, ...]:
+        return (
+            args[: self.hidden_states_args_position] + (hidden_states,) + args[self.hidden_states_args_position + 1 :]
+        )
+
 
 class ModelAdapter(ABC):
     @property
@@ -128,7 +143,7 @@ class ModelAdapter(ABC):
 
     @property
     @abstractmethod
-    def layer_norm_type(self) -> type:
+    def original_layer_norm_type(self) -> type:
         raise NotImplementedError
 
     @abstractmethod
