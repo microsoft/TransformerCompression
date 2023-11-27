@@ -155,9 +155,12 @@ def rotate_and_slice(
     model.eval()
     dtype = next(iter(model.parameters())).dtype
 
-    inps, attn_masks = zip(
-        *[(inp.cpu(), attn_mask.cpu()) for inp, attn_mask in (get_layer0_inputs(model, batch) for batch in dataloader)]
-    )
+    inps, args, kwargs = [], [], []
+    for batch in dataloader:
+        inp_batch, args_batch, kwargs_batch = get_layer0_inputs(model, batch)
+        inps.append(inp_batch)
+        args.append(args_batch)
+        kwargs.append(kwargs_batch)
 
     _, Q = pca_calc(inps)
     Q = Q.to(device=config.device)
@@ -181,7 +184,8 @@ def rotate_and_slice(
         slice_attention_inputs(layer, new_embedding_dimension)
 
         # get signal between attention and mlp, rotate and slice
-        mlp_ln_inputs, _ = get_signals(layer, inps, attn_masks)
+
+        mlp_ln_inputs, _ = get_signals(layer, inps, args, kwargs)
         _, Q = pca_calc(mlp_ln_inputs)
         Q = Q.to(device=config.device, dtype=torch.float64)
 
@@ -197,7 +201,7 @@ def rotate_and_slice(
         cleanup_memory()
 
         # now compute the outputs of the layer with slicing between Attention and mlp.
-        _, outs = get_signals(layer, inps, attn_masks)
+        _, outs = get_signals(layer, inps, args, kwargs)
         _, Q = pca_calc(outs)
 
         layer.mlp_shortcut_Q = torch.matmul(layer.mlp_shortcut_Q, Q.to(dtype=dtype))
