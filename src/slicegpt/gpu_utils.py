@@ -32,6 +32,7 @@ def evaluate_ppl(model_adapter: ModelAdapter, testloader: DataLoader[Tensor]) ->
 
     nlls = []
 
+    logging.info("Evaluating perplexity...")
     for batch in testloader:
         batch = utils.map_tensors(batch, config.device)
         input_ids: Tensor = batch["input_ids"]
@@ -41,8 +42,8 @@ def evaluate_ppl(model_adapter: ModelAdapter, testloader: DataLoader[Tensor]) ->
         logits = logits[:, :-1, :]
         shift_labels = batch["input_ids"][:, 1:]
         shift_attn_mask = batch['attention_mask'][:, 1:]
-        shift_labels[shift_attn_mask == 0] = loss_fct.ignore_index # ignore padding tokens in loss
-    
+        shift_labels[shift_attn_mask == 0] = loss_fct.ignore_index  # ignore padding tokens in loss
+
         # CrossEntropyLoss demands data dimension is dimension 1.
         nll = loss_fct(logits.permute(0, 2, 1), shift_labels).float().mean(dim=1)
 

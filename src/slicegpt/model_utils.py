@@ -42,7 +42,8 @@ def get_layer0_inputs(model_adapter: ModelAdapter, batch: Tensor) -> tuple[Tenso
     model_adapter.set_raw_layer_at(0, layer0_catcher)
 
     try:
-        model_adapter.model(batch.to(config.device))
+        batch = utils.map_tensors(batch, device=config.device)
+        model_adapter.model(batch)
     except ValueError:
         pass
 
@@ -78,11 +79,16 @@ def get_signals(
     outputs = []
 
     layer_adapter.layer.to(config.device)
+    batch_size = inputs[0].shape[-3]
+
+    def hook_fn(_, inp, _output):
+        if isinstance(inp, tuple):
+            inp = inp[0]
 
     def hook_fn(_, args: tuple, _output: Any) -> None:
         inp = args[0]  # Position in RMSN.forward args
         # The mlp operates on (batch_size * seqlen, hidden_size) tensors, so recover batch dimension.
-        mlp_ln_inputs.append(inp.cpu().reshape(-1, seqlen, inp.shape[-1]))
+        mlp_ln_inputs.append(inp.cpu().reshape(batch_size, -1, inp.shape[-1]))
 
     second_layernorm = layer_adapter.get_second_layernorm()
     assert isinstance(second_layernorm, RMSN)
