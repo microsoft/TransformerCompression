@@ -34,24 +34,6 @@ def _validate_protocol_attr(instance: Any, protocol: type, err_message: str | No
         raise TypeError(err_message, errors, instance) if err_message is not None else TypeError(errors, instance)
 
 
-class _ModuleWithShortcutsMeta(ABCMeta):
-    def __call__(cls, *args: Any, **kwargs: Any) -> Any:
-        cls = ABCMeta.__call__(cls, *args, **kwargs)
-        if not isinstance(cls, Module):
-            raise TypeError("This metaclass can be applied only to descendants of torch.nn.Module")
-
-        cls.register_buffer("mlp_shortcut_Q", None)
-        cls.register_buffer("attn_shortcut_Q", None)
-
-        return cls
-
-
-class ModuleWithShortcuts(ABC, metaclass=_ModuleWithShortcutsMeta):
-    @abstractmethod
-    def forward(self, *args: Any, **kwargs: Any) -> Any:
-        raise NotImplementedError
-
-
 class LayerAdapter(ABC):
     @property
     @abstractmethod
@@ -104,7 +86,7 @@ class LayerAdapter(ABC):
         _validate_protocol_attr(layer_norm, HasWeight, "Layer has invalid second layer norm")
         return cast(HasWeight, layer_norm)
 
-    def get_args_with_updated_hidden_states(self, hidden_states: Any, args: tuple[Any, ...]) -> tuple[Any, ...]:
+    def get_args_with_updated_hidden_states(self, hidden_states: Any, args: tuple) -> tuple:
         return (
             args[: self.hidden_states_args_position] + (hidden_states,) + args[self.hidden_states_args_position + 1 :]
         )

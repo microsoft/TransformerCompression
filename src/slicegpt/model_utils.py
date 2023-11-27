@@ -13,7 +13,7 @@ from .config import config
 from .model_adapter import LayerAdapter, ModelAdapter
 
 
-def get_layer0_inputs(model: ModelAdapter, batch: Tensor) -> tuple[list[Tensor], tuple[Any, ...], dict[str, Any]]:
+def get_layer0_inputs(model: ModelAdapter, batch: Tensor) -> tuple[list[Tensor], tuple, dict[str, Any]]:
     """
     Returns the inputs to the first layer of the model (after embeddings).
 
@@ -69,7 +69,7 @@ def get_layer0_inputs(model: ModelAdapter, batch: Tensor) -> tuple[list[Tensor],
 
 
 def get_signals(
-    layer: LayerAdapter, seqlen: int, layer_args: list[tuple[Any, ...]], layer_kwargs: list[dict[str, Any]]
+    layer: LayerAdapter, seqlen: int, layer_args: list[tuple], layer_kwargs: list[dict[str, Any]]
 ) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
     """
     Take the input signals ("activations") for a layer, run the layer forward.
@@ -80,7 +80,7 @@ def get_signals(
 
     layer.raw_layer.to(config.device)
 
-    def hook_fn(_, args: tuple[Any, ...], _output: Any) -> None:
+    def hook_fn(_, args: tuple, _output: Any) -> None:
         inp = args[0]  # Position in RMSN.forward args
         # The mlp operates on (batch_size * seqlen, hidden_size) tensors, so recover batch dimension.
         mlp_ln_inputs.append(inp.cpu().reshape(-1, seqlen, inp.shape[-1]))
