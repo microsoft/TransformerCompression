@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
-from typing import cast
+from typing import Any, cast
 
 import torch
 from torch import Tensor
@@ -11,7 +11,7 @@ from .config import config
 from .model_adapter import LayerAdapter, ModelAdapter
 
 
-def get_layer0_inputs(model: ModelAdapter, batch: Tensor) -> tuple[list[Tensor], list[Tensor]]:
+def get_layer0_inputs(model: ModelAdapter, batch: Tensor) -> tuple[list[Tensor], tuple[Any, ...], dict[str, Any]]:
     """
     Returns the inputs to the first layer of the model (after embeddings).
 
@@ -23,10 +23,9 @@ def get_layer0_inputs(model: ModelAdapter, batch: Tensor) -> tuple[list[Tensor],
 
     NB: this won't work from OPT 350m.
     """
-    device = cast(torch.device, config.device)
     # Move embeddings to device.
     for W in model.get_validated_embeddings():
-        W.weight = torch.nn.Parameter(W.weight.to(device))
+        W.weight = torch.nn.Parameter(W.weight.to(config.device))
 
     class Catcher(torch.nn.Module):
         def __init__(self, module):
@@ -43,7 +42,7 @@ def get_layer0_inputs(model: ModelAdapter, batch: Tensor) -> tuple[list[Tensor],
     model.set_raw_layer_at(0, layer0_catcher)
 
     try:
-        model.raw_model(batch.to(device))
+        model.raw_model(batch.to(config.device))
     except ValueError:
         pass
 
@@ -71,7 +70,7 @@ def get_layer0_inputs(model: ModelAdapter, batch: Tensor) -> tuple[list[Tensor],
 
 
 def get_signals(
-    layer: LayerAdapter, inputs: list[torch.Tensor], layer_args, layer_kwargs
+    layer: LayerAdapter, inputs: list[torch.Tensor], layer_args: tuple[Any, ...], layer_kwargs: dict[str, Any]
 ) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
     """
     Take the input signals ("activations") for a layer, run the layer forward.
