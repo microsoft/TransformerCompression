@@ -94,7 +94,7 @@ def get_model(
     else:
         raise NotImplementedError
 
-    tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=False, token=token)
+    tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True, token=token)
 
     model.eval()  # This switches off dropout.
     model_adapter.use_cache = False

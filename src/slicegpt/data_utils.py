@@ -5,11 +5,11 @@ import logging
 
 import datasets
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, SubsetRandomSampler
 
 
 def get_loaders(
-    dataset_name: str, tokenizer, max_seqlen: int = 2048, batch_size: int = 1
+    dataset_name: str, tokenizer, max_seqlen: int = 2048, batch_size: int = 1, num_batches: int = None, seed=42
 ) -> tuple[DataLoader[torch.Tensor], DataLoader[torch.Tensor]]:
     logging.info(f"Loading dataset: {dataset_name}")
     if dataset_name == "wikitext2":
@@ -49,8 +49,16 @@ def get_loaders(
     train_dataset.set_transform(tokenize)
     test_dataset.set_transform(tokenize)
 
-    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
+    if num_batches is None:
+        num_batches = len(train_dataset) // batch_size
+
+    # sample the datasets to get the desired number of batches
+    torch.manual_seed(seed)
+    train_sampler = SubsetRandomSampler(torch.randperm(len(train_dataset))[: num_batches * batch_size])
+    test_sampler = SubsetRandomSampler(torch.randperm(len(test_dataset))[: num_batches * batch_size])
+
+    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, sampler=train_sampler)
+    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, sampler=test_sampler)
 
     logging.info("Loading dataset done")
     return train_dataloader, test_dataloader

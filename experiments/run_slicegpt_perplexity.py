@@ -47,10 +47,10 @@ def argparser() -> argparse.Namespace:
         default="wikitext2",
     )
     parser.add_argument(
-        "--cal-nsamples",
+        "--num-batches",
         type=int,
-        help="Number of samples of the calibration data to load.",
-        default=128,
+        help="Number of batches of the calibration dataloaders to load. By default all batches are loaded.",
+        default=None,
     )
     parser.add_argument("--batch-size", type=int, default=1, help="Batch size for loading the calibration data.")
     parser.add_argument("--seed", type=int, default=42, help="Seed for sampling the calibration data.")
