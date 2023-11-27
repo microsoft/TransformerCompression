@@ -158,7 +158,11 @@ def parse_args():
         help="Number of samples of the calibration data to load.",
         default=128,
     )
-    parser.add_argument("--tasks", default=None, choices=lm_eval_utils.MultiChoice(tasks.ALL_TASKS))
+    parser.add_argument(
+        "--tasks",
+        default="piqa,hellaswag,arc_easy,arc_challenge,winogrande",
+        choices=lm_eval_utils.MultiChoice(tasks.ALL_TASKS),
+    )
     parser.add_argument("--no-cache", action="store_true")
     parser.add_argument(
         "--sparsity", type=float, default=0.0, help="A measure of how much slicing is applied (in the range [0, 1))"
