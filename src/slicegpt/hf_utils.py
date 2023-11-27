@@ -69,6 +69,7 @@ def get_model(model_path: str, uninitialized: bool = False, dtype: torch.dtype =
             model = model.to(dtype=dtype)
         else:
             model = OPTForCausalLM.from_pretrained(model_path, torch_dtype=dtype)
+            model.config.torch_dtype = dtype
     elif "meta-llama" in model_path:
         if uninitialized:
             config = LlamaConfig.from_pretrained(model_path, token=token)
@@ -76,6 +77,7 @@ def get_model(model_path: str, uninitialized: bool = False, dtype: torch.dtype =
             model = model.to(dtype=dtype)
         else:
             model = LlamaForCausalLM.from_pretrained(model_path, torch_dtype=dtype, token=token)
+            model.config.torch_dtype = dtype
     else:
         raise NotImplementedError
 
