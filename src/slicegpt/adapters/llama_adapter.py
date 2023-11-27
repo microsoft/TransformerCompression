@@ -21,6 +21,14 @@ class LlamaLayerAdapter(LayerAdapter):
     def raw_layer(self) -> LlamaDecoderLayer | CompressedLlamaDecoderLayer:
         return self._layer
 
+    @property
+    def hidden_states_args_position(self) -> int:
+        return 0
+
+    @property
+    def hidden_states_output_position(self) -> int:
+        return 0
+
     def get_first_layernorm(self) -> LlamaRMSNorm:
         return self._layer.input_layernorm
 
@@ -73,7 +81,7 @@ class LlamaModelAdapter(ModelAdapter):
         return LlamaDecoderLayer
 
     @property
-    def layer_norm_type(self) -> type[LlamaRMSNorm]:
+    def original_layer_norm_type(self) -> type[LlamaRMSNorm]:
         return LlamaRMSNorm
 
     def compute_output_logits(self, input_ids: Tensor) -> FloatTensor:

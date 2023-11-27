@@ -21,6 +21,14 @@ class OPTLayerAdapter(LayerAdapter):
     def raw_layer(self) -> OPTDecoderLayer | CompressedOPTDecoderLayer:
         return self._layer
 
+    @property
+    def hidden_states_args_position(self) -> int:
+        return 0
+
+    @property
+    def hidden_states_output_position(self) -> int:
+        return 0
+
     def get_first_layernorm(self) -> LayerNorm:
         return self._layer.self_attn_layer_norm
 
@@ -73,7 +81,7 @@ class OPTModelAdapter(ModelAdapter):
         return OPTDecoderLayer
 
     @property
-    def layer_norm_type(self) -> type[LayerNorm]:
+    def original_layer_norm_type(self) -> type[LayerNorm]:
         return LayerNorm
 
     def compute_output_logits(self, input_ids: Tensor) -> FloatTensor:

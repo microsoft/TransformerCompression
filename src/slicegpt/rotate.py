@@ -144,8 +144,8 @@ def rotate_and_slice(
 
     inps, args, kwargs = [], [], []
     for batch in dataloader:
-        inp_batch, args_batch, kwargs_batch = get_layer0_inputs(model, batch)
-        inps.append(inp_batch)
+        inps_batch, args_batch, kwargs_batch = get_layer0_inputs(model, batch)
+        inps.append(inps_batch)
         args.append(args_batch)
         kwargs.append(kwargs_batch)
 
@@ -154,12 +154,6 @@ def rotate_and_slice(
 
     rotate_embeddings(model, Q)
     slice_embeddings(model, new_embedding_dimension)
-
-    # rotate and slice inputs
-    inps = [
-        torch.matmul(inp.to(device=config.device), Q.to(dtype=dtype))[:, :, :new_embedding_dimension].cpu()
-        for inp in inps
-    ]
 
     logging.info("Rotate and slice layers")
     layers = model.get_layers()
@@ -171,8 +165,13 @@ def rotate_and_slice(
         slice_attention_inputs(layer, new_embedding_dimension)
 
         # get signal between attention and mlp, rotate and slice
+        for i, inp in enumerate(inps):
+            args[i] = layer.get_args_with_updated_hidden_states(
+                torch.matmul(inp.to(device=config.device), Q.to(dtype=dtype))[:, :, :new_embedding_dimension].cpu(),
+                args[i],
+            )
 
-        mlp_ln_inputs, _ = get_signals(layer, inps, args, kwargs)
+        mlp_ln_inputs, _ = get_signals(layer, model.seqlen, args, kwargs)
         _, Q = pca_calc(mlp_ln_inputs)
         Q = Q.to(device=config.device, dtype=torch.float64)
 
@@ -187,9 +186,10 @@ def rotate_and_slice(
         # Run GC and cleanup GPU memory
         cleanup_memory()
 
-        # now compute the outputs of the layer with slicing between Attention and mlp.
-        _, outs = get_signals(layer, inps, args, kwargs)
-        _, Q = pca_calc(outs)
+        # now compute the outputs of the current layer/inputs for the next layer
+        # with slicing between Attention and mlp.
+        _, inps = get_signals(layer, model.seqlen, args, kwargs)
+        _, Q = pca_calc(inps)
 
         layer.raw_layer.mlp_shortcut_Q = torch.matmul(layer.raw_layer.mlp_shortcut_Q, Q.to(dtype=dtype))
 
@@ -201,8 +201,6 @@ def rotate_and_slice(
 
         rotate_mlp_output(layer, Q)
         slice_mlp_output(layer, dim)
-
-        inps = [torch.matmul(out.to(device=config.device), Q.to(dtype=dtype))[:, :, :dim].cpu() for out in outs]
 
         layer.raw_layer.to('cpu')
 
