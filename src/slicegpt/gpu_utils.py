@@ -33,15 +33,18 @@ def evaluate_ppl(model_adapter: ModelAdapter, testloader: DataLoader[Tensor]) ->
     nlls = []
 
     for batch in testloader:
-        input_ids: Tensor = batch.to(config.device)
+        batch = utils.map_tensors(batch, config.device)
+        input_ids: Tensor = batch["input_ids"]
         logits: Tensor = model_adapter.compute_output_logits(input_ids=input_ids)
 
         # Shift outputs and labels autoregressively.
         logits = logits[:, :-1, :]
-        shift_labels = input_ids[:, 1:]
-
+        shift_labels = batch["input_ids"][:, 1:]
+        shift_attn_mask = batch['attention_mask'][:, 1:]
+        shift_labels[shift_attn_mask == 0] = loss_fct.ignore_index # ignore padding tokens in loss
+    
         # CrossEntropyLoss demands data dimension is dimension 1.
-        nll = loss_fct(logits.permute(0, 2, 1), shift_labels).float().sum(dim=1) / model_adapter.seqlen
+        nll = loss_fct(logits.permute(0, 2, 1), shift_labels).float().mean(dim=1)
 
         nlls.append(nll)
 
