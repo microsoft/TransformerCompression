@@ -4,12 +4,20 @@
 import logging
 
 import torch
-from transformers import AutoTokenizer, LlamaConfig, LlamaForCausalLM, OPTConfig, OPTForCausalLM, PreTrainedTokenizer, PreTrainedTokenizerFast
+from transformers import (
+    AutoTokenizer,
+    LlamaConfig,
+    LlamaForCausalLM,
+    OPTConfig,
+    OPTForCausalLM,
+    PreTrainedTokenizer,
+    PreTrainedTokenizerFast,
+)
 
-from .layernorm_fusion import fuse_modules, replace_layers
-from .model_adapter import ModelAdapter
 from .adapters.llama_adapter import LlamaModelAdapter
 from .adapters.opt_adapter import OPTModelAdapter
+from .layernorm_fusion import fuse_modules, replace_layers
+from .model_adapter import ModelAdapter
 from .rotate import slice_rotated_model
 
 
@@ -23,6 +31,7 @@ class UninitializedLlamaForCausalLM(LlamaForCausalLM):
     def _init_weights(self, _) -> None:
         # Prevent weight initialization
         pass
+
 
 def skip(*args, **kwargs) -> None:
     pass
@@ -54,7 +63,9 @@ def do_not_initialize(func):
 
 
 @do_not_initialize
-def get_model(model_path: str, uninitialized: bool = False, dtype: torch.dtype = torch.float16, token=None) -> tuple[ModelAdapter, PreTrainedTokenizer | PreTrainedTokenizerFast]:
+def get_model(
+    model_path: str, uninitialized: bool = False, dtype: torch.dtype = torch.float16, token=None
+) -> tuple[ModelAdapter, PreTrainedTokenizer | PreTrainedTokenizerFast]:
     """Loads the model and the tokenizer from the given path."""
     if uninitialized:
         model_type = "uninitialized"
@@ -95,7 +106,9 @@ def get_model(model_path: str, uninitialized: bool = False, dtype: torch.dtype =
 
 
 @do_not_initialize
-def load_sliced_model(model_name: str, model_path: str, sparsity: float, token: str) -> tuple[ModelAdapter, PreTrainedTokenizer | PreTrainedTokenizerFast]:
+def load_sliced_model(
+    model_name: str, model_path: str, sparsity: float, token: str
+) -> tuple[ModelAdapter, PreTrainedTokenizer | PreTrainedTokenizerFast]:
     """Loads the sliced model and the tokenizer from the given path."""
     model, tokenizer = get_model(model_name, uninitialized=True, token=token)
     replace_layers(model)
