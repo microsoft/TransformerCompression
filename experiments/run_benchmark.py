@@ -6,8 +6,8 @@ import logging
 import os
 
 import torch
-from transformers import LlamaForCausalLM, OPTForCausalLM
 import wandb
+from transformers import LlamaForCausalLM, OPTForCausalLM
 
 from slicegpt import data_utils, gpu_utils, hf_utils, utils
 from slicegpt.adapters import llama_adapter, opt_adapter
