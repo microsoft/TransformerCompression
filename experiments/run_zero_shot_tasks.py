@@ -37,22 +37,15 @@ class SlicedLM(BaseLM):
             model, tokenizer = hf_utils.get_model(args.model, token=args.hf_token)
 
         self.model = model
-        self.model.config.sparsity = args.sparsity
-        self.model.config.model_name = args.model
+        self.model.raw_model.config.sparsity = args.sparsity
+        self.model.raw_model.config.model_name = args.model
         self.tokenizer = tokenizer
         self.vocab_size = self.tokenizer.vocab_size
         self.batch_size_per_gpu = args.batch_size
-        self.seqlen = self.model.config.max_position_embeddings
-
-        if isinstance(model, LlamaForCausalLM):
-            self.adapter: ModelAdapter = llama_adapter.LlamaModelAdapter(model)
-        elif isinstance(model, OPTForCausalLM):
-            self.adapter = opt_adapter.OPTModelAdapter(model)
-        else:
-            raise TypeError("Unknown model type.")
+        self.seqlen = self.model.seqlen
 
         if (not args.load_model_path) and (not args.baseline):
-            self.apply_slicegpt(self.adapter, tokenizer, args)
+            self.apply_slicegpt(self.model, tokenizer, args)
 
     def apply_slicegpt(self, adapter: ModelAdapter, tokenizer, args):
         layernorm_fusion.replace_layers(adapter)
@@ -86,7 +79,7 @@ class SlicedLM(BaseLM):
             return self.gpt2.config.n_ctx
         except AttributeError:
             # gptneoconfig doesn't have n_ctx apparently
-            return self.model.config.max_position_embeddings
+            return self.model.seqlen
 
     @property
     def max_gen_toks(self):
@@ -101,7 +94,7 @@ class SlicedLM(BaseLM):
     @property
     def device(self):
         # TODO: fix multi-gpu
-        return self.model.device
+        return self.model.raw_model.device
 
     def tok_encode(self, string: str):
         return self.tokenizer.encode(string, add_special_tokens=False)
@@ -117,10 +110,10 @@ class SlicedLM(BaseLM):
         logits returned from the model
         """
         with torch.no_grad():
-            return self.model(inps)[0][:, :, :50272]
+            return self.model.raw_model(inps)[0][:, :, :50272]
 
     def _model_generate(self, context, max_length, eos_token_id):
-        return self.model.generate(context, max_length=max_length, eos_token_id=eos_token_id, do_sample=False)
+        return self.model.raw_model.generate(context, max_length=max_length, eos_token_id=eos_token_id, do_sample=False)
 
 
 def parse_args():
@@ -199,12 +192,12 @@ def main() -> None:
     # Initialize the model for use in LM Eval Harness.
     model = SlicedLM(args)
 
-    model.model.eval()
+    model.model.raw_model.eval()
     if args.distribute_model:
         # distribute model across available GPUs
-        gpu_utils.distribute_model(model.adapter)
+        gpu_utils.distribute_model(model.model)
     else:
-        model.model = model.model.to(config.device)
+        model.model.raw_model.to(config.device)
 
     ### LM Eval Harness ###
     if args.tasks is None:
