@@ -169,6 +169,12 @@ class LlamaModelAdapter(ModelAdapter):
     def original_layer_norm_type(self) -> type[LlamaRMSNorm]:
         return LlamaRMSNorm
 
+    def _get_use_cache(self) -> bool:
+        return cast(LlamaConfig, self._model.config).use_cache
+
+    def _set_use_cache(self, value: bool) -> None:
+        cast(LlamaConfig, self._model.config).use_cache = value
+
     def compute_output_logits(self, input_ids: Tensor) -> FloatTensor:
         return self._model(input_ids=input_ids).logits
 

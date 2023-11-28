@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
-from abc import ABC, ABCMeta, abstractmethod
+from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from inspect import get_annotations
 from typing import Any, Protocol, cast, final, runtime_checkable
@@ -129,6 +129,14 @@ class ModelAdapter(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def _get_use_cache(self) -> bool:
+        raise NotImplementedError
+
+    @abstractmethod
+    def _set_use_cache(self, value: bool) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
     def compute_output_logits(self, input_ids: Tensor) -> FloatTensor:
         raise NotImplementedError
 
@@ -159,6 +167,14 @@ class ModelAdapter(ABC):
     @abstractmethod
     def get_lm_head(self) -> Linear:
         raise NotImplementedError
+
+    @property
+    def use_cache(self) -> bool:
+        return self._get_use_cache()
+
+    @use_cache.setter
+    def use_cache(self, value: bool) -> None:
+        self._set_use_cache(value)
 
     @final
     def convert_layer_to_compressible_and_validate(self, layer: Module) -> Module:
