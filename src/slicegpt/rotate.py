@@ -144,8 +144,8 @@ def rotate_and_slice(
 
     inps, args, kwargs = [], [], []
     for batch in dataloader:
-        inps_batch, args_batch, kwargs_batch = get_layer0_inputs(model, batch)
-        inps.append(inps_batch)
+        inp_batch, args_batch, kwargs_batch = get_layer0_inputs(model, batch)
+        inps.append(inp_batch)
         args.append(args_batch)
         kwargs.append(kwargs_batch)
 

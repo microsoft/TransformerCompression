@@ -74,18 +74,6 @@ class LayerAdapter(ABC):
     def get_mlp_output(self) -> Linear:
         raise NotImplementedError
 
-    @final
-    def get_validated_first_layernorm(self) -> HasWeight:
-        layer_norm = self.get_first_layernorm()
-        _validate_protocol_attr(layer_norm, HasWeight, "Layer has invalid first layer norm")
-        return cast(HasWeight, layer_norm)
-
-    @final
-    def get_validated_second_layernorm(self) -> HasWeight:
-        layer_norm = self.get_second_layernorm()
-        _validate_protocol_attr(layer_norm, HasWeight, "Layer has invalid second layer norm")
-        return cast(HasWeight, layer_norm)
-
     def get_args_with_updated_hidden_states(self, hidden_states: Any, args: tuple) -> tuple:
         return (
             args[: self.hidden_states_args_position] + (hidden_states,) + args[self.hidden_states_args_position + 1 :]

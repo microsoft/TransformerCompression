@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
-from typing import Any, cast
+from typing import Any
 
 import torch
 from torch import Tensor
