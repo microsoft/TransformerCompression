@@ -7,8 +7,8 @@ import os
 
 import torch
 from transformers import LlamaForCausalLM, OPTForCausalLM
-
 import wandb
+
 from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate, utils
 from slicegpt.adapters import llama_adapter, opt_adapter
 from slicegpt.config import config
@@ -134,9 +134,7 @@ def main() -> None:
     elif isinstance(model, OPTForCausalLM):
         adapter = opt_adapter.OPTModelAdapter(model)
     else:
-        raise TypeError
-
-    del model
+        raise TypeError("Unknown model type.")
 
     def reset_model_device() -> None:
         if args.distribute_model:
