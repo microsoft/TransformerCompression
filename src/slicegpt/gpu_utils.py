@@ -9,7 +9,7 @@ from torch import Tensor
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from . import model_utils, utils
+from . import utils
 from .config import config
 from .model_adapter import ModelAdapter
 
@@ -89,7 +89,7 @@ def sync_gpus() -> None:
 
 def benchmark(model: ModelAdapter, input_batch: torch.Tensor) -> dict:
     """Benchmark the model's latency and throughput on the given input batch."""
-    model.raw_model.config.use_cache = True  # TODO: consider adding to interface
+    model.use_cache = True
 
     cache = {"past": None}
 
