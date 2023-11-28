@@ -47,10 +47,10 @@ def argparser() -> argparse.Namespace:
         default="wikitext2",
     )
     parser.add_argument(
-        "--num-batches",
+        "--cal-nsamples",
         type=int,
-        help="Number of batches of the calibration dataloaders to load. By default all batches are loaded.",
-        default=None,
+        help="Number of samples of the calibration data to load.",
+        default=128,
     )
     parser.add_argument("--batch-size", type=int, default=1, help="Batch size for loading the calibration data.")
     parser.add_argument("--seed", type=int, default=42, help="Seed for sampling the calibration data.")
@@ -97,6 +97,9 @@ def argparser() -> argparse.Namespace:
         config.dtype = torch.float32
     else:
         raise argparse.ArgumentTypeError(f"Data type should be one of 'fp16', 'fp32'")
+
+    if args.batch_size > args.cal_nsamples:
+        raise argparse.ArgumentTypeError(f"Batch size can not be greater than the number of calibration samples")
 
     return args
 

@@ -81,10 +81,6 @@ def get_signals(
     layer_adapter.layer.to(config.device)
     batch_size = inputs[0].shape[-3]
 
-    def hook_fn(_, inp, _output):
-        if isinstance(inp, tuple):
-            inp = inp[0]
-
     def hook_fn(_, args: tuple, _output: Any) -> None:
         inp = args[0]  # Position in RMSN.forward args
         # The mlp operates on (batch_size * seqlen, hidden_size) tensors, so recover batch dimension.
@@ -102,7 +98,9 @@ def get_signals(
             out = out[layer_adapter.hidden_states_output_position]
         out = out.cpu()
         outputs.append(out)
+        mlp_ln_inputs[-1] = mlp_ln_inputs[-1].reshape(
+            inp.shape[-3:]
+        )  # The mlp operates on (batch_size * seqlen, hidden_size) tensors, so `inp` must be reshaped to the right dimensions.
 
     hook.remove()
-
     return mlp_ln_inputs, outputs
