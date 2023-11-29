@@ -15,7 +15,6 @@ from slicegpt.model_adapter import LayerAdapter, ModelAdapter
 
 
 class CompressibleLlamaDecoderLayer(LlamaDecoderLayer):
-
     """
     This class simulates the LlamaDecoderLayer class from transformers
     (https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py#L376)
