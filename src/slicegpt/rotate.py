@@ -28,8 +28,6 @@ def slice_attention_inputs(layer: LayerAdapter, new_embedding_dimension: int) ->
 
     layer.raw_layer.attn_shortcut_Q = layer.raw_layer.attn_shortcut_Q[:new_embedding_dimension, :]
 
-    layer.get_first_layernorm().normalized_shape = (new_embedding_dimension,)  # TODO: remove?
-
 
 def rotate_attention_output(layer: LayerAdapter, Q: torch.Tensor) -> None:
     # Rotate output matrix of the self-attention layer.
@@ -70,9 +68,6 @@ def slice_mlp_input(layer: LayerAdapter, new_embedding_dimension: int) -> None:
 
     # slice shortcut
     layer.raw_layer.mlp_shortcut_Q = layer.raw_layer.mlp_shortcut_Q[:new_embedding_dimension, :]
-
-    # modify layernorm
-    layer.get_second_layernorm().normalized_shape = (new_embedding_dimension,)  # TODO: is this needed?
 
 
 def rotate_mlp_output(layer: LayerAdapter, Q: torch.Tensor) -> None:
@@ -306,7 +301,6 @@ def slice_rotated_model(model: ModelAdapter, new_embedding_dimension: int, do_sl
         layer.raw_layer.mlp_shortcut_Q = layer.raw_layer.mlp_shortcut_Q[:new_embedding_dimension, :dim]
 
     if do_slice_head:
-        model.get_pre_head_layernorm().normalized_shape = (new_embedding_dimension,)  # TODO: remove?
         slice_head(model, new_embedding_dimension)
 
 

@@ -96,8 +96,6 @@ class CompressibleLlamaDecoderLayer(LlamaDecoderLayer):
 
 
 class LlamaLayerAdapter(LayerAdapter):
-    _layer: LlamaDecoderLayer | CompressibleLlamaDecoderLayer
-
     def __init__(self, layer: LlamaDecoderLayer | CompressibleLlamaDecoderLayer) -> None:
         super().__init__()
         self._layer = layer
@@ -134,7 +132,6 @@ class LlamaLayerAdapter(LayerAdapter):
 
 
 class LlamaModelAdapter(ModelAdapter):
-    _model: LlamaForCausalLM
     _no_split_module_classes: list[str] = ["LlamaDecoderLayer", "CompressedLlamaDecoderLayer"]
 
     def __init__(self, model: LlamaForCausalLM) -> None:
