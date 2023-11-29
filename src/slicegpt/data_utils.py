@@ -71,6 +71,9 @@ def get_loader_from_dataset(
 
     data_name = list(dataset.features.keys())[0]
 
+    # filter out empty strings
+    dataset = dataset.filter(lambda x: len(x[data_name]) > 0)
+
     def tokenize(data_batch):
         # tokenize then pad each batch according to longest sequence in the batch
         return tokenizer(

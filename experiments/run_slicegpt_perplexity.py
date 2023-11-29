@@ -149,7 +149,7 @@ def main() -> None:
         nsamples=args.cal_nsamples,
         seed=args.seed,
     )
-    test_loader = data_utils.get_loaders(
+    test_loader = data_utils.get_loader_from_dataset(
         dataset=test_dataset,
         tokenizer=tokenizer,
         nsamples=args.cal_nsamples,
