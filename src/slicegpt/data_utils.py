@@ -6,30 +6,33 @@ import logging
 import datasets
 import torch
 from torch.utils.data import DataLoader, SubsetRandomSampler
+from transformers import AutoTokenizer
 
 
-def get_loaders(
-    dataset_name: str, tokenizer, max_seqlen: int = 2048, batch_size: int = 1, nsamples: int = None, seed=42
-) -> tuple[DataLoader[dict[str, torch.Tensor]], DataLoader[dict[str, torch.Tensor]]]:
+def get_dataset(dataset_name: str) -> tuple[datasets.Dataset, datasets.Dataset]:
+    """
+    Get the train and test dataset from the HuggingFace datasets library.
+
+    Args:
+        dataset_name: The name of the dataset to load. Must be one of "wikitext2", "ptb", or "c4".
+
+    Returns:
+        The train and test datasets.
+    """
     logging.info(f"Loading dataset: {dataset_name}")
+
+    train_data_files = None
+    test_data_files = None
+    test_split = "test"
     if dataset_name == "wikitext2":
         path = "wikitext"
         name = "wikitext-2-raw-v1"
-        data_name = "text"
-        train_data_files = None
-        test_data_files = None
-        test_split = "test"
     elif dataset_name == "ptb":
         path = "ptb_text_only"
         name = "penn_treebank"
-        data_name = "sentence"
-        train_data_files = None
-        test_data_files = None
-        test_split = "test"
     elif dataset_name == "c4":
         path = "allenai/c4"
         name = "allenai--c4"
-        data_name = "text"
         train_data_files = {"train": "en/c4-train.00000-of-01024.json.gz"}
         test_data_files = {"validation": "en/c4-validation.00000-of-00008.json.gz"}
         test_split = "validation"
@@ -39,6 +42,35 @@ def get_loaders(
     train_dataset = datasets.load_dataset(path, name=name, data_files=train_data_files, split="train")
     test_dataset = datasets.load_dataset(path, name=name, data_files=test_data_files, split=test_split)
 
+    logging.info("Loading dataset done")
+    return train_dataset, test_dataset
+
+
+def get_loader_from_dataset(
+    dataset: datasets.Dataset,
+    tokenizer: AutoTokenizer,
+    max_seqlen: int = 2048,
+    batch_size: int = 1,
+    nsamples: int = None,
+    seed=42,
+) -> DataLoader[dict[str, torch.Tensor]]:
+    """
+    Get a DataLoader from a dataset.
+
+    Args:
+        dataset: The dataset to create a dataloader from load.
+        tokenizer: The tokenizer to use.
+        max_seqlen: The maximum sequence length, used for truncation of sequences in the dataset.
+        batch_size: The batch size.
+        nsamples: The number of samples to load.
+        seed: The seed for sampling the dataset.
+
+    Returns:
+        A DataLoader.
+    """
+
+    data_name = list(dataset.features.keys())[0]
+
     def tokenize(data_batch):
         # tokenize then pad each batch according to longest sequence in the batch
         return tokenizer(
@@ -46,22 +78,12 @@ def get_loaders(
         )
 
     # tokenize lazily
-    train_dataset.set_transform(tokenize)
-    test_dataset.set_transform(tokenize)
+    dataset.set_transform(tokenize)
 
-    nsamples_train = nsamples
-    nsamples_test = nsamples
     if nsamples is None:
-        nsamples_train = len(train_dataset)
-        nsamples_test = len(test_dataset)
+        nsamples = len(dataset)
 
-    # sample the datasets to get the desired number of batches
     torch.manual_seed(seed)
-    train_sampler = SubsetRandomSampler(torch.randperm(len(train_dataset))[:nsamples_train])
-    test_sampler = SubsetRandomSampler(torch.randperm(len(test_dataset))[:nsamples_test])
+    sampler = SubsetRandomSampler(torch.randperm(len(dataset))[:nsamples])
 
-    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, sampler=train_sampler)
-    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, sampler=test_sampler)
-
-    logging.info("Loading dataset done")
-    return train_dataloader, test_dataloader
+    return DataLoader(dataset, batch_size=batch_size, sampler=sampler)

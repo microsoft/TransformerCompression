@@ -140,8 +140,17 @@ def main() -> None:
         else:
             model.to(config.device)
 
-    dataloader, testloader = data_utils.get_loaders(
-        dataset_name=args.cal_dataset,
+    train_dataset, test_dataset = data_utils.get_dataset(args.cal_dataset)
+    train_loader = data_utils.get_loader_from_dataset(
+        dataset=train_dataset,
+        tokenizer=tokenizer,
+        max_seqlen=model.seqlen,
+        batch_size=args.batch_size,
+        nsamples=args.cal_nsamples,
+        seed=args.seed,
+    )
+    test_loader = data_utils.get_loaders(
+        dataset=test_dataset,
         tokenizer=tokenizer,
         nsamples=args.cal_nsamples,
         max_seqlen=model_adapter.seqlen,
@@ -152,7 +161,7 @@ def main() -> None:
     # evaluate perplexity and exit if sliced model is loaded or if ppl_only is set
     if args.load_model_path or args.ppl_only:
         reset_model_device()
-        dataset_ppl = gpu_utils.evaluate_ppl(model_adapter, testloader)
+        dataset_ppl = gpu_utils.evaluate_ppl(model_adapter, test_loader)
         logging.info(f'Loaded model perplexity: {dataset_ppl}')
         wandb.log({"original_ppl": dataset_ppl})
         return
@@ -160,7 +169,7 @@ def main() -> None:
     # original ppl
     if args.eval_baseline:
         reset_model_device()
-        dataset_ppl = gpu_utils.evaluate_ppl(model_adapter, testloader)
+        dataset_ppl = gpu_utils.evaluate_ppl(model_adapter, test_loader)
         logging.info(f'Original ppl: {dataset_ppl:.4f}')
         wandb.log({"original_ppl": dataset_ppl})
         model.cpu()
@@ -176,7 +185,7 @@ def main() -> None:
     if args.eval_fused_model and not args.distribute_model:
         model.to(config.device)
 
-        dataset_ppl = gpu_utils.evaluate_ppl(model_adapter, testloader)
+        dataset_ppl = gpu_utils.evaluate_ppl(model_adapter, test_loader)
         logging.info(f'Post-fusion: {dataset_ppl:.4f}')
         wandb.log({"post_fusion_ppl": dataset_ppl})
 
@@ -192,7 +201,7 @@ def main() -> None:
     new_embedding_dimension = int((1 - args.sparsity) * model_adapter.hidden_size)
     logging.info(f"New embedding dimension: {new_embedding_dimension} (sparsity {args.sparsity})")
 
-    rotate.rotate_and_slice(model_adapter, dataloader, new_embedding_dimension)
+    rotate.rotate_and_slice(model_adapter, train_loader, new_embedding_dimension)
 
     if args.save_dir:
         if not os.path.exists(args.save_dir):
@@ -203,7 +212,7 @@ def main() -> None:
         logging.info(f"Saved sliced model to {args.save_dir}")
 
     reset_model_device()
-    dataset_ppl = gpu_utils.evaluate_ppl(model_adapter, testloader)
+    dataset_ppl = gpu_utils.evaluate_ppl(model_adapter, test_loader)
     logging.info(f'After rotating and slicing {dataset_ppl:.4f}')
     wandb.log({"sliced_ppl": dataset_ppl})
 

@@ -41,7 +41,7 @@ def evaluate_ppl(model_adapter: ModelAdapter, testloader: DataLoader[Tensor]) ->
         # Shift outputs and labels autoregressively.
         logits = logits[:, :-1, :]
         shift_labels = batch["input_ids"][:, 1:]
-        shift_attn_mask = batch['attention_mask'][:, 1:]
+        shift_attn_mask = batch["attention_mask"][:, 1:]
         shift_labels[shift_attn_mask == 0] = loss_fct.ignore_index  # ignore padding tokens in loss
 
         # CrossEntropyLoss demands data dimension is dimension 1.
