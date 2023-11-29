@@ -99,7 +99,7 @@ def get_signals(
         out = out.cpu()
         outputs.append(out)
         mlp_ln_inputs[-1] = mlp_ln_inputs[-1].reshape(
-            inp.shape[-3:]
+            inp.shape[-3], inp.shape[-2], -1
         )  # The mlp operates on (batch_size * seqlen, hidden_size) tensors, so `inp` must be reshaped to the right dimensions.
 
     hook.remove()
