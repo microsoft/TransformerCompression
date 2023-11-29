@@ -118,8 +118,6 @@ class CompressibleOPTDecoderLayer(OPTDecoderLayer):
 
 
 class OPTLayerAdapter(LayerAdapter):
-    _layer: OPTDecoderLayer | CompressibleOPTDecoderLayer
-
     def __init__(self, layer: OPTDecoderLayer | CompressibleOPTDecoderLayer) -> None:
         super().__init__()
         self._layer = layer
@@ -156,7 +154,6 @@ class OPTLayerAdapter(LayerAdapter):
 
 
 class OPTModelAdapter(ModelAdapter):
-    _model: OPTForCausalLM
     _no_split_module_classes: list[str] = ["OPTDecoderLayer", "CompressedOPTDecoderLayer"]
 
     def __init__(self, model: OPTForCausalLM) -> None:
