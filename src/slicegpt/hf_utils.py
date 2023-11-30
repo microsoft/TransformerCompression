@@ -110,18 +110,22 @@ def load_sliced_model(
     model_name: str, model_path: str, sparsity: float, token: str
 ) -> tuple[ModelAdapter, PreTrainedTokenizer | PreTrainedTokenizerFast]:
     """Loads the sliced model and the tokenizer from the given path."""
-    model, tokenizer = get_model(model_name, uninitialized=True, token=token)
-    replace_layers(model)
-    fuse_modules(model)
-    new_embedding_dimension = int((1 - sparsity) * model.hidden_size)
+    model_adapter, tokenizer = get_model(model_name, uninitialized=True, token=token)
+    replace_layers(model_adapter)
+    fuse_modules(model_adapter)
+    new_embedding_dimension = int((1 - sparsity) * model_adapter.hidden_size)
 
-    for layer in model.get_layers():
-        layer.raw_layer.mlp_shortcut_Q = torch.zeros(model.hidden_size, model.hidden_size).to(dtype=torch.float16)
-        layer.raw_layer.attn_shortcut_Q = torch.zeros(model.hidden_size, model.hidden_size).to(dtype=torch.float16)
+    for layer_adapter in model_adapter.get_layers():
+        layer_adapter.layer.mlp_shortcut_Q = torch.zeros(model_adapter.hidden_size, model_adapter.hidden_size).to(
+            dtype=torch.float16
+        )
+        layer_adapter.layer.attn_shortcut_Q = torch.zeros(model_adapter.hidden_size, model_adapter.hidden_size).to(
+            dtype=torch.float16
+        )
 
-    slice_rotated_model(model, new_embedding_dimension)
+    slice_rotated_model(model_adapter, new_embedding_dimension)
 
-    model.raw_model.load_state_dict(torch.load(model_path, map_location="cpu"))
-    model.raw_model.eval()
+    model_adapter.model.load_state_dict(torch.load(model_path, map_location="cpu"))
+    model_adapter.model.eval()
 
-    return model, tokenizer
+    return model_adapter, tokenizer

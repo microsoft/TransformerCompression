@@ -4,7 +4,7 @@
 # This file contains derivations from
 # https://github.com/huggingface/transformers/blob/main/src/transformers/models/opt/modeling_opt.py
 # Copyright 2022 The Fairseq Authors and The HuggingFace Inc. team. All rights reserved.
-from typing import Any, cast
+from typing import cast
 
 from torch import FloatTensor, Tensor, matmul
 from torch.nn import LayerNorm, Linear, Module
@@ -123,7 +123,7 @@ class OPTLayerAdapter(LayerAdapter):
         self._layer = layer
 
     @property
-    def raw_layer(self) -> OPTDecoderLayer | CompressibleOPTDecoderLayer:
+    def layer(self) -> OPTDecoderLayer | CompressibleOPTDecoderLayer:
         return self._layer
 
     @property
@@ -161,7 +161,7 @@ class OPTModelAdapter(ModelAdapter):
         self._model = model
 
     @property
-    def raw_model(self) -> Module:
+    def model(self) -> Module:
         return self._model
 
     @property

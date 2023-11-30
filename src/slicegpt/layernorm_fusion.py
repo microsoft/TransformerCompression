@@ -11,7 +11,7 @@ from .model_adapter import ModelAdapter
 from .modules import RMSN
 
 
-def replace_layers(model: ModelAdapter, verbose: bool = True) -> None:
+def replace_layers(model_adapter: ModelAdapter, verbose: bool = True) -> None:
     """Replace layers with compressible versions.
 
     This adds a 'shortcut operation' to each block.
@@ -21,9 +21,9 @@ def replace_layers(model: ModelAdapter, verbose: bool = True) -> None:
         logging.info("Replacing modules")
 
     _replace_modules(
-        model.raw_model,
-        model.original_layer_type,
-        model.convert_layer_to_compressible_and_validate,
+        model_adapter.model,
+        model_adapter.original_layer_type,
+        model_adapter.convert_layer_to_compressible_and_validate,
     )
 
     if verbose:
@@ -47,41 +47,43 @@ def _replace_modules(
             setattr(root, name, new_module)
 
 
-def fuse_modules(model: ModelAdapter) -> None:
+def fuse_modules(model_adapter: ModelAdapter) -> None:
     """
     This function fuses the linear and layernorm into each other inplace.
     After this function is called, the model should outputs the same results as before.
 
     args:
-        model: the model to be fused
+        model_adapter: A ModelAdapter for the model to be fused
     """
 
     logging.info("Fusing layernorm modules")
 
     # make a copy of the weights in the lm head, which are shared with embeddings...
-    head = model.get_lm_head()
+    head = model_adapter.get_lm_head()
     head.weight = Parameter(head.weight.clone())
 
     # We add the mean subtraction to the first embeddings
-    for W in model.get_validated_embeddings():
+    for W in model_adapter.get_validated_embeddings():
         W_ = W.weight.data.double()
         W.weight.data = (W_ - W_.mean(dim=-1, keepdim=True)).to(W.weight.data.dtype)
 
-    layers = model.get_layers()
+    layers = model_adapter.get_layers()
 
     # First we modify the layernorms to fold their weights
-    for layer in layers:
-        fuse_ln_linear(layer.get_first_layernorm(), layer.get_attention_inputs())
-        fuse_ln_linear(layer.get_second_layernorm(), layer.get_mlp_inputs())
+    for layer_adapter in layers:
+        fuse_ln_linear(layer_adapter.get_first_layernorm(), layer_adapter.get_attention_inputs())
+        fuse_ln_linear(layer_adapter.get_second_layernorm(), layer_adapter.get_mlp_inputs())
 
-        if model.should_bake_mean_into_linear:
+        if model_adapter.should_bake_mean_into_linear:
             # Then we bake the mean substitution into the previous linear layers
-            bake_mean_into_linear(layer.get_attention_output())
-            bake_mean_into_linear(layer.get_mlp_output())
+            bake_mean_into_linear(layer_adapter.get_attention_output())
+            bake_mean_into_linear(layer_adapter.get_mlp_output())
 
-    fuse_ln_linear(model.get_pre_head_layernorm(), [model.get_lm_head()])
+    fuse_ln_linear(model_adapter.get_pre_head_layernorm(), [model_adapter.get_lm_head()])
 
-    _replace_modules(model.raw_model, model.original_layer_norm_type, lambda _: RMSN(model.hidden_size))
+    _replace_modules(
+        model_adapter.model, model_adapter.original_layer_norm_type, lambda _: RMSN(model_adapter.hidden_size)
+    )
     logging.info("Fusing layernorm modules done")
 
 

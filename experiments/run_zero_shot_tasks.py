@@ -11,10 +11,8 @@ import wandb
 from lm_eval import evaluator, tasks
 from lm_eval import utils as lm_eval_utils
 from lm_eval.base import BaseLM
-from transformers import LlamaForCausalLM, OPTForCausalLM
 
 from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate, utils
-from slicegpt.adapters import llama_adapter, opt_adapter
 from slicegpt.config import config
 from slicegpt.model_adapter import ModelAdapter
 
@@ -30,39 +28,39 @@ class SlicedLM(BaseLM):
         super().__init__()
 
         if args.load_model_path:
-            model, tokenizer = hf_utils.load_sliced_model(
+            adapter, tokenizer = hf_utils.load_sliced_model(
                 args.model, args.load_model_path, args.sparsity, args.hf_token
             )
         else:
-            model, tokenizer = hf_utils.get_model(args.model, token=args.hf_token)
+            adapter, tokenizer = hf_utils.get_model(args.model, token=args.hf_token)
 
-        self.model = model
-        self.model.raw_model.config.sparsity = args.sparsity
-        self.model.raw_model.config.model_name = args.model
+        self.model_adapter = adapter
+        self.model_adapter.model.config.sparsity = args.sparsity
+        self.model_adapter.model.config.model_name = args.model
         self.tokenizer = tokenizer
         self.vocab_size = self.tokenizer.vocab_size
         self.batch_size_per_gpu = args.batch_size
-        self.seqlen = self.model.seqlen
+        self.seqlen = self.model_adapter.seqlen
 
         if (not args.load_model_path) and (not args.baseline):
-            self.apply_slicegpt(self.model, tokenizer, args)
+            self.apply_slicegpt(self.model_adapter, tokenizer, args)
 
-    def apply_slicegpt(self, adapter: ModelAdapter, tokenizer, args):
-        layernorm_fusion.replace_layers(adapter)
-        layernorm_fusion.fuse_modules(adapter)
+    def apply_slicegpt(self, model_adapter: ModelAdapter, tokenizer, args):
+        layernorm_fusion.replace_layers(model_adapter)
+        layernorm_fusion.fuse_modules(model_adapter)
 
         dataloader, _ = data_utils.get_loaders(
             dataset_name=args.cal_dataset,
             nsamples=args.cal_nsamples,
             batch_size=args.batch_size,
-            seqlen=adapter.seqlen,
+            seqlen=model_adapter.seqlen,
             tokenizer=tokenizer,
         )
 
-        new_embedding_dimension = int((1 - args.sparsity) * adapter.hidden_size)
+        new_embedding_dimension = int((1 - args.sparsity) * model_adapter.hidden_size)
         logging.info(f"New embedding dimension: {new_embedding_dimension} (sparsity {args.sparsity})")
 
-        rotate.rotate_and_slice(adapter, dataloader, new_embedding_dimension)
+        rotate.rotate_and_slice(model_adapter, dataloader, new_embedding_dimension)
 
     @classmethod
     def create_from_arg_string(cls, args, kwargs):
@@ -79,7 +77,7 @@ class SlicedLM(BaseLM):
             return self.gpt2.config.n_ctx
         except AttributeError:
             # gptneoconfig doesn't have n_ctx apparently
-            return self.model.seqlen
+            return self.model_adapter.seqlen
 
     @property
     def max_gen_toks(self):
@@ -94,7 +92,7 @@ class SlicedLM(BaseLM):
     @property
     def device(self):
         # TODO: fix multi-gpu
-        return self.model.raw_model.device
+        return self.model_adapter.model.device
 
     def tok_encode(self, string: str):
         return self.tokenizer.encode(string, add_special_tokens=False)
@@ -110,10 +108,12 @@ class SlicedLM(BaseLM):
         logits returned from the model
         """
         with torch.no_grad():
-            return self.model.raw_model(inps)[0][:, :, :50272]
+            return self.model_adapter.model(inps)[0][:, :, :50272]
 
     def _model_generate(self, context, max_length, eos_token_id):
-        return self.model.raw_model.generate(context, max_length=max_length, eos_token_id=eos_token_id, do_sample=False)
+        return self.model_adapter.model.generate(
+            context, max_length=max_length, eos_token_id=eos_token_id, do_sample=False
+        )
 
 
 def parse_args():
@@ -192,12 +192,12 @@ def main() -> None:
     # Initialize the model for use in LM Eval Harness.
     model = SlicedLM(args)
 
-    model.model.raw_model.eval()
+    model.model_adapter.model.eval()
     if args.distribute_model:
         # distribute model across available GPUs
-        gpu_utils.distribute_model(model.model)
+        gpu_utils.distribute_model(model.model_adapter)
     else:
-        model.model.raw_model.to(config.device)
+        model.model_adapter.model.to(config.device)
 
     ### LM Eval Harness ###
     if args.tasks is None:
