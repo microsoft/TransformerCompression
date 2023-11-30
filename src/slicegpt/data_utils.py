@@ -52,7 +52,7 @@ def get_loader_from_dataset(
     max_seqlen: int = 2048,
     batch_size: int = 1,
     nsamples: int = None,
-    concatenate_examples: bool = False,
+    fixed_sequence_length: bool = False,
     seed=42,
 ) -> DataLoader[dict[str, torch.Tensor]]:
     """
@@ -71,9 +71,9 @@ def get_loader_from_dataset(
         A DataLoader.
     """
 
-    if concatenate_examples and not nsamples:
+    if fixed_sequence_length and not nsamples:
         logging.warning(
-            "concatenate_examples=True, but nsamples is not specified. This will lead to tokenization of the entire dataset, which will be slow."
+            "fixed_sequence_length=True, but nsamples is not specified. This will lead to tokenization of the entire dataset, which will be slow."
         )
 
     data_name = list(dataset.features.keys())[0]
@@ -84,7 +84,7 @@ def get_loader_from_dataset(
     if nsamples is None:
         nsamples = len(dataset)
 
-    if concatenate_examples:
+    if fixed_sequence_length:
         # create a new dataset where each example is a concatenation of multiple examples of total length = max_seqlen.
         data_list = dataset[data_name]
         new_data_list = []

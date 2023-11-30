@@ -67,7 +67,7 @@ def test_get_loaders(dataset_name: str, max_seqlen: int, batch_size: int, nsampl
         max_seqlen=max_seqlen,
         batch_size=batch_size,
         nsamples=nsamples,
-        concatenate_examples=True,
+        fixed_sequence_length=True,
     )
 
     assert loader is not None

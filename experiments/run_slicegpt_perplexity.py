@@ -53,6 +53,9 @@ def argparser() -> argparse.Namespace:
         default=128,
     )
     parser.add_argument("--batch-size", type=int, default=1, help="Batch size for loading the calibration data.")
+    parser.add_argument(
+        "--fixed-sequence-length", action="store_true", help="Fixed sequence length for the calibration data."
+    )
     parser.add_argument("--seed", type=int, default=42, help="Seed for sampling the calibration data.")
     parser.add_argument(
         "--sparsity", type=float, default=0.0, help="A measure of how much slicing is applied (in the range [0, 1))"
@@ -147,7 +150,7 @@ def main() -> None:
         max_seqlen=model.seqlen,
         batch_size=args.batch_size,
         nsamples=args.cal_nsamples,
-        concatenate_examples=True,
+        fixed_sequence_length=args.fixed_sequence_length,
         seed=args.seed,
     )
     test_loader = data_utils.get_loader_from_dataset(
@@ -156,6 +159,7 @@ def main() -> None:
         nsamples=args.cal_nsamples,
         max_seqlen=model_adapter.seqlen,
         batch_size=args.batch_size,
+        fixed_sequence_length=args.fixed_sequence_length,
         seed=args.seed,
     )
 
