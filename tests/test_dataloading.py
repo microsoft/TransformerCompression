@@ -27,12 +27,12 @@ def test_get_dataset(dataset_name) -> None:
 @pytest.mark.parametrize(
     "dataset_name, max_seqlen, batch_size, nsamples",
     [
-        ("wikitext2", None, None, None),
-        ("wikitext2", 512, None, None),
-        ("wikitext2", 512, 32, None),
-        ("wikitext2", 512, 32, 1024),
-        ("ptb", 256, 64, 512),
-        ("c4", 128, 64, 512),
+        ("wikitext2", None, None, 8),
+        ("wikitext2", 512, None, 8),
+        ("wikitext2", 512, 4, 8),
+        ("wikitext2", 512, 4, 8),
+        ("ptb", 256, 2, 4),
+        ("c4", 128, 2, 4),
     ],
 )
 def test_get_loaders(dataset_name: str, max_seqlen: int, batch_size: int, nsamples: int) -> None:
@@ -61,13 +61,23 @@ def test_get_loaders(dataset_name: str, max_seqlen: int, batch_size: int, nsampl
         nsamples=nsamples,
     )
 
+    loader_fixed_length_seq = data_utils.get_loader_from_dataset(
+        dataset=dataset,
+        tokenizer=tokenizer,
+        max_seqlen=max_seqlen,
+        batch_size=batch_size,
+        nsamples=nsamples,
+        concatenate_examples=True,
+    )
+
     assert loader is not None
 
     if nsamples:
         n_batches = np.ceil(nsamples / batch_size)
         assert len(loader) == n_batches
+        assert len(loader_fixed_length_seq) == n_batches
 
-    def check_shape_first_batch(loader):
+    def check_shape_first_batch(loader, fixed_length):
         batch = next(iter(loader))
         for key in ["input_ids", "attention_mask"]:
             if len(loader) == 1:
@@ -75,6 +85,10 @@ def test_get_loaders(dataset_name: str, max_seqlen: int, batch_size: int, nsampl
             else:
                 assert batch[key].shape[0] == batch_size
 
-            assert batch[key].shape[1] <= max_seqlen
+            if fixed_length:
+                assert batch[key].shape[1] == max_seqlen
+            else:
+                assert batch[key].shape[1] <= max_seqlen
 
-    check_shape_first_batch(loader)
+    check_shape_first_batch(loader, False)
+    check_shape_first_batch(loader_fixed_length_seq, True)

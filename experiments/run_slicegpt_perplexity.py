@@ -147,6 +147,7 @@ def main() -> None:
         max_seqlen=model.seqlen,
         batch_size=args.batch_size,
         nsamples=args.cal_nsamples,
+        concatenate_examples=True,
         seed=args.seed,
     )
     test_loader = data_utils.get_loader_from_dataset(

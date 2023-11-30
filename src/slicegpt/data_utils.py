@@ -52,6 +52,7 @@ def get_loader_from_dataset(
     max_seqlen: int = 2048,
     batch_size: int = 1,
     nsamples: int = None,
+    concatenate_examples: bool = False,
     seed=42,
 ) -> DataLoader[dict[str, torch.Tensor]]:
     """
@@ -63,16 +64,47 @@ def get_loader_from_dataset(
         max_seqlen: The maximum sequence length, used for truncation of sequences in the dataset.
         batch_size: The batch size.
         nsamples: The number of samples to load.
+        concatenate_examples: Whether to concatenate multiple examples from the dataset into one example.
         seed: The seed for sampling the dataset.
 
     Returns:
         A DataLoader.
     """
 
+    if concatenate_examples and not nsamples:
+        logging.warning(
+            "concatenate_examples=True, but nsamples is not specified. This will lead to tokenization of the entire dataset, which will be slow."
+        )
+
     data_name = list(dataset.features.keys())[0]
 
     # filter out empty strings
     dataset = dataset.filter(lambda x: len(x[data_name]) > 0)
+
+    if nsamples is None:
+        nsamples = len(dataset)
+
+    if concatenate_examples:
+        # create a new dataset where each example is a concatenation of multiple examples of total length = max_seqlen.
+        data_list = dataset[data_name]
+        new_data_list = []
+
+        torch.manual_seed(seed)
+        indices = torch.randperm(len(data_list)).tolist()
+
+        while len(new_data_list) < nsamples:
+            item_idx = indices.pop()
+            item = data_list[item_idx]
+            tokens = tokenizer.tokenize(item)
+            while len(tokens) < max_seqlen and item_idx + 1 < len(data_list):
+                item_idx += 1
+                tokens += tokenizer.tokenize("\n\n" + data_list[item_idx])
+
+            if len(tokens) >= max_seqlen:
+                tokens = tokens[:max_seqlen]  # truncate to max_seqlen
+                new_data_list.append(tokenizer.convert_tokens_to_string(tokens))
+
+        dataset = datasets.Dataset.from_dict({data_name: new_data_list})
 
     def tokenize(data_batch):
         # tokenize then pad each batch according to longest sequence in the batch
@@ -82,9 +114,6 @@ def get_loader_from_dataset(
 
     # tokenize lazily
     dataset.set_transform(tokenize)
-
-    if nsamples is None:
-        nsamples = len(dataset)
 
     torch.manual_seed(seed)
     sampler = SubsetRandomSampler(torch.randperm(len(dataset))[:nsamples])
