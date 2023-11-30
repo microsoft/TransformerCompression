@@ -13,7 +13,7 @@ from .config import config
 from .model_adapter import LayerAdapter, ModelAdapter
 
 
-def get_layer0_inputs(model: ModelAdapter, batch: Tensor) -> tuple[list[Tensor], tuple, dict[str, Any]]:
+def get_layer0_inputs(model_adapter: ModelAdapter, batch: Tensor) -> tuple[list[Tensor], tuple, dict[str, Any]]:
     """
     Returns the inputs to the first layer of the model (after embeddings).
 
@@ -26,7 +26,7 @@ def get_layer0_inputs(model: ModelAdapter, batch: Tensor) -> tuple[list[Tensor],
     NB: this won't work from OPT 350m.
     """
     # Move embeddings to device.
-    for W in model.get_validated_embeddings():
+    for W in model_adapter.get_validated_embeddings():
         W.weight = torch.nn.Parameter(W.weight.to(config.device))
 
     class Catcher(torch.nn.Module):
@@ -38,12 +38,12 @@ def get_layer0_inputs(model: ModelAdapter, batch: Tensor) -> tuple[list[Tensor],
             self.saved_kwargs = kwargs
             raise ValueError
 
-    layer0_adapter = model.get_layers()[0]
+    layer0_adapter = model_adapter.get_layers()[0]
     layer0_catcher = Catcher()
-    model.set_raw_layer_at(0, layer0_catcher)
+    model_adapter.set_raw_layer_at(0, layer0_catcher)
 
     try:
-        model.raw_model(batch.to(config.device))
+        model_adapter.model(batch.to(config.device))
     except ValueError:
         pass
 
@@ -56,10 +56,10 @@ def get_layer0_inputs(model: ModelAdapter, batch: Tensor) -> tuple[list[Tensor],
     kwargs = utils.map_tensors(kwargs, device='cpu')
 
     # put the layer back to normal
-    model.set_raw_layer_at(0, layer0_adapter.raw_layer)
+    model_adapter.set_raw_layer_at(0, layer0_adapter.layer)
 
     # Move embeddings back to cpu, and clear GPU cache.
-    for W in model.get_validated_embeddings():
+    for W in model_adapter.get_validated_embeddings():
         W.weight = torch.nn.Parameter(W.weight.to('cpu'))
 
     # Run GC and cleanup GPU memory
@@ -69,7 +69,7 @@ def get_layer0_inputs(model: ModelAdapter, batch: Tensor) -> tuple[list[Tensor],
 
 
 def get_signals(
-    layer: LayerAdapter, seqlen: int, layer_args: list[tuple], layer_kwargs: list[dict[str, Any]]
+    layer_adapter: LayerAdapter, seqlen: int, layer_args: list[tuple], layer_kwargs: list[dict[str, Any]]
 ) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
     """
     Take the input signals ("activations") for a layer, run the layer forward.
@@ -78,23 +78,23 @@ def get_signals(
     mlp_ln_inputs = []
     outputs = []
 
-    layer.raw_layer.to(config.device)
+    layer_adapter.layer.to(config.device)
 
     def hook_fn(_, args: tuple, _output: Any) -> None:
         inp = args[0]  # Position in RMSN.forward args
         # The mlp operates on (batch_size * seqlen, hidden_size) tensors, so recover batch dimension.
         mlp_ln_inputs.append(inp.cpu().reshape(-1, seqlen, inp.shape[-1]))
 
-    second_layernorm = layer.get_second_layernorm()
+    second_layernorm = layer_adapter.get_second_layernorm()
     assert isinstance(second_layernorm, RMSN)
     hook = second_layernorm.register_forward_hook(hook_fn)
     for layer_args_batch, layer_kwargs_batch in zip(layer_args, layer_kwargs):
         layer_args_batch, layer_kwargs_batch = utils.map_tensors(
             [layer_args_batch, layer_kwargs_batch], device=config.device
         )
-        out = layer.raw_layer(*layer_args_batch, **layer_kwargs_batch)
+        out = layer_adapter.layer(*layer_args_batch, **layer_kwargs_batch)
         if isinstance(out, tuple):
-            out = out[layer.hidden_states_output_position]
+            out = out[layer_adapter.hidden_states_output_position]
         out = out.cpu()
         outputs.append(out)
 

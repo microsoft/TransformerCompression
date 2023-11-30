@@ -100,7 +100,7 @@ class LlamaLayerAdapter(LayerAdapter):
         self._layer = layer
 
     @property
-    def raw_layer(self) -> LlamaDecoderLayer | CompressibleLlamaDecoderLayer:
+    def layer(self) -> LlamaDecoderLayer | CompressibleLlamaDecoderLayer:
         return self._layer
 
     @property
@@ -138,7 +138,7 @@ class LlamaModelAdapter(ModelAdapter):
         self._model = model
 
     @property
-    def raw_model(self) -> Module:
+    def model(self) -> Module:
         return self._model
 
     @property

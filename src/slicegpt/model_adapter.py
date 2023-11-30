@@ -37,7 +37,7 @@ def _validate_protocol_attr(instance: Any, protocol: type, err_message: str | No
 class LayerAdapter(ABC):
     @property
     @abstractmethod
-    def raw_layer(self) -> Module:
+    def layer(self) -> Module:
         raise NotImplementedError
 
     @property
@@ -83,7 +83,7 @@ class LayerAdapter(ABC):
 class ModelAdapter(ABC):
     @property
     @abstractmethod
-    def raw_model(self) -> Module:
+    def model(self) -> Module:
         raise NotImplementedError
 
     @property

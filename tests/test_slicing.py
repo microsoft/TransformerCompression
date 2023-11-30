@@ -11,12 +11,12 @@ def test_layernorm_fusion_replaces_modules() -> None:
     model, _ = hf_utils.get_model(model_name)
     assert isinstance(model, OPTModelAdapter)
 
-    orig_modules = get_module_names(model.raw_model)
+    orig_modules = get_module_names(model.model)
 
     layernorm_fusion.replace_layers(model)
     layernorm_fusion.fuse_modules(model)
 
-    assert orig_modules != get_module_names(model.raw_model)
+    assert orig_modules != get_module_names(model.model)
 
 
 def get_module_names(model) -> list[str]:

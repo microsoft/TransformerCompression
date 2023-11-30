@@ -1,3 +1,5 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
 import logging
 import time
 
@@ -15,7 +17,7 @@ from .model_adapter import ModelAdapter
 
 
 @torch.no_grad()
-def evaluate_ppl(model: ModelAdapter, testloader: DataLoader[Tensor]) -> float:
+def evaluate_ppl(model_adapter: ModelAdapter, testloader: DataLoader[Tensor]) -> float:
     """
     Evaluate the model's perplexity on the test set using batch processing.
     It is expected that model is already on the correct device.
@@ -24,7 +26,7 @@ def evaluate_ppl(model: ModelAdapter, testloader: DataLoader[Tensor]) -> float:
 
     start_time = time.time()
 
-    model.raw_model.eval()
+    model_adapter.model.eval()
 
     loss_fct = torch.nn.CrossEntropyLoss(reduction="none")
 
@@ -33,14 +35,14 @@ def evaluate_ppl(model: ModelAdapter, testloader: DataLoader[Tensor]) -> float:
     for batch in testloader:
         assert isinstance(batch, Tensor)
         input_ids = batch.to(config.device)  # type: ignore
-        logits: Tensor = model.compute_output_logits(input_ids=input_ids)
+        logits: Tensor = model_adapter.compute_output_logits(input_ids=input_ids)
 
         # Shift outputs and labels autoregressively.
         logits = logits[:, :-1, :]
         shift_labels = input_ids[:, 1:]
 
         # CrossEntropyLoss demands data dimension is dimension 1.
-        nll = loss_fct(logits.permute(0, 2, 1), shift_labels).float().sum(dim=1) / model.seqlen
+        nll = loss_fct(logits.permute(0, 2, 1), shift_labels).float().sum(dim=1) / model_adapter.seqlen
 
         nlls.append(nll)
 
@@ -58,23 +60,24 @@ def evaluate_ppl(model: ModelAdapter, testloader: DataLoader[Tensor]) -> float:
     return ppl.item()
 
 
-def distribute_model(model: ModelAdapter) -> None:
+def distribute_model(model_adapter: ModelAdapter) -> None:
     """Distribute the model across available GPUs."""
+    model = model_adapter.model
     max_memory = get_balanced_memory(
-        model.raw_model,
-        no_split_module_classes=model.no_split_module_classes,
+        model,
+        no_split_module_classes=model_adapter.no_split_module_classes,
     )
 
     device_map = infer_auto_device_map(
-        model.raw_model, max_memory=max_memory, no_split_module_classes=model.no_split_module_classes
+        model, max_memory=max_memory, no_split_module_classes=model_adapter.no_split_module_classes
     )
 
     dispatch_model(
-        model.raw_model,
+        model,
         device_map=device_map,
         offload_buffers=True,
         offload_dir="offload",
-        state_dict=model.raw_model.state_dict(),
+        state_dict=model.state_dict(),
     )
 
     # Run GC and cleanup GPU memory
@@ -87,9 +90,9 @@ def sync_gpus() -> None:
         torch.cuda.synchronize(device=i)
 
 
-def benchmark(model: ModelAdapter, input_batch: torch.Tensor) -> dict:
+def benchmark(model_adapter: ModelAdapter, input_batch: torch.Tensor) -> dict:
     """Benchmark the model's latency and throughput on the given input batch."""
-    model.use_cache = True
+    model_adapter.use_cache = True
 
     cache = {"past": None}
 
@@ -100,10 +103,10 @@ def benchmark(model: ModelAdapter, input_batch: torch.Tensor) -> dict:
 
         return tmp
 
-    layers = model.get_layers()
-    for idx, layer in enumerate(layers):
+    layers = model_adapter.get_layers()
+    for idx, layer_adapter in enumerate(layers):
         # Clear past cache after each layer get called to get accurate timing of each forward pass.
-        layer.raw_layer.register_forward_hook(clear_past_cache(idx))
+        layer_adapter.layer.register_forward_hook(clear_past_cache(idx))
 
     with torch.no_grad():
         batch_size, input_seq_len = input_batch.shape[:2]
@@ -116,7 +119,7 @@ def benchmark(model: ModelAdapter, input_batch: torch.Tensor) -> dict:
 
             sync_gpus()
             start_time = time.time()
-            output = model.raw_model(input_batch_i, past_key_values=cache["past"], attention_mask=attention_mask_i)
+            output = model_adapter.model(input_batch_i, past_key_values=cache["past"], attention_mask=attention_mask_i)
             sync_gpus()
             time_measurements.append(time.time() - start_time)
 

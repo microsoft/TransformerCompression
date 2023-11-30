@@ -7,10 +7,8 @@ import os
 
 import torch
 import wandb
-from transformers import LlamaForCausalLM, OPTForCausalLM
 
 from slicegpt import data_utils, gpu_utils, hf_utils, utils
-from slicegpt.adapters import llama_adapter, opt_adapter
 from slicegpt.config import config
 from slicegpt.model_adapter import ModelAdapter
 
@@ -94,16 +92,16 @@ def main():
     if args.load_model_path:
         # load the model from load_model_path to compute perplexity and skip rotation and slicing
         logging.info(f"Loading sliced {args.model} model from {args.load_model_path} with sparsity {args.sparsity}")
-        model, tokenizer = hf_utils.load_sliced_model(args.model, args.load_model_path, args.sparsity, args.hf_token)
+        adapter, tokenizer = hf_utils.load_sliced_model(args.model, args.load_model_path, args.sparsity, args.hf_token)
     else:
         # load one of the pre-trained models
-        model, tokenizer = hf_utils.get_model(args.model, token=args.hf_token)
+        adapter, tokenizer = hf_utils.get_model(args.model, token=args.hf_token)
 
     if args.distribute_model:
         # distribute model across available GPUs
-        gpu_utils.distribute_model(model)
+        gpu_utils.distribute_model(adapter)
     else:
-        model.raw_model.to(config.device)
+        adapter.model.to(config.device)
 
     dataloader, _ = data_utils.get_loaders(
         dataset_name=args.eval_dataset,
@@ -114,7 +112,7 @@ def main():
         batch_size=args.batch_size,
     )
 
-    results = gpu_utils.benchmark(model, next(iter(dataloader)))
+    results = gpu_utils.benchmark(adapter, next(iter(dataloader)))
     logging.info(f"Median time per batch: {results['median_time']} s/batch.")
     logging.info(f"Throughput: {results['throughput']} token/s.")
     logging.info(f"Latency: {results['latency']} s/token.")
