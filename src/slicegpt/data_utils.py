@@ -46,13 +46,13 @@ def get_dataset(dataset_name: str) -> tuple[datasets.Dataset, datasets.Dataset]:
     return train_dataset, test_dataset
 
 
-def get_loader_from_dataset(
+def prepare_dataloader(
     dataset: datasets.Dataset,
     tokenizer: AutoTokenizer,
     max_seqlen: int = 2048,
     batch_size: int = 1,
     nsamples: int = None,
-    fixed_sequence_length: bool = False,
+    varied_seqlen: bool = False,
     seed=42,
 ) -> DataLoader[dict[str, torch.Tensor]]:
     """
@@ -70,10 +70,11 @@ def get_loader_from_dataset(
     Returns:
         A DataLoader.
     """
+    logging.info(f"Preparing dataloader")
 
-    if fixed_sequence_length and not nsamples:
+    if not varied_seqlen and not nsamples:
         logging.warning(
-            "fixed_sequence_length=True, but nsamples is not specified. This will lead to tokenization of the entire dataset, which will be slow."
+            "varied_seqlen=False, but nsamples is not specified. This will lead to tokenization of the entire dataset, which will be slow."
         )
 
     data_name = list(dataset.features.keys())[0]
@@ -84,7 +85,7 @@ def get_loader_from_dataset(
     if nsamples is None:
         nsamples = len(dataset)
 
-    if fixed_sequence_length:
+    if not varied_seqlen:
         # create a new dataset where each example is a concatenation of multiple examples of total length = max_seqlen.
         data_list = dataset[data_name]
         new_data_list = []
@@ -109,7 +110,11 @@ def get_loader_from_dataset(
     def tokenize(data_batch):
         # tokenize then pad each batch according to longest sequence in the batch
         return tokenizer(
-            data_batch[data_name], padding="longest", max_length=max_seqlen, truncation=True, return_tensors="pt"
+            data_batch[data_name],
+            padding="longest",
+            max_length=max_seqlen,
+            truncation=True,
+            return_tensors="pt",
         )
 
     # tokenize lazily
@@ -118,4 +123,6 @@ def get_loader_from_dataset(
     torch.manual_seed(seed)
     sampler = SubsetRandomSampler(torch.randperm(len(dataset))[:nsamples])
 
-    return DataLoader(dataset, batch_size=batch_size, sampler=sampler)
+    loader = DataLoader(dataset, batch_size=batch_size, sampler=sampler)
+    logging.info(f"Preparing dataloader done")
+    return loader

@@ -46,14 +46,23 @@ def test_get_loaders(dataset_name: str, max_seqlen: int, batch_size: int, nsampl
         signature = inspect.signature(func)
         return {k: v.default for k, v in signature.parameters.items() if v.default is not inspect.Parameter.empty}
 
-    defaults = get_default_args(data_utils.get_loader_from_dataset)
+    defaults = get_default_args(data_utils.prepare_dataloader)
 
     if not max_seqlen:
         max_seqlen = defaults["max_seqlen"]
     if not batch_size:
         batch_size = defaults["batch_size"]
 
-    loader = data_utils.get_loader_from_dataset(
+    loader_varied_seqlen = data_utils.prepare_dataloader(
+        dataset=dataset,
+        tokenizer=tokenizer,
+        max_seqlen=max_seqlen,
+        batch_size=batch_size,
+        nsamples=nsamples,
+        varied_seqlen=True,
+    )
+
+    loader_fixed_seqlen = data_utils.prepare_dataloader(
         dataset=dataset,
         tokenizer=tokenizer,
         max_seqlen=max_seqlen,
@@ -61,21 +70,12 @@ def test_get_loaders(dataset_name: str, max_seqlen: int, batch_size: int, nsampl
         nsamples=nsamples,
     )
 
-    loader_fixed_length_seq = data_utils.get_loader_from_dataset(
-        dataset=dataset,
-        tokenizer=tokenizer,
-        max_seqlen=max_seqlen,
-        batch_size=batch_size,
-        nsamples=nsamples,
-        fixed_sequence_length=True,
-    )
-
-    assert loader is not None
+    assert loader_varied_seqlen is not None
 
     if nsamples:
         n_batches = np.ceil(nsamples / batch_size)
-        assert len(loader) == n_batches
-        assert len(loader_fixed_length_seq) == n_batches
+        assert len(loader_varied_seqlen) == n_batches
+        assert len(loader_fixed_seqlen) == n_batches
 
     def check_shape_first_batch(loader, fixed_length):
         batch = next(iter(loader))
@@ -90,5 +90,5 @@ def test_get_loaders(dataset_name: str, max_seqlen: int, batch_size: int, nsampl
             else:
                 assert batch[key].shape[1] <= max_seqlen
 
-    check_shape_first_batch(loader, False)
-    check_shape_first_batch(loader_fixed_length_seq, True)
+    check_shape_first_batch(loader_varied_seqlen, False)
+    check_shape_first_batch(loader_fixed_seqlen, True)

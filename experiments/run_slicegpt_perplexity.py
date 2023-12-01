@@ -53,9 +53,7 @@ def argparser() -> argparse.Namespace:
         default=128,
     )
     parser.add_argument("--batch-size", type=int, default=1, help="Batch size for loading the calibration data.")
-    parser.add_argument(
-        "--fixed-sequence-length", action="store_true", help="Fixed sequence length for the calibration data."
-    )
+    parser.add_argument("--varied-seqlen", action="store_true", help="Varied sequence lengths in the calibration data.")
     parser.add_argument("--seed", type=int, default=42, help="Seed for sampling the calibration data.")
     parser.add_argument(
         "--sparsity", type=float, default=0.0, help="A measure of how much slicing is applied (in the range [0, 1))"
@@ -144,22 +142,22 @@ def main() -> None:
             model.to(config.device)
 
     train_dataset, test_dataset = data_utils.get_dataset(args.cal_dataset)
-    train_loader = data_utils.get_loader_from_dataset(
+    train_loader = data_utils.prepare_dataloader(
         dataset=train_dataset,
         tokenizer=tokenizer,
         max_seqlen=model.seqlen,
         batch_size=args.batch_size,
         nsamples=args.cal_nsamples,
-        fixed_sequence_length=args.fixed_sequence_length,
+        varied_seqlen=args.varied_seqlen,
         seed=args.seed,
     )
-    test_loader = data_utils.get_loader_from_dataset(
+    test_loader = data_utils.prepare_dataloader(
         dataset=test_dataset,
         tokenizer=tokenizer,
         nsamples=args.cal_nsamples,
         max_seqlen=model_adapter.seqlen,
         batch_size=args.batch_size,
-        fixed_sequence_length=args.fixed_sequence_length,
+        varied_seqlen=args.varied_seqlen,
         seed=args.seed,
     )
 
@@ -206,7 +204,8 @@ def main() -> None:
     new_embedding_dimension = int((1 - args.sparsity) * model_adapter.hidden_size)
     logging.info(f"New embedding dimension: {new_embedding_dimension} (sparsity {args.sparsity})")
 
-    rotate.rotate_and_slice(model_adapter, train_loader, new_embedding_dimension)
+    ignore_tokens = [tokenizer.pad_token_id]
+    rotate.rotate_and_slice(model_adapter, train_loader, new_embedding_dimension, ignore_tokens=ignore_tokens)
 
     if args.save_dir:
         if not os.path.exists(args.save_dir):
