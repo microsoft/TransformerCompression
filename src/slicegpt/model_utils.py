@@ -13,15 +13,14 @@ from .config import config
 from .model_adapter import LayerAdapter, ModelAdapter
 
 
-def get_layer0_inputs(model_adapter: ModelAdapter, batch: Tensor) -> tuple[list[Tensor], tuple, dict[str, Any]]:
+def get_layer0_inputs(model_adapter: ModelAdapter, batch: Tensor) -> tuple[Tensor, tuple, dict[str, Any]]:
     """
     Returns the inputs to the first layer of the model (after embeddings).
 
     Also returns the additional args and kwargs that are passed to
     the first layer (such as the attention mask, or caches K/V values).
 
-    This relies on the layer taking the hidden states as the first argument,
-    and all arguments to subsequent layers being the same.
+    This relies on all arguments to subsequent layers being the same.
 
     NB: this won't work from OPT 350m.
     """
