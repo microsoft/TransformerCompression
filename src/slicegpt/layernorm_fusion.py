@@ -107,9 +107,6 @@ def fuse_ln_linear(layernorm: Module, linear_layers: Iterable[Linear]) -> None:
     """
     fuse the linear operations in Layernorm into the adjacent linear blocks.
     """
-    if not hasattr(layernorm, 'weight'):
-        raise TypeError("Layer norm does not define weight")
-
     for linear in linear_layers:
         linear_dtype = linear.weight.dtype
 
