@@ -21,11 +21,6 @@ class CompressibleOPTDecoderLayer(OPTDecoderLayer):
     We also support the input rotation and mean subtraction in this class (if needed).
     """
 
-    def __init__(self, config: OPTConfig):
-        super().__init__(config)
-        self.register_buffer("mlp_shortcut_Q", None)
-        self.register_buffer("attn_shortcut_Q", None)
-
     def forward(
         self,
         hidden_states: Tensor,
