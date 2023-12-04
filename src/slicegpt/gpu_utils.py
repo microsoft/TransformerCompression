@@ -33,8 +33,7 @@ def evaluate_ppl(model_adapter: ModelAdapter, testloader: DataLoader[Tensor]) ->
     nlls = []
 
     for batch in testloader:
-        assert isinstance(batch, Tensor)
-        input_ids = batch.to(config.device)  # type: ignore
+        input_ids: Tensor = batch.to(config.device)
         logits: Tensor = model_adapter.compute_output_logits(input_ids=input_ids)
 
         # Shift outputs and labels autoregressively.
