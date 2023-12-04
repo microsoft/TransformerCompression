@@ -3,35 +3,10 @@
 
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
-from inspect import get_annotations
-from typing import Any, Protocol, cast, final, runtime_checkable
+from typing import Any, final
 
 from torch import FloatTensor, Tensor
-from torch.nn import Linear, Module, Parameter
-
-
-@runtime_checkable
-class HasShortcuts(Protocol):
-    mlp_shortcut_Q: Tensor | None
-    attn_shortcut_Q: Tensor | None
-
-
-@runtime_checkable
-class HasWeight(Protocol):
-    weight: Parameter
-
-
-def _validate_protocol_attr(instance: Any, protocol: type, err_message: str | None = None) -> None:
-    errors: list[str] = []
-    for (a, t) in get_annotations(protocol).items():
-        if not hasattr(instance, a):
-            errors.append(f"Missing attribute '{a}")
-        elif not isinstance(getattr(instance, a), t):
-            errors.append(f"Attribute '{a}' is not an instance of {t}")
-    if not isinstance(instance, protocol):
-        errors.append(f"Does not implement {protocol}")
-    if len(errors) != 0:
-        raise TypeError(err_message, errors, instance) if err_message is not None else TypeError(errors, instance)
+from torch.nn import Linear, Module
 
 
 class LayerAdapter(ABC):
@@ -165,16 +140,8 @@ class ModelAdapter(ABC):
         self._set_use_cache(value)
 
     @final
-    def convert_layer_to_compressible_and_validate(self, layer: Module) -> Module:
+    def convert_layer_to_compressible_and_register_buffers(self, layer: Module) -> Module:
         compressed_layer = self.convert_layer_to_compressible(layer)
-        if not isinstance(compressed_layer, Module):
-            raise TypeError("Converted compressible layer is not a torch module")
-        _validate_protocol_attr(compressed_layer, HasShortcuts, "Converted compressible layer is invalid")
+        compressed_layer.register_buffer('mlp_shortcut_Q', None)
+        compressed_layer.register_buffer('attn_shortcut_Q', None)
         return compressed_layer
-
-    @final
-    def get_validated_embeddings(self) -> list[HasWeight]:
-        embeddings = self.get_embeddings()
-        for emb in embeddings:
-            _validate_protocol_attr(emb, HasWeight, "Model has invalid embeddings")
-        return cast(list[HasWeight], embeddings)

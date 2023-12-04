@@ -21,11 +21,6 @@ class CompressibleLlamaDecoderLayer(LlamaDecoderLayer):
     but with the addition of a shortcut_Q attribute. This attribute is used to rotate the residual tensors.
     """
 
-    def __init__(self, config: LlamaConfig):
-        super().__init__(config)
-        self.register_buffer('mlp_shortcut_Q', None)
-        self.register_buffer('attn_shortcut_Q', None)
-
     def forward(
         self,
         hidden_states: Tensor,

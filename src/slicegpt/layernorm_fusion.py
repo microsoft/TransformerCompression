@@ -23,7 +23,7 @@ def replace_layers(model_adapter: ModelAdapter, verbose: bool = True) -> None:
     _replace_modules(
         model_adapter.model,
         model_adapter.original_layer_type,
-        model_adapter.convert_layer_to_compressible_and_validate,
+        model_adapter.convert_layer_to_compressible_and_register_buffers,
     )
 
     if verbose:
@@ -63,7 +63,7 @@ def fuse_modules(model_adapter: ModelAdapter) -> None:
     head.weight = Parameter(head.weight.clone())
 
     # We add the mean subtraction to the first embeddings
-    for W in model_adapter.get_validated_embeddings():
+    for W in model_adapter.get_embeddings():
         W_ = W.weight.data.double()
         W.weight.data = (W_ - W_.mean(dim=-1, keepdim=True)).to(W.weight.data.dtype)
 
