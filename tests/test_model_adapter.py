@@ -40,7 +40,9 @@ def _validate_protocol_attr(instance: Any, protocol: type, err_message: str) -> 
     assert success, "\n".join(errors)
 
 
-class TestModelAdapter(ABC):
+# Name of the abstract test class can not start with "Test", because pytest tries
+# to instantiate all such classes while collecting tests.
+class ModelAdapterTestBase(ABC):
     @abstractmethod
     def create_adapter(self) -> ModelAdapter:
         raise NotImplementedError
@@ -75,7 +77,7 @@ class TestModelAdapter(ABC):
             _validate_protocol_attr(emb, HasWeight, f"Embeddings element {i} is invalid")
 
 
-class TestOPTAdapter(TestModelAdapter):
+class TestOPTAdapter(ModelAdapterTestBase):
     def create_adapter(self) -> OPTModelAdapter:
         config = OPTConfig(
             vocab_size=32,
@@ -89,7 +91,7 @@ class TestOPTAdapter(TestModelAdapter):
         return OPTModelAdapter(model)
 
 
-class TestLlamaAdapter(TestModelAdapter):
+class TestLlamaAdapter(ModelAdapterTestBase):
     def create_adapter(self) -> LlamaModelAdapter:
         config = LlamaConfig(
             vocab_size=32,
