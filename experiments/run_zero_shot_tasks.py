@@ -32,7 +32,7 @@ class SlicedLM(BaseLM):
                 args.model, args.load_model_path, args.sparsity, args.hf_token
             )
         else:
-            model_adapter, tokenizer = hf_utils.get_model(args.model, token=args.hf_token)
+            model_adapter, tokenizer = hf_utils.get_model_and_tokenizer(args.model, token=args.hf_token)
 
         self.model_adapter = model_adapter
         self.model_adapter.model.config.sparsity = args.sparsity

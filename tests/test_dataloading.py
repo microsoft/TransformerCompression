@@ -38,7 +38,7 @@ def test_get_dataset(dataset_name) -> None:
 def test_get_loaders(dataset_name: str, max_seqlen: int, batch_size: int, nsamples: int) -> None:
 
     model_name = "facebook/opt-125m"
-    _, tokenizer = hf_utils.get_model(model_name)
+    _, tokenizer = hf_utils.get_model_and_tokenizer(model_name)
 
     dataset, _ = data_utils.get_dataset(dataset_name=dataset_name)
 

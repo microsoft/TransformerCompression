@@ -62,7 +62,7 @@ def do_not_initialize(func):
 
 
 @do_not_initialize
-def get_model(
+def get_model_and_tokenizer(
     model_path: str, uninitialized: bool = False, dtype: torch.dtype = torch.float16, token: str | bool | None = None
 ) -> tuple[ModelAdapter, PreTrainedTokenizerBase]:
     """Loads the model and the tokenizer from the given path."""
@@ -70,6 +70,8 @@ def get_model(
         model_type = "uninitialized"
     else:
         model_type = "pretrained"
+
+    tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True, token=token)
 
     logging.info(f"Loading {model_type} {model_path} model")
 
@@ -90,12 +92,15 @@ def get_model(
         else:
             model = LlamaForCausalLM.from_pretrained(model_path, torch_dtype=dtype, token=token)
             model.config.torch_dtype = dtype
+
+        tokenizer.add_special_tokens({"pad_token": "<pad>"})  # Llama-2 models don't have a pad token by default
+        model.config.pad_token_id = tokenizer.pad_token_id
+        model.resize_token_embeddings(len(tokenizer), pad_to_multiple_of=8)
         model_adapter = LlamaModelAdapter(model)
     else:
         raise NotImplementedError
 
-    tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True, token=token)
-
+    model.seqlen = model.config.max_position_embeddings
     model.eval()  # This switches off dropout.
     model_adapter.use_cache = False
 
@@ -109,7 +114,7 @@ def load_sliced_model(
     model_name: str, model_path: str, sparsity: float, token: str
 ) -> tuple[ModelAdapter, PreTrainedTokenizerBase]:
     """Loads the sliced model and the tokenizer from the given path."""
-    model_adapter, tokenizer = get_model(model_name, uninitialized=True, token=token)
+    model_adapter, tokenizer = get_model_and_tokenizer(model_name, uninitialized=True, token=token)
     replace_layers(model_adapter)
     fuse_modules(model_adapter)
     new_embedding_dimension = int((1 - sparsity) * model_adapter.hidden_size)

@@ -129,8 +129,7 @@ def main() -> None:
         )
     else:
         # load one of the pre-trained models
-
-        model_adapter, tokenizer = hf_utils.get_model(args.model, token=args.hf_token, dtype=config.dtype)
+        model_adapter, tokenizer = hf_utils.get_model_and_tokenizer(args.model, token=args.hf_token, dtype=config.dtype)
 
     model = model_adapter.model
 

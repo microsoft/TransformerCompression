@@ -28,7 +28,7 @@ def evaluate_ppl(model_adapter: ModelAdapter, testloader: DataLoader[Tensor]) ->
 
     model_adapter.model.eval()
 
-    loss_fct = torch.nn.CrossEntropyLoss(reduction="none")
+    loss_fn = torch.nn.CrossEntropyLoss(reduction="none", ignore_index=model.config.pad_token_id)
 
     nlls = []
 
@@ -38,25 +38,20 @@ def evaluate_ppl(model_adapter: ModelAdapter, testloader: DataLoader[Tensor]) ->
         input_ids: Tensor = batch["input_ids"]
         logits: Tensor = model_adapter.compute_output_logits(input_ids=input_ids)
 
-        # Shift outputs and labels autoregressively.
+        # shift outputs and labels autoregressively.
         logits = logits[:, :-1, :]
         shift_labels = batch["input_ids"][:, 1:]
-        shift_attn_mask = batch["attention_mask"][:, 1:]
-        shift_labels[shift_attn_mask == 0] = loss_fct.ignore_index  # ignore padding tokens in loss
 
         # CrossEntropyLoss demands data dimension is dimension 1.
-        nll = loss_fct(logits.permute(0, 2, 1), shift_labels).float()
+        nll = loss_fn(logits.permute(0, 2, 1), shift_labels).float()
 
-        # Find the rows which sum at least to 1 in shift_attn_mask.
-        non_zero_rows = torch.where(shift_attn_mask.sum(dim=1) > 0)[0]
-
-        # Compute the mean of the negative log likelihoods only where shift_attn_mask is not 0
-        nll_means = nll[non_zero_rows].sum(dim=1) / shift_attn_mask[non_zero_rows].sum(dim=1)
-
+        mask = shift_labels != loss_fn.ignore_index
+        nll_means = (nll * mask).sum(dim=1) / mask.sum(dim=1)
         nlls.append(nll_means)
 
+
     nlls_tensor = torch.cat(nlls)
-    ppl = torch.exp(nlls_tensor.sum() / nlls_tensor.numel())
+    ppl = torch.exp(nlls_tensor.mean())
 
     sync_gpus()
 
