@@ -10,8 +10,7 @@ from transformers import (
     LlamaForCausalLM,
     OPTConfig,
     OPTForCausalLM,
-    PreTrainedTokenizer,
-    PreTrainedTokenizerFast,
+    PreTrainedTokenizerBase,
 )
 
 from .adapters.llama_adapter import LlamaModelAdapter
@@ -64,8 +63,8 @@ def do_not_initialize(func):
 
 @do_not_initialize
 def get_model(
-    model_path: str, uninitialized: bool = False, dtype: torch.dtype = torch.float16, token=None
-) -> tuple[ModelAdapter, PreTrainedTokenizer | PreTrainedTokenizerFast]:
+    model_path: str, uninitialized: bool = False, dtype: torch.dtype = torch.float16, token: str | bool | None = None
+) -> tuple[ModelAdapter, PreTrainedTokenizerBase]:
     """Loads the model and the tokenizer from the given path."""
     if uninitialized:
         model_type = "uninitialized"
@@ -108,7 +107,7 @@ def get_model(
 @do_not_initialize
 def load_sliced_model(
     model_name: str, model_path: str, sparsity: float, token: str
-) -> tuple[ModelAdapter, PreTrainedTokenizer | PreTrainedTokenizerFast]:
+) -> tuple[ModelAdapter, PreTrainedTokenizerBase]:
     """Loads the sliced model and the tokenizer from the given path."""
     model_adapter, tokenizer = get_model(model_name, uninitialized=True, token=token)
     replace_layers(model_adapter)
