@@ -95,12 +95,12 @@ class CompressibleLlamaDecoderLayer(LlamaDecoderLayer):
 
 
 class LlamaLayerAdapter(LayerAdapter):
-    def __init__(self, layer: LlamaDecoderLayer | CompressibleLlamaDecoderLayer) -> None:
+    def __init__(self, layer: LlamaDecoderLayer) -> None:
         super().__init__()
-        self._layer = layer
+        self._layer: LlamaDecoderLayer = layer
 
     @property
-    def layer(self) -> LlamaDecoderLayer | CompressibleLlamaDecoderLayer:
+    def layer(self) -> LlamaDecoderLayer:
         return self._layer
 
     @property
@@ -135,7 +135,7 @@ class LlamaModelAdapter(ModelAdapter):
 
     def __init__(self, model: LlamaForCausalLM) -> None:
         super().__init__()
-        self._model = model
+        self._model: LlamaForCausalLM = model
 
     @property
     def model(self) -> Module:
@@ -181,10 +181,7 @@ class LlamaModelAdapter(ModelAdapter):
         return compressed_layer
 
     def get_layers(self) -> list[LlamaLayerAdapter]:
-        return [
-            LlamaLayerAdapter(cast(LlamaDecoderLayer | CompressibleLlamaDecoderLayer, layer))
-            for layer in self._model.model.layers
-        ]
+        return [LlamaLayerAdapter(cast(LlamaDecoderLayer, layer)) for layer in self._model.model.layers]
 
     def get_raw_layer_at(self, index: int) -> Module:
         return self._model.model.layers[index]

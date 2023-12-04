@@ -118,12 +118,12 @@ class CompressibleOPTDecoderLayer(OPTDecoderLayer):
 
 
 class OPTLayerAdapter(LayerAdapter):
-    def __init__(self, layer: OPTDecoderLayer | CompressibleOPTDecoderLayer) -> None:
+    def __init__(self, layer: OPTDecoderLayer) -> None:
         super().__init__()
-        self._layer = layer
+        self._layer: OPTDecoderLayer = layer
 
     @property
-    def layer(self) -> OPTDecoderLayer | CompressibleOPTDecoderLayer:
+    def layer(self) -> OPTDecoderLayer:
         return self._layer
 
     @property
@@ -158,7 +158,7 @@ class OPTModelAdapter(ModelAdapter):
 
     def __init__(self, model: OPTForCausalLM) -> None:
         super().__init__()
-        self._model = model
+        self._model: OPTForCausalLM = model
 
     @property
     def model(self) -> Module:
@@ -204,10 +204,7 @@ class OPTModelAdapter(ModelAdapter):
         return compressed_layer
 
     def get_layers(self) -> list[OPTLayerAdapter]:
-        return [
-            OPTLayerAdapter(cast(OPTDecoderLayer | CompressibleOPTDecoderLayer, layer))
-            for layer in self._model.model.decoder.layers
-        ]
+        return [OPTLayerAdapter(cast(OPTDecoderLayer, layer)) for layer in self._model.model.decoder.layers]
 
     def get_raw_layer_at(self, index: int) -> Module:
         return self._model.model.decoder.layers[index]
