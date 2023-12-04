@@ -27,6 +27,7 @@ def test_get_dataset(dataset_name) -> None:
 @pytest.mark.parametrize(
     "dataset_name, max_seqlen, batch_size, nsamples",
     [
+        ("wikitext2", None, None, None),
         ("wikitext2", None, None, 8),
         ("wikitext2", 512, None, 8),
         ("wikitext2", 512, 4, 8),
@@ -52,6 +53,8 @@ def test_get_loaders(dataset_name: str, max_seqlen: int, batch_size: int, nsampl
         max_seqlen = defaults["max_seqlen"]
     if not batch_size:
         batch_size = defaults["batch_size"]
+    if not nsamples:
+        nsamples = defaults["nsamples"]
 
     loader_varied_seqlen = data_utils.prepare_dataloader(
         dataset=dataset,
@@ -71,11 +74,11 @@ def test_get_loaders(dataset_name: str, max_seqlen: int, batch_size: int, nsampl
     )
 
     assert loader_varied_seqlen is not None
+    assert loader_fixed_seqlen is not None
 
-    if nsamples:
-        n_batches = np.ceil(nsamples / batch_size)
-        assert len(loader_varied_seqlen) == n_batches
-        assert len(loader_fixed_seqlen) == n_batches
+    n_batches = np.ceil(nsamples / batch_size)
+    assert len(loader_varied_seqlen) == n_batches
+    assert len(loader_fixed_seqlen) == n_batches
 
     def check_shape_first_batch(loader, fixed_length):
         batch = next(iter(loader))

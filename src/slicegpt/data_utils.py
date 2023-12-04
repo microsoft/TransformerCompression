@@ -50,9 +50,8 @@ def prepare_dataloader(
     dataset: datasets.Dataset,
     tokenizer: AutoTokenizer,
     max_seqlen: int = 2048,
-    min_seqlen: int = None,
     batch_size: int = 1,
-    nsamples: int = None,
+    nsamples: int = 128,
     varied_seqlen: bool = False,
     seed=42,
 ) -> DataLoader[dict[str, torch.Tensor]]:
@@ -80,8 +79,7 @@ def prepare_dataloader(
 
     data_name = list(dataset.features.keys())[0]
 
-    if min_seqlen:
-        dataset = dataset.filter(lambda x: len(x[data_name]) >= min_seqlen)
+    dataset = dataset.filter(lambda x: len(x[data_name]) >= 0)
 
     if nsamples is None:
         nsamples = len(dataset)
