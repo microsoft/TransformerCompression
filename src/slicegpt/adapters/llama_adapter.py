@@ -131,8 +131,6 @@ class LlamaLayerAdapter(LayerAdapter):
 
 
 class LlamaModelAdapter(ModelAdapter):
-    _no_split_module_classes: list[str] = ["LlamaDecoderLayer", "CompressedLlamaDecoderLayer"]
-
     def __init__(self, model: LlamaForCausalLM) -> None:
         super().__init__()
         self._model: LlamaForCausalLM = model
@@ -142,8 +140,8 @@ class LlamaModelAdapter(ModelAdapter):
         return self._model
 
     @property
-    def no_split_module_classes(self) -> list[str] | None:
-        return LlamaModelAdapter._no_split_module_classes
+    def no_split_module_classes(self) -> list[str]:
+        return ["LlamaDecoderLayer", "CompressedLlamaDecoderLayer"]
 
     @property
     def seqlen(self) -> int:

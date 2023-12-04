@@ -154,8 +154,6 @@ class OPTLayerAdapter(LayerAdapter):
 
 
 class OPTModelAdapter(ModelAdapter):
-    _no_split_module_classes: list[str] = ["OPTDecoderLayer", "CompressedOPTDecoderLayer"]
-
     def __init__(self, model: OPTForCausalLM) -> None:
         super().__init__()
         self._model: OPTForCausalLM = model
@@ -165,8 +163,8 @@ class OPTModelAdapter(ModelAdapter):
         return self._model
 
     @property
-    def no_split_module_classes(self) -> list[str] | None:
-        return OPTModelAdapter._no_split_module_classes
+    def no_split_module_classes(self) -> list[str]:
+        return ["OPTDecoderLayer", "CompressedOPTDecoderLayer"]
 
     @property
     def seqlen(self) -> int:
