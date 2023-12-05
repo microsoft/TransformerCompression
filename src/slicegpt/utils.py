@@ -6,6 +6,7 @@ import gc
 import inspect
 import logging
 import pathlib
+from typing import TypeVar
 
 import torch
 
@@ -67,7 +68,10 @@ def cleanup_memory() -> None:
         )
 
 
-def map_tensors(obj, device=None, dtype=None):
+T = TypeVar('T')
+
+
+def map_tensors(obj: T, device: torch.device | str | None = None, dtype: torch.dtype | None = None) -> T:
     """Recursively map tensors to device and dtype."""
     if isinstance(obj, torch.Tensor):
         if device is not None:
@@ -78,6 +82,6 @@ def map_tensors(obj, device=None, dtype=None):
     elif isinstance(obj, (list, tuple)):
         return type(obj)(map_tensors(x, device, dtype) for x in obj)
     elif isinstance(obj, dict):
-        return {k: map_tensors(v, device, dtype) for k, v in obj.items()}
+        return {k: map_tensors(v, device, dtype) for k, v in obj.items()}  # type: ignore
     else:
         return obj
