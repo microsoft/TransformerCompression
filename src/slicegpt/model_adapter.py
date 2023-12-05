@@ -49,7 +49,8 @@ class LayerAdapter(ABC):
     def get_mlp_output(self) -> Linear:
         raise NotImplementedError
 
-    def get_args_with_updated_hidden_states(self, hidden_states: Any, args: tuple) -> tuple:
+    def get_updated_args(self, hidden_states: Any, args: tuple) -> tuple:
+        """Returns a copy of args with updated hidden_states."""
         return (
             args[: self.hidden_states_args_position] + (hidden_states,) + args[self.hidden_states_args_position + 1 :]
         )
