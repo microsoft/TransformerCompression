@@ -16,7 +16,7 @@ utils.configure_logging()
 os.environ["WANDB__SERVICE_WAIT"] = "300"
 
 
-def argparser():
+def argparser() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--model",
@@ -120,63 +120,64 @@ def main() -> None:
     if args.load_model_path:
         # load the model from load_model_path to compute perplexity and skip rotation and slicing
         logging.info(f"Loading sliced {args.model} model from {args.load_model_path} with sparsity {args.sparsity}")
-        model, tokenizer = hf_utils.load_sliced_model(args.model, args.load_model_path, args.sparsity)
+        model_adapter, tokenizer = hf_utils.load_sliced_model(
+            args.model, args.load_model_path, args.sparsity, args.hf_token
+        )
     else:
         # load one of the pre-trained models
 
-        model, tokenizer = hf_utils.get_model(args.model, token=args.hf_token, dtype=config.dtype)
+        model_adapter, tokenizer = hf_utils.get_model(args.model, token=args.hf_token, dtype=config.dtype)
+
+    model = model_adapter.model
+
+    def reset_model_device() -> None:
+        if args.distribute_model:
+            # distribute model across available GPUs
+            gpu_utils.distribute_model(model_adapter)
+        else:
+            model.to(config.device)
 
     dataloader, testloader = data_utils.get_loaders(
         dataset_name=args.cal_dataset,
         tokenizer=tokenizer,
         nsamples=args.cal_nsamples,
-        seqlen=model.seqlen,
+        seqlen=model_adapter.seqlen,
         batch_size=args.batch_size,
         seed=args.seed,
     )
 
     # evaluate perplexity and exit if sliced model is loaded or if ppl_only is set
     if args.load_model_path or args.ppl_only:
-        if args.distribute_model:
-            # distribute model across available GPUs
-            gpu_utils.distribute_model(model)
-        else:
-            model = model.to(config.device)
-
-        dataset_ppl = gpu_utils.evaluate_ppl(model, testloader)
+        reset_model_device()
+        dataset_ppl = gpu_utils.evaluate_ppl(model_adapter, testloader)
         logging.info(f'Loaded model perplexity: {dataset_ppl}')
         wandb.log({"original_ppl": dataset_ppl})
         return
 
     # original ppl
     if args.eval_baseline:
-        if args.distribute_model:
-            # distribute model across available GPUs
-            gpu_utils.distribute_model(model)
-        else:
-            model = model.to(config.device)
-
-        dataset_ppl = gpu_utils.evaluate_ppl(model, testloader)
+        reset_model_device()
+        dataset_ppl = gpu_utils.evaluate_ppl(model_adapter, testloader)
         logging.info(f'Original ppl: {dataset_ppl:.4f}')
         wandb.log({"original_ppl": dataset_ppl})
-        model = model.cpu()
+        model.cpu()
         utils.cleanup_memory()
 
     # replace modules with compressible equivalents
-    layernorm_fusion.replace_modules(model, model.config)
+    layernorm_fusion.replace_layers(model_adapter)
 
     # fuse layernorms and add rotations to skip connections
-    layernorm_fusion.fuse_modules(model)
+    layernorm_fusion.fuse_modules(model_adapter)
 
     # don't run this on large and/or distributed models
     if args.eval_fused_model and not args.distribute_model:
-        model = model.to(config.device)
+        model.to(config.device)
 
-        dataset_ppl = gpu_utils.evaluate_ppl(model, testloader)
+        dataset_ppl = gpu_utils.evaluate_ppl(model_adapter, testloader)
         logging.info(f'Post-fusion: {dataset_ppl:.4f}')
         wandb.log({"post_fusion_ppl": dataset_ppl})
 
-        model = model.cpu()
+        model.cpu()
 
         # run GC and cleanup GPU memory
         utils.cleanup_memory()
@@ -185,10 +186,10 @@ def main() -> None:
     logging.info(f'Original model parameters: {original_param_count:,d}')
 
     # compute new embedding dimension given the desired sparsity level
-    new_embedding_dimension = int((1 - args.sparsity) * model.config.hidden_size)
+    new_embedding_dimension = int((1 - args.sparsity) * model_adapter.hidden_size)
     logging.info(f"New embedding dimension: {new_embedding_dimension} (sparsity {args.sparsity})")
 
-    rotate.rotate_and_slice(model, dataloader, new_embedding_dimension)
+    rotate.rotate_and_slice(model_adapter, dataloader, new_embedding_dimension)
 
     if args.save_dir:
         if not os.path.exists(args.save_dir):
@@ -198,12 +199,8 @@ def main() -> None:
         torch.save(model.state_dict(), model_file)
         logging.info(f"Saved sliced model to {args.save_dir}")
 
-    if args.distribute_model:
-        gpu_utils.distribute_model(model)
-    else:
-        model = model.to(config.device)
-
-    dataset_ppl = gpu_utils.evaluate_ppl(model, testloader)
+    reset_model_device()
+    dataset_ppl = gpu_utils.evaluate_ppl(model_adapter, testloader)
     logging.info(f'After rotating and slicing {dataset_ppl:.4f}')
     wandb.log({"sliced_ppl": dataset_ppl})
 
