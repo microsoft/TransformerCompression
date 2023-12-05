@@ -29,9 +29,7 @@ class CompressibleOPTDecoderLayer(OPTDecoderLayer):
         past_key_value: tuple[Tensor] | None = None,
         output_attentions: bool | None = False,
         use_cache: bool | None = False,
-    ) -> tuple[Tensor] | tuple[Tensor, Tensor] | tuple[Tensor, tuple[Tensor] | None] | tuple[
-        Tensor, Tensor, tuple[Tensor] | None
-    ]:
+    ) -> tuple:
         """
         Args:
             hidden_states (`torch.FloatTensor`): input to the layer of shape `(batch, seq_len, embed_dim)`
@@ -109,7 +107,7 @@ class CompressibleOPTDecoderLayer(OPTDecoderLayer):
         if use_cache:
             outputs += (present_key_value,)
 
-        return outputs  # type: ignore
+        return outputs
 
 
 class OPTLayerAdapter(LayerAdapter):
@@ -154,6 +152,10 @@ class OPTModelAdapter(ModelAdapter):
         self._model: OPTForCausalLM = model
 
     @property
+    def _config(self) -> OPTConfig:
+        return cast(OPTConfig, self._model.config)
+
+    @property
     def model(self) -> Module:
         return self._model
 
@@ -163,11 +165,11 @@ class OPTModelAdapter(ModelAdapter):
 
     @property
     def seqlen(self) -> int:
-        return cast(OPTConfig, self._model.config).max_position_embeddings
+        return self._config.max_position_embeddings
 
     @property
     def hidden_size(self) -> int:
-        return cast(OPTConfig, self._model.config).hidden_size
+        return self._config.hidden_size
 
     @property
     def should_bake_mean_into_linear(self) -> bool:
@@ -182,17 +184,16 @@ class OPTModelAdapter(ModelAdapter):
         return LayerNorm
 
     def _get_use_cache(self) -> bool:
-        return cast(OPTConfig, self._model.config).use_cache
+        return self._config.use_cache
 
     def _set_use_cache(self, value: bool) -> None:
-        cast(OPTConfig, self._model.config).use_cache = value
+        self._config.use_cache = value
 
     def compute_output_logits(self, input_ids: Tensor) -> FloatTensor:
         return self._model(input_ids=input_ids).logits
 
     def convert_layer_to_compressible(self, layer: OPTDecoderLayer) -> CompressibleOPTDecoderLayer:
-        config = cast(OPTConfig, self._model.config)
-        compressed_layer = CompressibleOPTDecoderLayer(config).to(config.torch_dtype)
+        compressed_layer = CompressibleOPTDecoderLayer(self._config).to(self._config.torch_dtype)
         compressed_layer.load_state_dict(layer.state_dict(), strict=True)
         return compressed_layer
 
