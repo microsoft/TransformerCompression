@@ -30,11 +30,11 @@ def replace_layers(model_adapter: ModelAdapter, verbose: bool = True) -> None:
         logging.info("Replacing modules done")
 
 
-_AnyModule = TypeVar("_AnyModule", bound=Module)
+AnyModule = TypeVar("AnyModule", bound=Module)
 
 
 def replace_modules(
-    root: Module, type_to_replace: type[_AnyModule], new_module_factory: Callable[[_AnyModule], Module]
+    root: Module, type_to_replace: type[AnyModule], new_module_factory: Callable[[AnyModule], Module]
 ) -> None:
     """Replace modules of given type using the supplied module factory.
 
