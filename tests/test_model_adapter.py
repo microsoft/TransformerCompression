@@ -76,6 +76,11 @@ class ModelAdapterTestBase(ABC):
             assert isinstance(emb, Module), f"Embeddings element {i} is not a torch module"
             _validate_protocol_attr(emb, HasWeight, f"Embeddings element {i} is invalid")
 
+    def test_can_set_use_cache(self, model_adapter: ModelAdapter) -> None:
+        old_use_cache = model_adapter.use_cache
+        model_adapter.use_cache = not old_use_cache
+        assert model_adapter.use_cache != old_use_cache, "use_cache.setter does not work"
+
 
 class TestOPTAdapter(ModelAdapterTestBase):
     def create_adapter(self) -> OPTModelAdapter:
