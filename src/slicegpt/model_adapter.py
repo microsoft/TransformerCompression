@@ -92,12 +92,15 @@ class ModelAdapter(ABC):
     def original_layer_norm_type(self) -> type:
         raise NotImplementedError
 
+    @property
     @abstractmethod
-    def _get_use_cache(self) -> bool:
+    def use_cache(self) -> bool:
+        """Must define a setter"""
         raise NotImplementedError
 
+    @use_cache.setter
     @abstractmethod
-    def _set_use_cache(self, value: bool) -> None:
+    def use_cache(self, value: bool) -> None:
         raise NotImplementedError
 
     @abstractmethod
@@ -131,14 +134,6 @@ class ModelAdapter(ABC):
     @abstractmethod
     def get_lm_head(self) -> Linear:
         raise NotImplementedError
-
-    @property
-    def use_cache(self) -> bool:
-        return self._get_use_cache()
-
-    @use_cache.setter
-    def use_cache(self, value: bool) -> None:
-        self._set_use_cache(value)
 
     @final
     def convert_layer_to_compressible_and_register_buffers(self, layer: Module) -> Module:
