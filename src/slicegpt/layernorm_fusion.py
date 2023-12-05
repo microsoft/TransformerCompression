@@ -20,7 +20,7 @@ def replace_layers(model_adapter: ModelAdapter, verbose: bool = True) -> None:
     if verbose:
         logging.info("Replacing modules")
 
-    _replace_modules(
+    replace_modules(
         model_adapter.model,
         model_adapter.original_layer_type,
         model_adapter.convert_layer_to_compressible_and_register_buffers,
@@ -33,15 +33,27 @@ def replace_layers(model_adapter: ModelAdapter, verbose: bool = True) -> None:
 _AnyModule = TypeVar("_AnyModule", bound=Module)
 
 
-def _replace_modules(
+def replace_modules(
     root: Module, type_to_replace: type[_AnyModule], new_module_factory: Callable[[_AnyModule], Module]
 ) -> None:
+    """Replace modules of given type using the supplied module factory.
+
+    Perform a depth-first search of a module hierarchy starting at root
+    and replace all instances of type_to_replace with modules created by
+    new_module_factory. Children of replaced modules are not processed.
+
+    Args:
+        root: the root of the module hierarchy where modules should be replaced
+        type_to_replace: a type instances of which will be replaced
+        new_module_factory: a function that given a module that should be replaced
+            produces a module to replace it with.
+    """
     for name, module in root.named_children():
         new_module = None
         if isinstance(module, type_to_replace):
             new_module = new_module_factory(module)
         elif len(list(module.children())) > 0:
-            _replace_modules(module, type_to_replace, new_module_factory)
+            replace_modules(module, type_to_replace, new_module_factory)
 
         if new_module is not None:
             setattr(root, name, new_module)
@@ -81,7 +93,7 @@ def fuse_modules(model_adapter: ModelAdapter) -> None:
 
     fuse_ln_linear(model_adapter.get_pre_head_layernorm(), [model_adapter.get_lm_head()])
 
-    _replace_modules(
+    replace_modules(
         model_adapter.model, model_adapter.original_layer_norm_type, lambda _: RMSN(model_adapter.hidden_size)
     )
     logging.info("Fusing layernorm modules done")
