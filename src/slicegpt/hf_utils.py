@@ -81,7 +81,7 @@ def get_model(
         else:
             model = OPTForCausalLM.from_pretrained(model_path, torch_dtype=dtype)
             model.config.torch_dtype = dtype
-        adapter = OPTModelAdapter(model)
+        model_adapter = OPTModelAdapter(model)
     elif "meta-llama" in model_path:
         if uninitialized:
             config = LlamaConfig.from_pretrained(model_path, token=token)
@@ -90,18 +90,18 @@ def get_model(
         else:
             model = LlamaForCausalLM.from_pretrained(model_path, torch_dtype=dtype, token=token)
             model.config.torch_dtype = dtype
-        adapter = LlamaModelAdapter(model)
+        model_adapter = LlamaModelAdapter(model)
     else:
         raise NotImplementedError
 
     tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=False, token=token)
 
     model.eval()  # This switches off dropout.
-    adapter.use_cache = False
+    model_adapter.use_cache = False
 
     logging.info("Loading model done")
 
-    return adapter, tokenizer
+    return model_adapter, tokenizer
 
 
 @do_not_initialize
