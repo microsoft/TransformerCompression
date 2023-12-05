@@ -162,7 +162,7 @@ def rotate_and_slice(
 
         # get signal between attention and mlp, rotate and slice
         for i, inp in enumerate(inps):
-            args[i] = layer_adapter.get_args_with_updated_hidden_states(
+            args[i] = layer_adapter.get_updated_args(
                 torch.matmul(inp.to(device=config.device), Q.to(dtype=dtype))[:, :, :new_embedding_dimension].cpu(),
                 args[i],
             )
@@ -243,7 +243,7 @@ def rotate(model_adapter: ModelAdapter, dataloader: torch.utils.data.DataLoader[
         layer = layer_adapter.layer
         # Extract the inputs and outputs of the second layernorm input and calculate the Q_3
         for i, inp in enumerate(inps):
-            args[i] = layer_adapter.get_args_with_updated_hidden_states(inp, args[i])
+            args[i] = layer_adapter.get_updated_args(inp, args[i])
         mlp_ln_inputs, outs = get_signals(layer_adapter, model_adapter.seqlen, args, kwargs)
         _, Q_3 = pca_calc(mlp_ln_inputs)
         Q_3 = Q_3.to(device=config.device)
