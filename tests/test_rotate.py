@@ -37,11 +37,11 @@ def test_pca():
     assert eigen_vec.dtype == x.dtype
 
     # Eigenvalues should be 1.0
-    assert torch.allclose(eigen_val, torch.full_like(eigen_val, 1.0), atol=1e-1)
+    assert torch.allclose(eigen_val, torch.full_like(eigen_val, 1.0, dtype=torch.float, device='cpu'), atol=1e-1)
 
     # Eigenvectors should be the identity matrix
     _, sorted_vec = sorted_by_dim(eigen_val, eigen_vec)
-    assert allclose_up_to_alignment(sorted_vec, torch.eye(2), atol=1e-5)
+    assert allclose_up_to_alignment(sorted_vec, torch.eye(2, dtype=torch.float, device='cpu'), atol=1e-5)
 
     # A pi/4 rotation matrix
     angle = torch.tensor(torch.pi / 4, dtype=torch.float, device='cpu')
