@@ -18,7 +18,7 @@ def replace_layers(model_adapter: ModelAdapter, verbose: bool = True) -> None:
     This function should be called before fusing the modules!
     """
     if verbose:
-        logging.info("Replacing modules")
+        logging.info("Replacing layers")
 
     replace_modules(
         model_adapter.model,
@@ -27,7 +27,7 @@ def replace_layers(model_adapter: ModelAdapter, verbose: bool = True) -> None:
     )
 
     if verbose:
-        logging.info("Replacing modules done")
+        logging.info("Replacing layers done")
 
 
 AnyModule = TypeVar("AnyModule", bound=Module)

@@ -49,7 +49,6 @@ def evaluate_ppl(model_adapter: ModelAdapter, testloader: DataLoader[Tensor]) ->
         nll_means = (nll * mask).sum(dim=1) / mask.sum(dim=1)
         nlls.append(nll_means)
 
-
     nlls_tensor = torch.cat(nlls)
     ppl = torch.exp(nlls_tensor.mean())
 
