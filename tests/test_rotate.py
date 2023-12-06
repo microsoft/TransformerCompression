@@ -27,8 +27,8 @@ def test_pca():
     eigen_val, eigen_vec = rotate.pca_calc([torch.unsqueeze(x, dim=0)])
 
     # TODO: this should not be required
-    eigen_val = eigen_val.to(dtype=torch.float, device=x.device)
-    eigen_vec = eigen_vec.to(dtype=torch.float, device=x.device)
+    eigen_val = eigen_val.to(dtype=torch.float, device='cpu')
+    eigen_vec = eigen_vec.to(dtype=torch.float, device='cpu')
 
     # TODO: these currently fail unless fix above
     assert eigen_val.device == x.device
@@ -44,20 +44,20 @@ def test_pca():
     assert allclose_up_to_alignment(sorted_vec, torch.eye(2), atol=1e-5)
 
     # A pi/4 rotation matrix
-    angle = torch.tensor(torch.pi / 4, device='cpu')
+    angle = torch.tensor(torch.pi / 4, dtype=torch.float, device='cpu')
     c, s = torch.cos(angle), torch.sin(angle)
-    rm = torch.tensor([[c, -s], [s, c]])
+    rm = torch.tensor([[c, -s], [s, c]], dtype=torch.float, device='cpu')
 
     # Case 2: points lie on the main diagonal => expect a pi/4 rotation
     x = torch.tensor([[1, 1], [-1, -1]], dtype=torch.float, device='cpu')
     eigen_val, eigen_vec = rotate.pca_calc([torch.unsqueeze(x, dim=0)])
 
     # TODO: this should not be required
-    eigen_val = eigen_val.to(dtype=torch.float, device=x.device)
-    eigen_vec = eigen_vec.to(dtype=torch.float, device=x.device)
+    eigen_val = eigen_val.to(dtype=torch.float, device='cpu')
+    eigen_vec = eigen_vec.to(dtype=torch.float, device='cpu')
 
     # eigenvalues
-    assert torch.allclose(eigen_val, torch.tensor([4.0, 0.0], dtype=torch.float), atol=1e-1)
+    assert torch.allclose(eigen_val, torch.tensor([4.0, 0.0], dtype=torch.float, device='cpu'), atol=1e-1)
 
     # eigenvectors
     assert allclose_up_to_alignment(eigen_vec, rm, atol=1e-5)
