@@ -144,9 +144,9 @@ def rotate_and_slice(
         inps.append(inp_batch)
         args.append(args_batch)
         kwargs.append(kwargs_batch)
-        ignore_masks.append(
-            torch.stack([batch["input_ids"] == ignore_token for ignore_token in ignore_tokens]).any(dim=0)
-        )
+        # ignore_masks.append(
+        #     torch.stack([batch["input_ids"] == ignore_token for ignore_token in ignore_tokens]).any(dim=0)
+        # )
 
     _, Q = pca_calc(inps, ignore_masks)
     Q = Q.to(device=config.device)
