@@ -28,15 +28,14 @@ def evaluate_ppl(model_adapter: ModelAdapter, testloader: DataLoader[Tensor]) ->
 
     model_adapter.model.eval()
 
-    loss_fn = torch.nn.CrossEntropyLoss(reduction="none", ignore_index=model.config.pad_token_id)
+    loss_fn = torch.nn.CrossEntropyLoss(reduction="none", ignore_index=model_adapter.model.config.pad_token_id)
 
     nlls = []
 
     logging.info("Evaluating perplexity...")
     for batch in testloader:
         batch = utils.map_tensors(batch, config.device)
-        input_ids: Tensor = batch["input_ids"]
-        logits: Tensor = model_adapter.compute_output_logits(input_ids=input_ids)
+        logits = model_adapter.model(**batch).logits
 
         # shift outputs and labels autoregressively.
         logits = logits[:, :-1, :]
