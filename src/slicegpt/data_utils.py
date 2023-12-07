@@ -81,9 +81,6 @@ def prepare_dataloader(
 
     dataset = dataset.filter(lambda x: len(x[data_name]) >= 0)
 
-    if nsamples is None:
-        nsamples = len(dataset)
-
     if not varied_seqlen:
         # create a new dataset where each example is a concatenation of multiple examples of total length = max_seqlen.
         data_list = dataset[data_name]
