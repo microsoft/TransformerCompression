@@ -49,12 +49,14 @@ class SlicedLM(BaseLM):
         layernorm_fusion.replace_layers(model_adapter)
         layernorm_fusion.fuse_modules(model_adapter)
 
-        dataloader, _ = data_utils.get_loaders(
-            dataset_name=args.cal_dataset,
-            nsamples=args.cal_nsamples,
-            batch_size=args.batch_size,
-            seqlen=model_adapter.seqlen,
+        dataset, _ = data_utils.get_dataset(args.cal_dataset)
+        dataloader = data_utils.prepare_dataloader(
+            dataset=dataset,
             tokenizer=tokenizer,
+            max_seqlen=model_adapter.seqlen,
+            batch_size=args.batch_size,
+            nsamples=args.cal_nsamples,
+            varied_seqlen=False,  # TODO(max): unclear what value should be here
         )
 
         new_embedding_dimension = int((1 - args.sparsity) * model_adapter.hidden_size)
