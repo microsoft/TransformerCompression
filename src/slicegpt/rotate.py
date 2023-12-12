@@ -130,11 +130,12 @@ def rotate_and_slice(
     dataloader: torch.utils.data.DataLoader[torch.Tensor],
     new_embedding_dimension: int,
     do_slice_head: bool = False,
-    ignore_tokens: list[int] = [],
+    ignore_tokens: list[int] = None,
 ) -> None:
     """
     Rotate and slice a model, with interleaved slicing and PCA calculations
     """
+    ignore_tokens = ignore_tokens or []
     model_adapter.model.eval()
     dtype = next(iter(model_adapter.model.parameters())).dtype
 
@@ -144,9 +145,9 @@ def rotate_and_slice(
         inps.append(inp_batch)
         args.append(args_batch)
         kwargs.append(kwargs_batch)
-        # ignore_masks.append(
-        #     torch.stack([batch["input_ids"] == ignore_token for ignore_token in ignore_tokens]).any(dim=0)
-        # )
+        ignore_masks.append(
+            torch.stack([batch["input_ids"] == ignore_token for ignore_token in ignore_tokens]).any(dim=0)
+        )
 
     _, Q = pca_calc(inps, ignore_masks)
     Q = Q.to(device=config.device)
@@ -188,8 +189,8 @@ def rotate_and_slice(
 
         # now compute the outputs of the current layer/inputs for the next layer
         # with slicing between Attention and mlp.
-        _, outs = get_signals(layer_adapter, model_adapter.seqlen, args, kwargs)
-        _, Q = pca_calc(outs, ignore_masks)
+        _, inps = get_signals(layer_adapter, model_adapter.seqlen, args, kwargs)
+        _, Q = pca_calc(inps, ignore_masks)
 
         layer.mlp_shortcut_Q = torch.matmul(layer.mlp_shortcut_Q, Q.to(dtype=dtype))
 
@@ -318,13 +319,14 @@ def slice_rotated_model(model_adapter: ModelAdapter, new_embedding_dimension: in
 
 
 @torch.no_grad()
-def pca_calc(X: list[torch.Tensor], ignore_masks: list[torch.Tensor] = []) -> tuple[torch.Tensor, torch.Tensor]:
+def pca_calc(X: list[torch.Tensor], ignore_masks: list[torch.Tensor] = None) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Run PCA on a list of batched data. Returns the eigenvalues and eigenvectors.
     """
     # Run GC and cleanup GPU memory
     cleanup_memory()
 
+    ignore_masks = ignore_masks or []
     H = None
     for idx, X_batch in enumerate(X):
         if ignore_masks:
