@@ -34,7 +34,7 @@ def evaluate_ppl(model_adapter: ModelAdapter, testloader: DataLoader[Tensor]) ->
 
     logging.info("Evaluating perplexity...")
     for batch in testloader:
-        logging.info(f"Evaluating batch {len(nlls)}")
+        logging.debug(f"Evaluating batch {len(nlls)}")
         batch = utils.map_tensors(batch, config.device)
         logits = model_adapter.model(**batch).logits
 
