@@ -135,7 +135,6 @@ def rotate_and_slice(
     """
     Rotate and slice a model, with interleaved slicing and PCA calculations
     """
-    ignore_tokens = ignore_tokens or []
     model_adapter.model.eval()
     dtype = next(iter(model_adapter.model.parameters())).dtype
 
@@ -145,9 +144,10 @@ def rotate_and_slice(
         inps.append(inp_batch)
         args.append(args_batch)
         kwargs.append(kwargs_batch)
-        ignore_masks.append(
-            torch.stack([batch["input_ids"] == ignore_token for ignore_token in ignore_tokens]).any(dim=0)
-        )
+        if ignore_tokens:
+            ignore_masks.append(
+                torch.stack([batch["input_ids"] == ignore_token for ignore_token in ignore_tokens]).any(dim=0)
+            )
 
     _, Q = pca_calc(inps, ignore_masks)
     Q = Q.to(device=config.device)
@@ -326,7 +326,6 @@ def pca_calc(X: list[torch.Tensor], ignore_masks: list[torch.Tensor] = None) -> 
     # Run GC and cleanup GPU memory
     cleanup_memory()
 
-    ignore_masks = ignore_masks or []
     H = None
     for idx, X_batch in enumerate(X):
         if ignore_masks:

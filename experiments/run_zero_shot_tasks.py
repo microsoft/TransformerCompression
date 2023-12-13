@@ -62,7 +62,8 @@ class SlicedLM(BaseLM):
         new_embedding_dimension = int((1 - args.sparsity) * model_adapter.hidden_size)
         logging.info(f"New embedding dimension: {new_embedding_dimension} (sparsity {args.sparsity})")
 
-        rotate.rotate_and_slice(model_adapter, dataloader, new_embedding_dimension)
+        ignore_tokens = [tokenizer.pad_token_id]  # TODO(max): unclear whether to pass ignore tokens here or not
+        rotate.rotate_and_slice(model_adapter, dataloader, new_embedding_dimension, ignore_tokens=ignore_tokens)
 
     @classmethod
     def create_from_arg_string(cls, args, kwargs):
