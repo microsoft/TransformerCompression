@@ -28,25 +28,29 @@ def evaluate_ppl(model_adapter: ModelAdapter, testloader: DataLoader[Tensor]) ->
 
     model_adapter.model.eval()
 
-    loss_fct = torch.nn.CrossEntropyLoss(reduction="none")
+    loss_fn = torch.nn.CrossEntropyLoss(reduction="none", ignore_index=model_adapter.model.config.pad_token_id)
 
     nlls = []
 
+    logging.info("Evaluating perplexity...")
     for batch in testloader:
-        input_ids: Tensor = batch.to(config.device)
-        logits: Tensor = model_adapter.compute_output_logits(input_ids=input_ids)
+        logging.debug(f"Evaluating batch {len(nlls)}")
+        batch = utils.map_tensors(batch, config.device)
+        logits = model_adapter.model(**batch).logits
 
-        # Shift outputs and labels autoregressively.
+        # shift outputs and labels autoregressively.
         logits = logits[:, :-1, :]
-        shift_labels = input_ids[:, 1:]
+        shift_labels = batch["input_ids"][:, 1:]
 
         # CrossEntropyLoss demands data dimension is dimension 1.
-        nll = loss_fct(logits.permute(0, 2, 1), shift_labels).float().sum(dim=1) / model_adapter.seqlen
+        nll = loss_fn(logits.permute(0, 2, 1), shift_labels).float()
 
-        nlls.append(nll)
+        mask = shift_labels != loss_fn.ignore_index
+        nll_means = (nll * mask).sum(dim=1) / mask.sum(dim=1)
+        nlls.append(nll_means)
 
     nlls_tensor = torch.cat(nlls)
-    ppl = torch.exp(nlls_tensor.sum() / nlls_tensor.numel())
+    ppl = torch.exp(nlls_tensor.mean())
 
     sync_gpus()
 

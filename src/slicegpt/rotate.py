@@ -130,6 +130,7 @@ def rotate_and_slice(
     dataloader: torch.utils.data.DataLoader[torch.Tensor],
     new_embedding_dimension: int,
     do_slice_head: bool = False,
+    ignore_tokens: list[int] | None = None,
 ) -> None:
     """
     Rotate and slice a model, with interleaved slicing and PCA calculations
@@ -137,14 +138,18 @@ def rotate_and_slice(
     model_adapter.model.eval()
     dtype = next(iter(model_adapter.model.parameters())).dtype
 
-    inps, args, kwargs = [], [], []
+    inps, args, kwargs, ignore_masks = [], [], [], []
     for batch in dataloader:
         inp_batch, args_batch, kwargs_batch = get_layer0_inputs(model_adapter, batch)
         inps.append(inp_batch)
         args.append(args_batch)
         kwargs.append(kwargs_batch)
+        if ignore_tokens:
+            ignore_masks.append(
+                torch.stack([batch["input_ids"] == ignore_token for ignore_token in ignore_tokens]).any(dim=0)
+            )
 
-    _, Q = pca_calc(inps)
+    _, Q = pca_calc(inps, ignore_masks)
     Q = Q.to(device=config.device)
 
     rotate_embeddings(model_adapter, Q)
@@ -168,7 +173,7 @@ def rotate_and_slice(
             )
 
         mlp_ln_inputs, _ = get_signals(layer_adapter, model_adapter.seqlen, args, kwargs)
-        _, Q = pca_calc(mlp_ln_inputs)
+        _, Q = pca_calc(mlp_ln_inputs, ignore_masks)
         Q = Q.to(device=config.device, dtype=torch.float64)
 
         layer.attn_shortcut_Q = torch.matmul(layer.attn_shortcut_Q, Q.to(dtype=dtype))
@@ -185,7 +190,7 @@ def rotate_and_slice(
         # now compute the outputs of the current layer/inputs for the next layer
         # with slicing between Attention and mlp.
         _, inps = get_signals(layer_adapter, model_adapter.seqlen, args, kwargs)
-        _, Q = pca_calc(inps)
+        _, Q = pca_calc(inps, ignore_masks)
 
         layer.mlp_shortcut_Q = torch.matmul(layer.mlp_shortcut_Q, Q.to(dtype=dtype))
 
@@ -314,7 +319,9 @@ def slice_rotated_model(model_adapter: ModelAdapter, new_embedding_dimension: in
 
 
 @torch.no_grad()
-def pca_calc(X: list[torch.Tensor]) -> tuple[torch.Tensor, torch.Tensor]:
+def pca_calc(
+    X: list[torch.Tensor], ignore_masks: list[torch.Tensor] | None = None
+) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Run PCA on a list of batched data. Returns the eigenvalues and eigenvectors.
     """
@@ -322,7 +329,10 @@ def pca_calc(X: list[torch.Tensor]) -> tuple[torch.Tensor, torch.Tensor]:
     cleanup_memory()
 
     H = None
-    for X_batch in X:
+    for idx, X_batch in enumerate(X):
+        if ignore_masks:
+            X_batch[ignore_masks[idx]] = 0
+
         X_batch = X_batch.double().to(device=config.device)
         H_batch = torch.sum(X_batch.mT @ X_batch, dim=0)  # sum over the batch dimension.
         H = H_batch if H is None else H + H_batch

@@ -42,7 +42,8 @@ def get_layer0_inputs(model_adapter: ModelAdapter, batch: Tensor) -> tuple[Tenso
     model_adapter.set_raw_layer_at(0, layer0_catcher)
 
     try:
-        model_adapter.model(batch.to(config.device))
+        batch = utils.map_tensors(batch, device=config.device)
+        model_adapter.model(**batch)
     except ValueError:
         pass
 
@@ -98,5 +99,4 @@ def get_signals(
         outputs.append(out)
 
     hook.remove()
-
     return mlp_ln_inputs, outputs

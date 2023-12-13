@@ -53,6 +53,7 @@ def argparser() -> argparse.Namespace:
         default=128,
     )
     parser.add_argument("--batch-size", type=int, default=1, help="Batch size for loading the calibration data.")
+    parser.add_argument("--varied-seqlen", action="store_true", help="Varied sequence lengths in the calibration data.")
     parser.add_argument("--seed", type=int, default=42, help="Seed for sampling the calibration data.")
     parser.add_argument(
         "--sparsity", type=float, default=0.0, help="A measure of how much slicing is applied (in the range [0, 1))"
@@ -98,6 +99,9 @@ def argparser() -> argparse.Namespace:
     else:
         raise argparse.ArgumentTypeError(f"Data type should be one of 'fp16', 'fp32'")
 
+    if args.batch_size > args.cal_nsamples:
+        raise argparse.ArgumentTypeError(f"Batch size can not be greater than the number of calibration samples")
+
     return args
 
 
@@ -125,8 +129,7 @@ def main() -> None:
         )
     else:
         # load one of the pre-trained models
-
-        model_adapter, tokenizer = hf_utils.get_model(args.model, token=args.hf_token, dtype=config.dtype)
+        model_adapter, tokenizer = hf_utils.get_model_and_tokenizer(args.model, token=args.hf_token, dtype=config.dtype)
 
     model = model_adapter.model
 
@@ -137,19 +140,30 @@ def main() -> None:
         else:
             model.to(config.device)
 
-    dataloader, testloader = data_utils.get_loaders(
-        dataset_name=args.cal_dataset,
+    train_dataset, test_dataset = data_utils.get_dataset(args.cal_dataset)
+    train_loader = data_utils.prepare_dataloader(
+        dataset=train_dataset,
+        tokenizer=tokenizer,
+        max_seqlen=model.seqlen,
+        batch_size=args.batch_size,
+        nsamples=args.cal_nsamples,
+        varied_seqlen=args.varied_seqlen,
+        seed=args.seed,
+    )
+    test_loader = data_utils.prepare_dataloader(
+        dataset=test_dataset,
         tokenizer=tokenizer,
         nsamples=args.cal_nsamples,
-        seqlen=model_adapter.seqlen,
+        max_seqlen=model_adapter.seqlen,
         batch_size=args.batch_size,
+        varied_seqlen=args.varied_seqlen,
         seed=args.seed,
     )
 
     # evaluate perplexity and exit if sliced model is loaded or if ppl_only is set
     if args.load_model_path or args.ppl_only:
         reset_model_device()
-        dataset_ppl = gpu_utils.evaluate_ppl(model_adapter, testloader)
+        dataset_ppl = gpu_utils.evaluate_ppl(model_adapter, test_loader)
         logging.info(f'Loaded model perplexity: {dataset_ppl}')
         wandb.log({"original_ppl": dataset_ppl})
         return
@@ -157,7 +171,7 @@ def main() -> None:
     # original ppl
     if args.eval_baseline:
         reset_model_device()
-        dataset_ppl = gpu_utils.evaluate_ppl(model_adapter, testloader)
+        dataset_ppl = gpu_utils.evaluate_ppl(model_adapter, test_loader)
         logging.info(f'Original ppl: {dataset_ppl:.4f}')
         wandb.log({"original_ppl": dataset_ppl})
         model.cpu()
@@ -173,7 +187,7 @@ def main() -> None:
     if args.eval_fused_model and not args.distribute_model:
         model.to(config.device)
 
-        dataset_ppl = gpu_utils.evaluate_ppl(model_adapter, testloader)
+        dataset_ppl = gpu_utils.evaluate_ppl(model_adapter, test_loader)
         logging.info(f'Post-fusion: {dataset_ppl:.4f}')
         wandb.log({"post_fusion_ppl": dataset_ppl})
 
@@ -189,7 +203,8 @@ def main() -> None:
     new_embedding_dimension = int((1 - args.sparsity) * model_adapter.hidden_size)
     logging.info(f"New embedding dimension: {new_embedding_dimension} (sparsity {args.sparsity})")
 
-    rotate.rotate_and_slice(model_adapter, dataloader, new_embedding_dimension)
+    ignore_tokens = [tokenizer.pad_token_id]
+    rotate.rotate_and_slice(model_adapter, train_loader, new_embedding_dimension, ignore_tokens=ignore_tokens)
 
     if args.save_dir:
         if not os.path.exists(args.save_dir):
@@ -200,7 +215,7 @@ def main() -> None:
         logging.info(f"Saved sliced model to {args.save_dir}")
 
     reset_model_device()
-    dataset_ppl = gpu_utils.evaluate_ppl(model_adapter, testloader)
+    dataset_ppl = gpu_utils.evaluate_ppl(model_adapter, test_loader)
     logging.info(f'After rotating and slicing {dataset_ppl:.4f}')
     wandb.log({"sliced_ppl": dataset_ppl})
 
