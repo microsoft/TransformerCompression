@@ -130,7 +130,7 @@ def rotate_and_slice(
     dataloader: torch.utils.data.DataLoader[torch.Tensor],
     new_embedding_dimension: int,
     do_slice_head: bool = False,
-    ignore_tokens: list[int] = None,
+    ignore_tokens: list[int] | None = None,
 ) -> None:
     """
     Rotate and slice a model, with interleaved slicing and PCA calculations
@@ -319,7 +319,9 @@ def slice_rotated_model(model_adapter: ModelAdapter, new_embedding_dimension: in
 
 
 @torch.no_grad()
-def pca_calc(X: list[torch.Tensor], ignore_masks: list[torch.Tensor] = None) -> tuple[torch.Tensor, torch.Tensor]:
+def pca_calc(
+    X: list[torch.Tensor], ignore_masks: list[torch.Tensor] | None = None
+) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Run PCA on a list of batched data. Returns the eigenvalues and eigenvectors.
     """
