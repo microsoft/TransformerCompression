@@ -96,7 +96,7 @@ def main():
         )
     else:
         # load one of the pre-trained models
-        model_adapter, tokenizer = hf_utils.get_model(args.model, token=args.hf_token)
+        model_adapter, tokenizer = hf_utils.get_model_and_tokenizer(args.model, token=args.hf_token)
 
     if args.distribute_model:
         # distribute model across available GPUs

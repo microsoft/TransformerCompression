@@ -32,7 +32,7 @@ class SlicedLM(BaseLM):
                 args.model, args.load_model_path, args.sparsity, args.hf_token
             )
         else:
-            model_adapter, tokenizer = hf_utils.get_model(args.model, token=args.hf_token)
+            model_adapter, tokenizer = hf_utils.get_model_and_tokenizer(args.model, token=args.hf_token)
 
         self.model_adapter = model_adapter
         self.model_adapter.model.config.sparsity = args.sparsity
@@ -49,18 +49,21 @@ class SlicedLM(BaseLM):
         layernorm_fusion.replace_layers(model_adapter)
         layernorm_fusion.fuse_modules(model_adapter)
 
-        dataloader, _ = data_utils.get_loaders(
-            dataset_name=args.cal_dataset,
-            nsamples=args.cal_nsamples,
-            batch_size=args.batch_size,
-            seqlen=model_adapter.seqlen,
+        dataset, _ = data_utils.get_dataset(args.cal_dataset)
+        dataloader = data_utils.prepare_dataloader(
+            dataset=dataset,
             tokenizer=tokenizer,
+            max_seqlen=model_adapter.seqlen,
+            batch_size=args.batch_size,
+            nsamples=args.cal_nsamples,
+            varied_seqlen=False,  # TODO(max): unclear what value should be here
         )
 
         new_embedding_dimension = int((1 - args.sparsity) * model_adapter.hidden_size)
         logging.info(f"New embedding dimension: {new_embedding_dimension} (sparsity {args.sparsity})")
 
-        rotate.rotate_and_slice(model_adapter, dataloader, new_embedding_dimension)
+        ignore_tokens = [tokenizer.pad_token_id]  # TODO(max): unclear whether to pass ignore tokens here or not
+        rotate.rotate_and_slice(model_adapter, dataloader, new_embedding_dimension, ignore_tokens=ignore_tokens)
 
     @classmethod
     def create_from_arg_string(cls, args, kwargs):
