@@ -108,28 +108,29 @@ def benchmark(model_adapter: ModelAdapter, input_batch: torch.Tensor) -> dict:
 
     layers = model_adapter.get_layers()
     for idx, layer_adapter in enumerate(layers):
-        # Clear past cache after each layer get called to get accurate timing of each forward pass.
+        # Clear past cache after each layer gets called to get accurate timing of each forward pass.
         layer_adapter.layer.register_forward_hook(clear_past_cache(idx))
 
     with torch.no_grad():
-        batch_size, input_seq_len = input_batch.shape[:2]
-        attention_mask = torch.ones((batch_size, input_seq_len))
+        input_ids = input_batch["input_ids"]
+        batch_size, input_seq_len = input_ids.shape[:2]
+        attention_mask = input_batch["attention_mask"]
         time_measurements = []
 
         for i in tqdm(range(input_seq_len), desc="Benchmarking"):
-            input_batch_i = input_batch[:, i].reshape((batch_size, 1)).to(config.device)
+            input_ids_i = input_ids[:, i].reshape((batch_size, 1)).to(config.device)
             attention_mask_i = attention_mask[:, : (i + 1)].to(config.device)
 
             sync_gpus()
             start_time = time.time()
-            output = model_adapter.model(input_batch_i, past_key_values=cache["past"], attention_mask=attention_mask_i)
+            output = model_adapter.model(input_ids_i, past_key_values=cache["past"], attention_mask=attention_mask_i)
             sync_gpus()
             time_measurements.append(time.time() - start_time)
 
             cache["past"] = list(output.past_key_values)
             del output
 
-            input_batch_i, attention_mask_i = input_batch_i.to("cpu"), attention_mask_i.to("cpu")
+            input_ids_i, attention_mask_i = input_ids_i.to("cpu"), attention_mask_i.to("cpu")
 
         median_time = np.median(time_measurements)
         throughput = batch_size / median_time
