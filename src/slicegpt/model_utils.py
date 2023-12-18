@@ -83,7 +83,7 @@ def get_signals(
     def hook_fn(_, args: tuple, _output: Any) -> None:
         inp = args[0]  # Position in RMSN.forward args
         # The mlp operates on (batch_size * seqlen, hidden_size) tensors, so recover batch dimension.
-        mlp_ln_inputs.append(inp.cpu().reshape(batch_size, -1, inp.shape[-1]))
+        mlp_ln_inputs.append(inp.cpu().reshape(-1, seqlen, inp.shape[-1]))
 
     second_layernorm = layer_adapter.get_second_layernorm()
     assert isinstance(second_layernorm, RMSN)
@@ -97,9 +97,9 @@ def get_signals(
             out = out[layer_adapter.hidden_states_output_position]
         out = out.cpu()
         outputs.append(out)
-        mlp_ln_inputs[-1] = mlp_ln_inputs[-1].reshape(
-            inp.shape[-3], inp.shape[-2], -1
-        )  # The mlp operates on (batch_size * seqlen, hidden_size) tensors, so `inp` must be reshaped to the right dimensions.
+        # mlp_ln_inputs[-1] = mlp_ln_inputs[-1].reshape(
+        #     inp.shape[-3], inp.shape[-2], -1
+        # )  # The mlp operates on (batch_size * seqlen, hidden_size) tensors, so `inp` must be reshaped to the right dimensions.
 
     hook.remove()
     return mlp_ln_inputs, outputs

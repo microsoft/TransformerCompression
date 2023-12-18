@@ -9,10 +9,13 @@ import torch
 import transformers
 import wandb
 from torch.utils.data import DataLoader
-from transformers import Trainer, TrainingArguments
+from transformers import Trainer, TrainingArguments, EarlyStoppingCallback
 
 from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate, utils
 from slicegpt.config import config
+
+
+from peft import LoraConfig, TaskType, get_peft_model
 
 utils.configure_logging()
 
@@ -74,6 +77,7 @@ class CustomTrainer(Trainer):
         return self.test_loader
 
     def compute_loss(self, model, inputs, return_outputs=False):
+        #TODO: make this work for sequences with mask tokens in them
         outputs = model(**inputs)
 
         # shift outputs and labels autoregressively.
@@ -199,20 +203,20 @@ def main() -> None:
         logging.info(f'Failed to initialize wandb: {e}, continuing without wandb')
         wandb.init(project="slicegpt", mode='disabled')
 
-    model, tokenizer = hf_utils.get_model_and_tokenizer(args.model, token=args.hf_token, dtype=config.dtype)
+    model_adapter, tokenizer = hf_utils.get_model_and_tokenizer(args.model, token=args.hf_token, dtype=config.dtype)
 
-    train_dataset, test_dataset = data_utils.get_dataset(args.cal_dataset)
+    dataset = data_utils.get_dataset(args.cal_dataset)
     calibration_loader = data_utils.prepare_dataloader(
-        dataset=train_dataset,
+        dataset=dataset["train"],
         tokenizer=tokenizer,
-        max_seqlen=model.seqlen,
+        max_seqlen=model_adapter.seqlen,
         batch_size=args.batch_size,
         nsamples=args.cal_nsamples,
         varied_seqlen=args.varied_seqlen,
         seed=args.seed,
     )
-    train_loader = data_utils.prepare_dataloader(
-        dataset=train_dataset,
+    finetune_train_loader = data_utils.prepare_dataloader(
+        dataset=dataset["train"],
         tokenizer=tokenizer,
         max_seqlen=512,
         batch_size=args.batch_size,
@@ -220,8 +224,17 @@ def main() -> None:
         varied_seqlen=args.varied_seqlen,
         seed=args.seed,
     )
-    test_loader = data_utils.prepare_dataloader(
-        dataset=test_dataset,
+    finetune_test_loader = data_utils.prepare_dataloader(
+        dataset=dataset["test"],
+        tokenizer=tokenizer,
+        max_seqlen=2048,
+        batch_size=args.batch_size,
+        nsamples=args.test_nsamples,
+        varied_seqlen=args.varied_seqlen,
+        seed=args.seed,
+    )
+    finetune_val_loader = data_utils.prepare_dataloader(
+        dataset=dataset["validation"],
         tokenizer=tokenizer,
         max_seqlen=2048,
         batch_size=args.batch_size,
@@ -233,47 +246,44 @@ def main() -> None:
     if args.load_model_path:
         # load the model from load_model_path to compute perplexity and skip rotation and slicing
         logging.info(f"Loading sliced {args.model} model from {args.load_model_path} with sparsity {args.sparsity}")
-        model, tokenizer = hf_utils.load_sliced_model(
+        model_adapter, tokenizer = hf_utils.load_sliced_model(
             args.model, args.load_model_path, args.sparsity, token=args.hf_token
         )
     else:
         # load one of the pre-trained models
-        model, tokenizer = hf_utils.get_model_and_tokenizer(args.model, token=args.hf_token, dtype=config.dtype)
-
+        model_adapter, tokenizer = hf_utils.get_model_and_tokenizer(args.model, token=args.hf_token, dtype=config.dtype)
+    
         # replace modules with compressible equivalents
-        layernorm_fusion.replace_modules(model, model.config)
+        layernorm_fusion.replace_layers(model_adapter)
 
         # fuse layernorms and add rotations to skip connections
-        layernorm_fusion.fuse_modules(model)
+        layernorm_fusion.fuse_modules(model_adapter)
 
-        original_param_count = sum(int(p.nelement()) for p in model.parameters())
+        original_param_count = sum(int(p.nelement()) for p in model_adapter.model.parameters())
         logging.info(f'Original model parameters: {original_param_count:,d}')
 
         # compute new embedding dimension given the desired sparsity level
-        new_embedding_dimension = int((1 - args.sparsity) * model.config.hidden_size)
+        new_embedding_dimension = int((1 - args.sparsity) * model_adapter.hidden_size)
         logging.info(f"New embedding dimension: {new_embedding_dimension} (sparsity {args.sparsity})")
 
         ignore_tokens = [tokenizer.pad_token_id]
-        rotate.rotate_and_slice(model, calibration_loader, new_embedding_dimension, ignore_tokens=ignore_tokens)
+        rotate.rotate_and_slice(model_adapter, calibration_loader, new_embedding_dimension, ignore_tokens=ignore_tokens)
 
         # save sliced model
         model_file = os.path.join("sliced_models", os.path.basename(args.model) + "_" + str(args.sparsity) + ".pt")
-        torch.save(model.state_dict(), model_file)
+        torch.save(model_adapter.model.state_dict(), model_file)
         logging.info(f"Saved sliced model to sliced_models")
 
     if args.distribute_model:
-        gpu_utils.distribute_model(model)
+        gpu_utils.distribute_model(model_adapter)
     else:
-        model = model.to(config.device)
+        model_adapter.model.to(config.device)
 
-    dataset_ppl = gpu_utils.evaluate_ppl(model, test_loader)
+    dataset_ppl = gpu_utils.evaluate_ppl(model_adapter, finetune_test_loader)
     logging.info(f'PPL before finetuning: {dataset_ppl:.4f}')
     wandb.log({"sliced_ppl": dataset_ppl})
 
     utils.cleanup_memory()
-
-    # add lora to model
-    from peft import LoraConfig, TaskType, get_peft_model
 
     lora_target_modules = [
         "k_proj",
@@ -297,7 +307,7 @@ def main() -> None:
     model.print_trainable_parameters()
 
     # create optimizer and scheduler
-    optimizer, lr_scheduler = get_optimizer_and_scheduler(model, train_dataset)
+    optimizer, lr_scheduler = get_optimizer_and_scheduler(model, dataset["train"])
 
     training_args = TrainingArguments(
         output_dir=f"./results_{os.path.basename(args.model)}_{args.sparsity}",  # output directory
@@ -313,10 +323,11 @@ def main() -> None:
     trainer = CustomTrainer(
         model=model,
         tokenizer=tokenizer,
-        train_loader=train_loader,
-        test_loader=test_loader,
+        train_loader=finetune_train_loader,
+        test_loader=finetune_test_loader,
         args=training_args,
         optimizers=(optimizer, lr_scheduler),
+        callbacks=[EarlyStoppingCallback(early_stopping_patience=5)],
     )
 
     model.train()
@@ -332,7 +343,7 @@ def main() -> None:
 
     utils.cleanup_memory()
 
-    dataset_ppl = gpu_utils.evaluate_ppl(model, test_loader)
+    dataset_ppl = gpu_utils.evaluate_ppl(model, finetune_test_loader)
     logging.info(f'PPL after finetuning: {dataset_ppl:.4f}')
     wandb.log({"finetuned_ppl": dataset_ppl})
 

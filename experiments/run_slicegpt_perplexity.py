@@ -141,7 +141,8 @@ def main() -> None:
         else:
             model.to(config.device)
 
-    train_dataset, test_dataset = data_utils.get_dataset(args.cal_dataset)
+    dataset = data_utils.get_dataset(args.cal_dataset)
+    train_dataset, test_dataset = dataset["train"], dataset["test"]
     train_loader = data_utils.prepare_dataloader(
         dataset=train_dataset,
         tokenizer=tokenizer,

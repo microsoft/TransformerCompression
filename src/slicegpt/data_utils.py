@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader, SubsetRandomSampler
 from transformers import PreTrainedTokenizerBase
 
 
-def get_dataset(dataset_name: str) -> tuple[datasets.Dataset, datasets.Dataset]:
+def get_dataset(dataset_name: str) -> dict[str:datasets.Dataset]:
     """
     Get the train and test dataset from the HuggingFace datasets library.
 
@@ -21,9 +21,6 @@ def get_dataset(dataset_name: str) -> tuple[datasets.Dataset, datasets.Dataset]:
     """
     logging.info(f"Loading dataset: {dataset_name}")
 
-    train_data_files = None
-    test_data_files = None
-    test_split = "test"
     if dataset_name == "wikitext2":
         path = "wikitext"
         name = "wikitext-2-raw-v1"
@@ -35,15 +32,16 @@ def get_dataset(dataset_name: str) -> tuple[datasets.Dataset, datasets.Dataset]:
         name = "allenai--c4"
         train_data_files = {"train": "en/c4-train.00000-of-01024.json.gz"}
         test_data_files = {"validation": "en/c4-validation.00000-of-00008.json.gz"}
-        test_split = "validation"
     else:
         raise NotImplementedError("The provided dataset is not supported")
 
-    train_dataset = datasets.load_dataset(path, name=name, data_files=train_data_files, split="train")
-    test_dataset = datasets.load_dataset(path, name=name, data_files=test_data_files, split=test_split)
-
+    if dataset_name == "c4":
+        dataset = {split : datasets.load_dataset(path, name=name, data_files=data_files, split=split) for split, data_files in [("train", train_data_files), ("validation", test_data_files)]}
+    else:
+        dataset = {split : datasets.load_dataset(path, name=name, split=split) for split in ["train", "test", "validation"]}
+        
     logging.info("Loading dataset done")
-    return train_dataset, test_dataset
+    return dataset
 
 
 def prepare_dataloader(
@@ -108,34 +106,6 @@ def prepare_dataloader(
 
         dataset = datasets.Dataset.from_dict({data_name: new_data_list})
 
-    if min_seqlen:
-        dataset = dataset.filter(lambda x: len(x[data_name]) >= min_seqlen)
-
-    if nsamples is None:
-        nsamples = len(dataset)
-
-    if not varied_seqlen:
-        # create a new dataset where each example is a concatenation of multiple examples of total length = max_seqlen.
-        data_list = dataset[data_name]
-        new_data_list = []
-
-        torch.manual_seed(seed)
-        indices = torch.randperm(len(data_list)).tolist()
-
-        while len(new_data_list) < nsamples:
-            item_idx = indices.pop()
-            item = data_list[item_idx]
-            tokens = tokenizer.tokenize(item)
-            while len(tokens) < max_seqlen and item_idx + 1 < len(data_list):
-                item_idx += 1
-                tokens += tokenizer.tokenize("\n\n" + data_list[item_idx])
-
-            if len(tokens) >= max_seqlen:
-                tokens = tokens[:max_seqlen]  # truncate to max_seqlen
-                new_data_list.append(tokenizer.convert_tokens_to_string(tokens))
-
-        dataset = datasets.Dataset.from_dict({data_name: new_data_list})
-
     def tokenize(data_batch):
         # tokenize then pad each batch according to the longest sequence in the batch
         return tokenizer(
@@ -152,6 +122,6 @@ def prepare_dataloader(
     torch.manual_seed(seed)
     sampler = SubsetRandomSampler(torch.randperm(len(dataset))[:nsamples])
 
-    loader = DataLoader(dataset, batch_size=batch_size, sampler=sampler, num_workers=2)
+    loader = DataLoader(dataset, batch_size=batch_size, sampler=sampler, num_workers=1)
     logging.info(f"Preparing dataloader done")
     return loader
