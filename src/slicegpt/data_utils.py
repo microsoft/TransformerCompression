@@ -98,7 +98,7 @@ def prepare_dataloader(
                 tokens += tokenizer.tokenize(sep + item)
                 idx += 1
 
-            # TODO(max): ple double check that we want non-overlapping examples
+            # TODO(max): pls double check that we want non-overlapping examples
             indices = indices[:start_idx] + indices[idx:]
 
             if len(tokens) >= max_seqlen:
