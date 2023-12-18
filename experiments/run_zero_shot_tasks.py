@@ -11,11 +11,13 @@ import wandb
 from lm_eval import evaluator, tasks
 from lm_eval import utils as lm_eval_utils
 from lm_eval.base import BaseLM
+from peft import LoraConfig, TaskType
 
 from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate, utils
 from slicegpt.config import config
 from slicegpt.model_adapter import ModelAdapter
 
+from peft import LoraConfig, TaskType
 utils.configure_logging()
 
 os.environ["WANDB__SERVICE_WAIT"] = "300"
@@ -28,8 +30,29 @@ class SlicedLM(BaseLM):
         super().__init__()
 
         if args.load_model_path:
+            lora_config = None
+
+            if args.finetuned:
+                lora_target_modules = [
+                    "k_proj",
+                    "v_proj",
+                    "q_proj",
+                    "out_proj",
+                    "fc1",
+                    "fc2",
+                ]  # TODO: make this applicable to other models
+
+                # TODO: make this configurable from CLI
+                lora_config = LoraConfig(
+                    r=8,
+                    lora_alpha=32,
+                    lora_dropout=0.1,
+                    task_type=TaskType.CAUSAL_LM,
+                    target_modules=lora_target_modules,
+                )
+
             model_adapter, tokenizer = hf_utils.load_sliced_model(
-                args.model, args.load_model_path, args.sparsity, args.hf_token
+                args.model, args.load_model_path, args.sparsity, args.hf_token, lora_config=lora_config
             )
         else:
             model_adapter, tokenizer = hf_utils.get_model_and_tokenizer(args.model, token=args.hf_token)
@@ -171,10 +194,11 @@ def parse_args():
     )
 
     parser.add_argument("--load-model-path", type=str, default=None, help="Path to load the sliced model from.")
+    parser.add_argument("--finetuned", action="store_true", help="Whether the model to load is a finetuned one.")
 
     parser.add_argument("--baseline", action="store_true", help="Evaluate the dense (un-sliced) model.")
-
     parser.add_argument('--hf-token', type=str, default=None)
+    parser.add_argument('--no-wandb', action="store_true", help="Disable wandb.")
 
     return parser.parse_args()
 
@@ -210,11 +234,25 @@ def main() -> None:
 
     logging.info(f"Selected Tasks: {task_names}")
 
-    # Run the evaluation.
+    # run the evaluation.
     results = evaluator.simple_evaluate(model=model, tasks=task_names, no_cache=True)
+
     wandb.log(results['results'])
     logging.info(json.dumps(results, indent=2))
     logging.info(evaluator.make_table(results))
+
+    # calculate the avg across the tasks
+    n_tasks = len(task_names)
+    acc_cumul = 0
+    for task in results['results']:
+        if results['results'][task].get('acc_norm', None):
+            acc_cumul += results['results'][task]['acc_norm']
+        else:
+            acc_cumul += results['results'][task]['acc']
+
+    acc_avg = acc_cumul / n_tasks
+    wandb.log({'acc_avg': acc_avg})
+    logging.info(f"Average accuracy across tasks: {acc_avg}")
 
 
 if __name__ == "__main__":
