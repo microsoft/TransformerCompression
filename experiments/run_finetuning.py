@@ -200,15 +200,9 @@ def main() -> None:
         varied_seqlen=args.varied_seqlen,
         seed=args.seed,
     )
-    finetune_train_loader = data_utils.prepare_dataloader(
-        dataset=dataset["train"],
-        tokenizer=tokenizer,
-        max_seqlen=512,
-        batch_size=args.batch_size,
-        nsamples=args.train_nsamples,
-        varied_seqlen=args.varied_seqlen,
-        seed=args.seed,
-    )
+
+    finetune_train_loader = calibration_loader
+
     finetune_test_loader = data_utils.prepare_dataloader(
         dataset=dataset["test"],
         tokenizer=tokenizer,
@@ -264,7 +258,7 @@ def main() -> None:
     else:
         model_adapter.model.to(config.device)
 
-    dataset_ppl = gpu_utils.evaluate_ppl(model_adapter, finetune_test_loader)
+    dataset_ppl = gpu_utils.evaluate_ppl(model_adapter, finetune_val_loader)
     logging.info(f'PPL before finetuning: {dataset_ppl:.4f}')
     wandb.log({"sliced_ppl": dataset_ppl})
 
@@ -297,10 +291,10 @@ def main() -> None:
 
     training_args = TrainingArguments(
         output_dir=f"./results_{os.path.basename(args.model)}_{args.sparsity}",  # output directory
-        num_train_epochs=1,  # total number of training epochs
+        num_train_epochs=10,  # total number of training epochs
         per_device_train_batch_size=args.batch_size,  # batch size per device during training
         per_device_eval_batch_size=args.batch_size,  # batch size for evaluation
-        logging_steps=1,
+        logging_steps=10,
         # save_steps=10,
         save_total_limit=1,
         disable_tqdm=False,
@@ -314,10 +308,10 @@ def main() -> None:
         model=model,
         tokenizer=tokenizer,
         train_loader=finetune_train_loader,
-        test_loader=finetune_train_loader,
+        test_loader=finetune_test_loader,
         args=training_args,
         optimizers=(optimizer, lr_scheduler),
-        callbacks=[EarlyStoppingCallback(early_stopping_patience=5)],
+        callbacks=[EarlyStoppingCallback(early_stopping_patience=1)],
     )
 
     model.train()
@@ -337,7 +331,7 @@ def main() -> None:
 
     utils.cleanup_memory()
 
-    dataset_ppl = gpu_utils.evaluate_ppl(model, finetune_test_loader)
+    dataset_ppl = gpu_utils.evaluate_ppl(model, finetune_val_loader)
     logging.info(f'PPL after finetuning: {dataset_ppl:.4f}')
     wandb.log({"finetuned_ppl": dataset_ppl})
 
