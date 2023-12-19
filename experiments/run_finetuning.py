@@ -296,12 +296,13 @@ def main() -> None:
         per_device_eval_batch_size=args.batch_size,  # batch size for evaluation
         logging_steps=10,
         # save_steps=10,
-        save_total_limit=1,
+        # save_total_limit=1, # Only last checkpoint is saved
         disable_tqdm=False,
         load_best_model_at_end=True,
-        evaluation_strategy="steps",
         eval_steps=10,
+        evaluation_strategy="steps",
         metric_for_best_model="eval_loss",
+        greater_is_better=False,  # lower eval_loss is better
     )
 
     trainer = CustomTrainer(
