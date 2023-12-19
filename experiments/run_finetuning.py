@@ -8,14 +8,12 @@ import os
 import torch
 import transformers
 import wandb
+from peft import LoraConfig, TaskType, get_peft_model
 from torch.utils.data import DataLoader
-from transformers import Trainer, TrainingArguments, EarlyStoppingCallback
+from transformers import EarlyStoppingCallback, Trainer, TrainingArguments
 
 from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate, utils
 from slicegpt.config import config
-
-
-from peft import LoraConfig, TaskType, get_peft_model
 
 utils.configure_logging()
 
@@ -239,7 +237,7 @@ def main() -> None:
     else:
         # load one of the pre-trained models
         model_adapter, tokenizer = hf_utils.get_model_and_tokenizer(args.model, token=args.hf_token, dtype=config.dtype)
-    
+
         # replace modules with compressible equivalents
         layernorm_fusion.replace_layers(model_adapter)
 

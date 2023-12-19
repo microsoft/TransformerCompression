@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader, SubsetRandomSampler
 from transformers import PreTrainedTokenizerBase
 
 
-def get_dataset(dataset_name: str) -> dict[str:datasets.Dataset]:
+def get_dataset(dataset_name: str) -> dict[str : datasets.Dataset]:
     """
     Get the train and test dataset from the HuggingFace datasets library.
 
@@ -36,10 +36,15 @@ def get_dataset(dataset_name: str) -> dict[str:datasets.Dataset]:
         raise NotImplementedError("The provided dataset is not supported")
 
     if dataset_name == "c4":
-        dataset = {split : datasets.load_dataset(path, name=name, data_files=data_files, split=split) for split, data_files in [("train", train_data_files), ("validation", test_data_files)]}
+        dataset = {
+            split: datasets.load_dataset(path, name=name, data_files=data_files, split=split)
+            for split, data_files in [("train", train_data_files), ("validation", test_data_files)]
+        }
     else:
-        dataset = {split : datasets.load_dataset(path, name=name, split=split) for split in ["train", "test", "validation"]}
-        
+        dataset = {
+            split: datasets.load_dataset(path, name=name, split=split) for split in ["train", "test", "validation"]
+        }
+
     logging.info("Loading dataset done")
     return dataset
 

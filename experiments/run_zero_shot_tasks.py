@@ -17,7 +17,6 @@ from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate, 
 from slicegpt.config import config
 from slicegpt.model_adapter import ModelAdapter
 
-from peft import LoraConfig, TaskType
 utils.configure_logging()
 
 os.environ["WANDB__SERVICE_WAIT"] = "300"

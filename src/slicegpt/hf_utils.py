@@ -4,6 +4,7 @@
 import logging
 
 import torch
+from peft import LoraConfig, get_peft_model
 from transformers import (
     AutoTokenizer,
     LlamaConfig,
@@ -12,7 +13,6 @@ from transformers import (
     OPTForCausalLM,
     PreTrainedTokenizerBase,
 )
-from peft import LoraConfig, get_peft_model
 
 from .adapters.llama_adapter import LlamaModelAdapter
 from .adapters.opt_adapter import OPTModelAdapter
