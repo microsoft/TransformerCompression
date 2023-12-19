@@ -108,13 +108,15 @@ def prepare_dataloader(
 
     def tokenize(data_batch):
         # tokenize then pad each batch according to the longest sequence in the batch
-        return tokenizer(
+        batch = tokenizer(
             data_batch[data_name],
             padding="longest",
             max_length=max_seqlen,
             truncation=True,
             return_tensors="pt",
         )
+        batch["labels"] = batch["input_ids"].clone()
+        return batch
 
     # tokenize lazily
     dataset.set_transform(tokenize)

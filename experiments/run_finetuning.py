@@ -73,21 +73,8 @@ class CustomTrainer(Trainer):
     def get_train_dataloader(self) -> DataLoader:
         return self.train_loader
 
-    def get_eval_dataloader(self) -> DataLoader:
+    def get_eval_dataloader(self, _) -> DataLoader:
         return self.test_loader
-
-    def compute_loss(self, model, inputs, return_outputs=False):
-        #TODO: make this work for sequences with mask tokens in them
-        outputs = model(**inputs)
-
-        # shift outputs and labels autoregressively.
-        logits = outputs.logits[:, :-1, :]
-        shift_labels = inputs["input_ids"][:, 1:]
-
-        # CrossEntropyLoss demands data dimension is dimension 1.
-        loss = self.loss_fn(logits.permute(0, 2, 1), shift_labels)
-
-        return (loss, outputs) if return_outputs else loss
 
 
 def argparser():
@@ -303,6 +290,7 @@ def main() -> None:
         target_modules=lora_target_modules,
     )
 
+    model = model_adapter.model
     model = get_peft_model(model, lora_config)
     model.print_trainable_parameters()
 
@@ -315,16 +303,20 @@ def main() -> None:
         per_device_train_batch_size=args.batch_size,  # batch size per device during training
         per_device_eval_batch_size=args.batch_size,  # batch size for evaluation
         logging_steps=1,
-        save_steps=1,
+        # save_steps=10,
         save_total_limit=1,
         disable_tqdm=False,
+        load_best_model_at_end=True,
+        evaluation_strategy="steps",
+        eval_steps=10,
+        metric_for_best_model="eval_loss",
     )
 
     trainer = CustomTrainer(
         model=model,
         tokenizer=tokenizer,
         train_loader=finetune_train_loader,
-        test_loader=finetune_test_loader,
+        test_loader=finetune_train_loader,
         args=training_args,
         optimizers=(optimizer, lr_scheduler),
         callbacks=[EarlyStoppingCallback(early_stopping_patience=5)],
@@ -338,7 +330,11 @@ def main() -> None:
             os.makedirs(args.save_dir)
 
         model_file = os.path.join(args.save_dir, os.path.basename(args.model) + "_" + str(args.sparsity) + ".pt")
-        torch.save(model.state_dict(), model_file)
+
+        # save peft model as a standard pt model
+        merged_model = model.merge_and_unload()
+
+        torch.save(merged_model.state_dict(), model_file)
         logging.info(f"Saved sliced and finetuned model to {args.save_dir}")
 
     utils.cleanup_memory()
