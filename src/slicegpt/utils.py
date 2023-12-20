@@ -6,6 +6,7 @@ import gc
 import inspect
 import logging
 import pathlib
+from typing import TypeVar
 
 import torch
 
@@ -65,3 +66,22 @@ def cleanup_memory() -> None:
             f"GPU memory{caller_name}: {memory_before / (1024 ** 3):.2f} -> {memory_after / (1024 ** 3):.2f} GB"
             f" ({(memory_after - memory_before) / (1024 ** 3):.2f} GB)"
         )
+
+
+T = TypeVar('T')
+
+
+def map_tensors(obj: T, device: torch.device | str | None = None, dtype: torch.dtype | None = None) -> T:
+    """Recursively map tensors to device and dtype."""
+    if isinstance(obj, torch.Tensor):
+        if device is not None:
+            obj = obj.to(device=device)
+        if dtype is not None:
+            obj = obj.to(dtype=dtype)
+        return obj
+    elif isinstance(obj, (list, tuple)):
+        return type(obj)(map_tensors(x, device, dtype) for x in obj)
+    elif isinstance(obj, dict):
+        return {k: map_tensors(v, device, dtype) for k, v in obj.items()}  # type: ignore
+    else:
+        return obj

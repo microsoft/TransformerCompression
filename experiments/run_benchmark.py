@@ -16,7 +16,7 @@ utils.configure_logging()
 os.environ["WANDB__SERVICE_WAIT"] = "300"
 
 
-def argparser():
+def argparser() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--model",
@@ -38,6 +38,7 @@ def argparser():
         ],
         default="facebook/opt-125m",
     )
+    parser.add_argument("--dtype", type=str, help="Data type to use.", choices=["fp32", "fp16"], default="fp16")
     parser.add_argument(
         "--eval-dataset",
         type=str,
@@ -66,19 +67,43 @@ def argparser():
 
     parser.add_argument('--hf-token', type=str, default=None)
 
+    parser.add_argument('--no-wandb', action="store_true", help="Disable wandb.")
+    parser.add_argument(
+        '--device',
+        type=str,
+        default=None,
+        help="PyTorch device to use. Example values are 'cpu', 'cuda', 'cuda:0'. If not specified it will be defaulted to 'cuda' if available and 'cpu' otherwise.",
+    )
+
     args = parser.parse_args()
+
+    logging.debug(f'Parsed arguments:')
+    for arg, argv in vars(args).items():
+        logging.debug(f'{arg} = {argv}')
 
     if not 0 <= args.sparsity < 1:
         raise argparse.ArgumentTypeError(f"Sparsity should be in the range [0, 1)")
 
+    if args.device:
+        config.device = torch.device(args.device)
+
+    if args.dtype == "fp16":
+        config.dtype = torch.float16
+    elif args.dtype == "fp32":
+        config.dtype = torch.float32
+    else:
+        raise argparse.ArgumentTypeError(f"Data type should be one of 'fp16', 'fp32'")
+
     return args
 
 
-def main():
+def main() -> None:
     logging.info("Running benchmarking of a sliced model.")
-    logging.info(f"Number of available cuda devices: {torch.cuda.device_count()}")
 
     args = argparser()
+
+    logging.info(f"PyTorch device: {config.device}")
+    logging.info(f"Number of available cuda devices: {torch.cuda.device_count()}")
 
     try:
         wandb.init(project="slicegpt-bench", config=args)
@@ -91,27 +116,30 @@ def main():
     if args.load_model_path:
         # load the model from load_model_path to compute perplexity and skip rotation and slicing
         logging.info(f"Loading sliced {args.model} model from {args.load_model_path} with sparsity {args.sparsity}")
-        model, tokenizer = hf_utils.load_sliced_model(args.model, args.load_model_path, args.sparsity, args.hf_token)
+        model_adapter, tokenizer = hf_utils.load_sliced_model(
+            args.model, args.load_model_path, args.sparsity, args.hf_token
+        )
     else:
         # load one of the pre-trained models
-        model, tokenizer = hf_utils.get_model(args.model, token=args.hf_token)
+        model_adapter, tokenizer = hf_utils.get_model_and_tokenizer(args.model, token=args.hf_token, dtype=config.dtype)
 
     if args.distribute_model:
         # distribute model across available GPUs
-        gpu_utils.distribute_model(model)
+        gpu_utils.distribute_model(model_adapter)
     else:
-        model = model.to(config.device)
+        model_adapter.model.to(config.device)
 
-    dataloader, _ = data_utils.get_loaders(
-        dataset_name=args.eval_dataset,
-        nsamples=args.batch_size,
+    train_dataset, _ = data_utils.get_dataset(args.eval_dataset)
+    train_loader = data_utils.prepare_dataloader(
+        dataset=train_dataset,
         tokenizer=tokenizer,
-        seqlen=args.ntokens,
-        seed=args.seed,
+        max_seqlen=model_adapter.seqlen,
         batch_size=args.batch_size,
+        nsamples=args.ntokens,
+        seed=args.seed,
     )
 
-    results = gpu_utils.benchmark(model, next(iter(dataloader)))
+    results = gpu_utils.benchmark(model_adapter, next(iter(train_loader)))
     logging.info(f"Median time per batch: {results['median_time']} s/batch.")
     logging.info(f"Throughput: {results['throughput']} token/s.")
     logging.info(f"Latency: {results['latency']} s/token.")
