@@ -102,8 +102,15 @@ def argparser():
         "--cal-dataset",
         type=str,
         help="Dataset to calibrate on.",
-        choices=["wikitext2", "ptb", "c4"],
+        choices=["wikitext2", "ptb", "c4", "alpaca"],
         default="wikitext2",
+    )
+    parser.add_argument(
+        "--finetune-dataset",
+        type=str,
+        help="Dataset to calibrate on.",
+        choices=["wikitext2", "ptb", "c4", "alpaca"],
+        default="alpaca",
     )
     parser.add_argument(
         "--cal-nsamples",
@@ -198,9 +205,9 @@ def main() -> None:
         # load one of the pre-trained models
         model_adapter, tokenizer = hf_utils.get_model_and_tokenizer(args.model, token=args.hf_token, dtype=config.dtype)
 
-    dataset = data_utils.get_dataset(args.cal_dataset)
+    wikitext_ds = data_utils.get_dataset(args.cal_dataset)
     calibration_loader = data_utils.prepare_dataloader(
-        dataset=dataset["train"],
+        dataset=wikitext_ds["train"],
         tokenizer=tokenizer,
         max_seqlen=512,
         batch_size=args.batch_size,
@@ -209,10 +216,19 @@ def main() -> None:
         seed=args.seed,
     )
 
-    finetune_train_loader = calibration_loader
+    alpaca_ds = data_utils.get_dataset(args.finetune_dataset)
+    finetune_train_loader = data_utils.prepare_dataloader(
+        dataset=alpaca_ds["train"],
+        tokenizer=tokenizer,
+        max_seqlen=512,
+        batch_size=args.batch_size,
+        nsamples=args.cal_nsamples,
+        varied_seqlen=args.varied_seqlen,
+        seed=args.seed,
+    )
 
     finetune_test_loader = data_utils.prepare_dataloader(
-        dataset=dataset["test"],
+        dataset=wikitext_ds["test"],
         tokenizer=tokenizer,
         max_seqlen=2048,
         batch_size=args.batch_size,
@@ -221,7 +237,7 @@ def main() -> None:
         seed=args.seed,
     )
     finetune_val_loader = data_utils.prepare_dataloader(
-        dataset=dataset["validation"],
+        dataset=wikitext_ds["validation"],
         tokenizer=tokenizer,
         max_seqlen=2048,
         batch_size=args.batch_size,
@@ -286,7 +302,7 @@ def main() -> None:
     model.print_trainable_parameters()
 
     # create optimizer and scheduler
-    optimizer, lr_scheduler = get_optimizer_and_scheduler(model, dataset["train"])
+    optimizer, lr_scheduler = get_optimizer_and_scheduler(model, alpaca_ds["train"])
 
     training_args = TrainingArguments(
         output_dir=f"./results_{os.path.basename(args.model)}_{args.sparsity}",  # output directory
