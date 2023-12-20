@@ -188,13 +188,21 @@ def main() -> None:
         logging.info(f'Failed to initialize wandb: {e}, continuing without wandb')
         wandb.init(project="slicegpt", mode='disabled')
 
-    model_adapter, tokenizer = hf_utils.get_model_and_tokenizer(args.model, token=args.hf_token, dtype=config.dtype)
+    if args.load_model_path:
+        # load the model from load_model_path to compute perplexity and skip rotation and slicing
+        logging.info(f"Loading sliced {args.model} model from {args.load_model_path} with sparsity {args.sparsity}")
+        model_adapter, tokenizer = hf_utils.load_sliced_model(
+            args.model, args.load_model_path, args.sparsity, token=args.hf_token
+        )
+    else:
+        # load one of the pre-trained models
+        model_adapter, tokenizer = hf_utils.get_model_and_tokenizer(args.model, token=args.hf_token, dtype=config.dtype)
 
     dataset = data_utils.get_dataset(args.cal_dataset)
     calibration_loader = data_utils.prepare_dataloader(
         dataset=dataset["train"],
         tokenizer=tokenizer,
-        max_seqlen=model_adapter.seqlen,
+        max_seqlen=512,
         batch_size=args.batch_size,
         nsamples=args.cal_nsamples,
         varied_seqlen=args.varied_seqlen,
@@ -222,16 +230,7 @@ def main() -> None:
         seed=args.seed,
     )
 
-    if args.load_model_path:
-        # load the model from load_model_path to compute perplexity and skip rotation and slicing
-        logging.info(f"Loading sliced {args.model} model from {args.load_model_path} with sparsity {args.sparsity}")
-        model_adapter, tokenizer = hf_utils.load_sliced_model(
-            args.model, args.load_model_path, args.sparsity, token=args.hf_token
-        )
-    else:
-        # load one of the pre-trained models
-        model_adapter, tokenizer = hf_utils.get_model_and_tokenizer(args.model, token=args.hf_token, dtype=config.dtype)
-
+    if not args.load_model_path:
         # replace modules with compressible equivalents
         layernorm_fusion.replace_layers(model_adapter)
 
@@ -302,7 +301,8 @@ def main() -> None:
         eval_steps=10,
         evaluation_strategy="steps",
         metric_for_best_model="eval_loss",
-        greater_is_better=False,  # lower eval_loss is better
+        greater_is_better=False,  # lower eval_loss is better,
+        gradient_checkpointing=True,
     )
 
     trainer = CustomTrainer(
@@ -314,6 +314,9 @@ def main() -> None:
         optimizers=(optimizer, lr_scheduler),
         callbacks=[EarlyStoppingCallback(early_stopping_patience=1)],
     )
+
+    # required to enable gradient_checkpointing
+    model.enable_input_require_grads()
 
     model.train()
     trainer.train()
