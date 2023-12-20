@@ -310,8 +310,8 @@ def main() -> None:
         per_device_train_batch_size=args.batch_size,  # batch size per device during training
         per_device_eval_batch_size=args.batch_size,  # batch size for evaluation
         logging_steps=10,
-        # save_steps=10,
-        # save_total_limit=1, # Only last checkpoint is saved
+        save_steps=10,
+        save_total_limit=1,
         disable_tqdm=False,
         load_best_model_at_end=True,
         eval_steps=10,
