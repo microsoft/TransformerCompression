@@ -4,13 +4,18 @@
 from abc import ABC, abstractmethod
 from inspect import get_annotations
 from typing import Any, Protocol, runtime_checkable
-
+import sys
 import pytest
 from torch import Tensor
 from torch.nn import Module, Parameter
 from transformers.models.llama.modeling_llama import LlamaConfig, LlamaForCausalLM
 from transformers.models.opt.modeling_opt import OPTConfig, OPTForCausalLM
+from pyreporoot import project_root
+sys.path.append(project_root(__file__, root_files="pyproject.toml"))
+from phi2_hf.modeling_phi import PhiForCausalLM, ParallelBlock, InferenceParams
+from phi2_hf.configuration_phi import PhiConfig
 
+from slicegpt.adapters.phi2hf_adapter import Phi2HFModelAdapter
 from slicegpt.adapters.llama_adapter import LlamaModelAdapter
 from slicegpt.adapters.opt_adapter import OPTModelAdapter
 from slicegpt.model_adapter import ModelAdapter
@@ -108,3 +113,10 @@ class TestLlamaAdapter(ModelAdapterTestBase):
         )
         model = LlamaForCausalLM(config)
         return LlamaModelAdapter(model)
+
+
+class TestPhi2HFAdapter(ModelAdapterTestBase):
+    def create_adapter(self) -> Phi2HFModelAdapter:
+        config = PhiConfig()
+        model = PhiForCausalLM(config)
+        return Phi2HFModelAdapter(model)
