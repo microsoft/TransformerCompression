@@ -13,12 +13,18 @@ from transformers import (
     PreTrainedTokenizerBase,
 )
 
+
 from .adapters.llama_adapter import LlamaModelAdapter
 from .adapters.opt_adapter import OPTModelAdapter
+from .adapters.phi2hf_adapter import Phi2HFModelAdapter
 from .layernorm_fusion import fuse_modules, replace_layers
 from .model_adapter import ModelAdapter
 from .rotate import slice_rotated_model
-
+from pyreporoot import project_root
+import sys
+sys.path.append(project_root(__file__, root_files="pyproject.toml"))
+from phi2_hf.configuration_phi import PhiConfig
+from phi2_hf.modeling_phi import PhiForCausalLM
 
 class UninitializedOPTForCausalLM(OPTForCausalLM):
     def _init_weights(self, _) -> None:
@@ -27,6 +33,11 @@ class UninitializedOPTForCausalLM(OPTForCausalLM):
 
 
 class UninitializedLlamaForCausalLM(LlamaForCausalLM):
+    def _init_weights(self, _) -> None:
+        # Prevent weight initialization
+        pass
+
+class UninitializedPhiForCausalLM(PhiForCausalLM):
     def _init_weights(self, _) -> None:
         # Prevent weight initialization
         pass
@@ -97,6 +108,19 @@ def get_model_and_tokenizer(
         model.config.pad_token_id = tokenizer.pad_token_id
         model.resize_token_embeddings(len(tokenizer), pad_to_multiple_of=8)
         model_adapter = LlamaModelAdapter(model)
+    elif "microsoft/phi-2" in model_path:
+        if uninitialized:
+            config = PhiConfig.from_pretrained(model_path, token=token)
+            model = UninitializedPhiForCausalLM(config)
+            model = model.to(dtype=dtype)
+        else:
+            model = PhiForCausalLM.from_pretrained(model_path, torch_dtype=dtype, token=token)
+            model.config.torch_dtype = dtype
+
+        tokenizer.add_special_tokens({"pad_token": "<pad>"})  # Llama-2 models don't have a pad token by default
+        model.config.pad_token_id = tokenizer.pad_token_id
+        model.resize_token_embeddings(len(tokenizer), pad_to_multiple_of=8)
+        model_adapter = Phi2HFModelAdapter(model)
     else:
         raise NotImplementedError
 
