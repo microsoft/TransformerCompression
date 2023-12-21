@@ -84,6 +84,8 @@ class Phi2HFLayerAdapter(LayerAdapter):
 
 
 class Phi2HFModelAdapter(ModelAdapter):
+    parallel_blocks = True
+    
     def __init__(self, model: PhiForCausalLM) -> None:
         super().__init__()
         self._model: PhiForCausalLM = model
@@ -149,7 +151,7 @@ class Phi2HFModelAdapter(ModelAdapter):
         return [self._model.transformer.embd.wte]
 
     def get_pre_head_layernorm(self) -> LayerNorm:
-        raise NotImplementedError("Phi-2-HF does not have a pre_head_layernorm")
+        return self._model.lm_head.ln
 
     def get_lm_head(self) -> Linear:
         return self._model.lm_head.linear

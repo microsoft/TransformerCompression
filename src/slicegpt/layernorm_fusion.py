@@ -83,8 +83,11 @@ def fuse_modules(model_adapter: ModelAdapter) -> None:
 
     # First we modify the layernorms to fold their weights
     for layer_adapter in layers:
-        fuse_ln_linear(layer_adapter.get_first_layernorm(), layer_adapter.get_attention_inputs())
-        fuse_ln_linear(layer_adapter.get_second_layernorm(), layer_adapter.get_mlp_inputs())
+        if model_adapter.parallel_blocks:
+            fuse_ln_linear(layer_adapter.get_first_layernorm(), layer_adapter.get_attention_inputs() + layer_adapter.get_mlp_inputs())
+        else:
+            fuse_ln_linear(layer_adapter.get_first_layernorm(), layer_adapter.get_attention_inputs())
+            fuse_ln_linear(layer_adapter.get_second_layernorm(), layer_adapter.get_mlp_inputs())
 
         if model_adapter.should_bake_mean_into_linear:
             # Then we bake the mean substitution into the previous linear layers
