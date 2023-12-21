@@ -29,6 +29,7 @@ dependencies = [
     "transformers",
     "wandb",
     "ml-collections",
+    "py-repo-root"
 ]
 
 [project.optional-dependencies]
