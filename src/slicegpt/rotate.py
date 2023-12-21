@@ -49,8 +49,6 @@ def slice_attention_output(layer_adapter: LayerAdapter, new_embedding_dimension:
         W.bias.data = W.bias.data[:new_embedding_dimension]
     W.out_features = new_embedding_dimension
 
-    layer_adapter.layer.attn_shortcut_Q = layer_adapter.layer.attn_shortcut_Q[:, :new_embedding_dimension]
-
 
 def rotate_mlp_input(layer_adapter: LayerAdapter, Q: torch.Tensor) -> None:
     # Rotate the MLP input weights.
@@ -189,16 +187,13 @@ def rotate_and_slice_sequential(
         _, Q = pca_calc(mlp_ln_inputs, ignore_masks)
         Q = Q.to(device=config.device, dtype=torch.float64)
 
-        layer.attn_shortcut_Q = torch.matmul(layer.attn_shortcut_Q, Q.to(dtype=dtype))
+        layer.attn_shortcut_Q = torch.matmul(layer.attn_shortcut_Q, Q.to(dtype=dtype)[:, :new_embedding_dimension])
         rotate_attention_output(layer_adapter, Q)
         slice_attention_output(layer_adapter, new_embedding_dimension)
 
-        layer.mlp_shortcut_Q = Q.T.clone().to(dtype=dtype)
+        layer.mlp_shortcut_Q = Q.T.clone().to(dtype=dtype)[:new_embedding_dimension, :]
         rotate_mlp_input(layer_adapter, Q)
         slice_mlp_input(layer_adapter, new_embedding_dimension)
-        
-        # slice shortcut
-        layer.mlp_shortcut_Q = layer.mlp_shortcut_Q[:new_embedding_dimension, :]
 
         # Run GC and cleanup GPU memory
         cleanup_memory()
@@ -315,7 +310,7 @@ def rotate_and_slice_parallel(
         slice_attention_output(layer_adapter, dim)
         
         # slice the shortcut (there is only one, we use attn_shortcut buffer)
-        layer_adapter.layer.attn_shortcut_Q = layer_adapter.layer.attn_shortcut_Q[:, :dim]
+        layer.attn_shortcut_Q = layer.attn_shortcut_Q[:new_embedding_dimension, :dim]
 
         layer.to('cpu')
 
@@ -412,24 +407,29 @@ def slice_rotated_model(model_adapter: ModelAdapter, new_embedding_dimension: in
     for layer_adapter in layers:
         layer = layer_adapter.layer
         slice_attention_inputs(layer_adapter, new_embedding_dimension)
-        slice_attention_output(layer_adapter, new_embedding_dimension)
-
-        # Slice attention shortcut matrix
-        layer.attn_shortcut_Q = layer.attn_shortcut_Q[:new_embedding_dimension, :new_embedding_dimension]
-
+        
         slice_mlp_input(layer_adapter, new_embedding_dimension)
         
         # slice mlp shortcut
-        layer_adapter.layer.mlp_shortcut_Q = layer_adapter.layer.mlp_shortcut_Q[:new_embedding_dimension, :]
+        if layer_adapter.layer.mlp_shortcut_Q is not None:
+            layer_adapter.layer.mlp_shortcut_Q = layer_adapter.layer.mlp_shortcut_Q[:new_embedding_dimension, :]
 
         # optionally slice the mlp/head connection in the last layer
         dim = new_embedding_dimension
         if layer_adapter is layers[-1]:
             if not do_slice_head:
                 dim = model_adapter.hidden_size
-
+        
         slice_mlp_output(layer_adapter, dim)
-        layer.mlp_shortcut_Q = layer.mlp_shortcut_Q[:new_embedding_dimension, :dim]
+        if layer_adapter.layer.mlp_shortcut_Q is None: # parallel case
+            print(new_embedding_dimension, dim)
+            layer.attn_shortcut_Q = layer.attn_shortcut_Q[:new_embedding_dimension, :dim]
+            slice_attention_output(layer_adapter, dim)
+        else:# sequential case
+            layer.attn_shortcut_Q = layer.attn_shortcut_Q[:new_embedding_dimension, :new_embedding_dimension]
+            layer.mlp_shortcut_Q = layer.mlp_shortcut_Q[:new_embedding_dimension, :dim]
+            slice_attention_output(layer_adapter, new_embedding_dimension)
+        
 
     if do_slice_head:
         slice_head(model_adapter, new_embedding_dimension)
