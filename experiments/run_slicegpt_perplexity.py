@@ -204,7 +204,7 @@ def main() -> None:
     new_embedding_dimension = int((1 - args.sparsity) * model_adapter.hidden_size)
     # round (down) to the nearest multiple of round_interval
     new_embedding_dimension = new_embedding_dimension - (new_embedding_dimension % args.round_interval) 
-    logging.info(f"New embedding dimension: {new_embedding_dimension} (sparsity {100*new_embedding_dimension / model_adapter.hidden_size:.4f} %)")
+    logging.info(f"New embedding dimension: {new_embedding_dimension} (sparsity {100*(1 - new_embedding_dimension / model_adapter.hidden_size):.4f} %)")
 
     ignore_tokens = [tokenizer.pad_token_id]
     rotate.rotate_and_slice(model_adapter, train_loader, new_embedding_dimension, ignore_tokens=ignore_tokens)
