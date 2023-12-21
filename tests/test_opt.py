@@ -1,3 +1,5 @@
+import torch
+
 from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate
 
 
@@ -13,7 +15,7 @@ def test_opt_125m(sparsity=0.2, ppl_upper_limit=36):
     but on a model small enough to run on CPU in a few minutes.
     """
     # get model
-    model_adapter, tokenizer = hf_utils.get_model_and_tokenizer("facebook/opt-125m")
+    model_adapter, tokenizer = hf_utils.get_model_and_tokenizer("facebook/opt-125m", dtype=torch.float32)
     model = model_adapter.model
 
     # prepare data
