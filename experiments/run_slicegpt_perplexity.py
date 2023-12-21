@@ -58,6 +58,7 @@ def argparser() -> argparse.Namespace:
     parser.add_argument(
         "--sparsity", type=float, default=0.0, help="A measure of how much slicing is applied (in the range [0, 1))"
     )
+    parser.add_argument("--round-interval", type=int, default=8, help="Interval for rounding the weights (the best value may depend on your hardware)")
     parser.add_argument("--eval-baseline", action="store_true", help="Evaluate the baseline model.")
     parser.add_argument("--eval-fused-model", action="store_true", help="Evaluate the fused model.")
     parser.add_argument("--ppl-only", action="store_true", help="Evaluate the loaded model without doing compression.")
@@ -201,7 +202,9 @@ def main() -> None:
 
     # compute new embedding dimension given the desired sparsity level
     new_embedding_dimension = int((1 - args.sparsity) * model_adapter.hidden_size)
-    logging.info(f"New embedding dimension: {new_embedding_dimension} (sparsity {args.sparsity})")
+    # round (down) to the nearest multiple of round_interval
+    new_embedding_dimension = new_embedding_dimension - (new_embedding_dimension % args.round_interval) 
+    logging.info(f"New embedding dimension: {new_embedding_dimension} (sparsity {100*(1 - new_embedding_dimension / model_adapter.hidden_size):.4f} %)")
 
     ignore_tokens = [tokenizer.pad_token_id]
     rotate.rotate_and_slice(model_adapter, train_loader, new_embedding_dimension, ignore_tokens=ignore_tokens)
