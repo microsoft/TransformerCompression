@@ -144,9 +144,11 @@ def load_sliced_model(
     new_embedding_dimension = int((1 - sparsity) * model_adapter.hidden_size)
 
     for layer_adapter in model_adapter.get_layers():
-        layer_adapter.layer.mlp_shortcut_Q = torch.zeros(model_adapter.hidden_size, model_adapter.hidden_size).to(
-            dtype=torch.float16
-        )
+        if not model_adapter.parallel_blocks:
+            layer_adapter.layer.mlp_shortcut_Q = torch.zeros(model_adapter.hidden_size, model_adapter.hidden_size).to(
+                dtype=torch.float16
+            )
+            
         layer_adapter.layer.attn_shortcut_Q = torch.zeros(model_adapter.hidden_size, model_adapter.hidden_size).to(
             dtype=torch.float16
         )
