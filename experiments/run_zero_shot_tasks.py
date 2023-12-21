@@ -64,7 +64,7 @@ class SlicedLM(BaseLM):
         self.batch_size_per_gpu = args.batch_size
         self.seqlen = self.model_adapter.seqlen
 
-        if (not args.load_model_path) and (not args.baseline):
+        if not args.load_model_path:
             self.apply_slicegpt(self.model_adapter, tokenizer, args)
 
     def apply_slicegpt(self, model_adapter: ModelAdapter, tokenizer, args):
@@ -73,7 +73,7 @@ class SlicedLM(BaseLM):
 
         dataset, _ = data_utils.get_dataset(args.cal_dataset)
         dataloader = data_utils.prepare_dataloader(
-            dataset=dataset,
+            dataset=dataset["train"],
             tokenizer=tokenizer,
             max_seqlen=model_adapter.seqlen,
             batch_size=args.batch_size,
@@ -195,7 +195,6 @@ def parse_args():
     parser.add_argument("--load-model-path", type=str, default=None, help="Path to load the sliced model from.")
     parser.add_argument("--finetuned", action="store_true", help="Whether the model to load is a finetuned one.")
 
-    parser.add_argument("--baseline", action="store_true", help="Evaluate the dense (un-sliced) model.")
     parser.add_argument('--hf-token', type=str, default=None)
     parser.add_argument('--no-wandb', action="store_true", help="Disable wandb.")
 

@@ -275,7 +275,7 @@ def main() -> None:
 
     dataset_ppl = gpu_utils.evaluate_ppl(model_adapter, finetune_val_loader)
     logging.info(f'PPL before finetuning: {dataset_ppl:.4f}')
-    wandb.log({"sliced_ppl": dataset_ppl})
+    wandb.log({"pre_finetune_ppl": dataset_ppl})
 
     utils.cleanup_memory()
 
@@ -353,7 +353,7 @@ def main() -> None:
 
     dataset_ppl = gpu_utils.evaluate_ppl(model, finetune_val_loader)
     logging.info(f'PPL after finetuning: {dataset_ppl:.4f}')
-    wandb.log({"finetuned_ppl": dataset_ppl})
+    wandb.log({"post_finetune_ppl": dataset_ppl})
 
 
 if __name__ == "__main__":
