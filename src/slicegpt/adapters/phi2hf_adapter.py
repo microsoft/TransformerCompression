@@ -126,7 +126,7 @@ class Phi2HFModelAdapter(ModelAdapter):
 
     @use_cache.setter
     def use_cache(self, value: bool) -> None:
-        raise NotImplementedError("cache managed internally in phi-2")
+        pass  # raise NotImplementedError("cache managed internally in phi-2")
 
     def compute_output_logits(self, input_ids: Tensor) -> FloatTensor:
         return self._model(input_ids=input_ids).logits
@@ -152,4 +152,4 @@ class Phi2HFModelAdapter(ModelAdapter):
         raise NotImplementedError("Phi-2-HF does not have a pre_head_layernorm")
 
     def get_lm_head(self) -> Linear:
-        return self._model.lm_head
+        return self._model.lm_head.linear
