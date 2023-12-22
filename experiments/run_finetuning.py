@@ -141,13 +141,13 @@ def argparser():
         "--finetune-train-nsamples",
         type=int,
         help="Number of samples to load from the train set for finetuning.",
-        default=64,
+        default=4096,
     )
     parser.add_argument(
         "--finetune-test-nsamples",
         type=int,
         help="Number of samples to load from the test set for finetuning.",
-        default=64,
+        default=128,
     )
     parser.add_argument("--finetune-train-batch-size", type=int, default=1, help="Batch size for finetuning training.")
     parser.add_argument("--finetune-test-batch-size", type=int, default=8, help="Batch size for finetuning testing.")
