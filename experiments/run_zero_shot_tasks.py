@@ -29,29 +29,8 @@ class SlicedLM(BaseLM):
         super().__init__()
 
         if args.load_model_path:
-            lora_config = None
-
-            if args.finetuned:
-                lora_target_modules = [
-                    "k_proj",
-                    "v_proj",
-                    "q_proj",
-                    "out_proj",
-                    "fc1",
-                    "fc2",
-                ]  # TODO: make this applicable to other models
-
-                # TODO: make this configurable from CLI
-                lora_config = LoraConfig(
-                    r=8,
-                    lora_alpha=32,
-                    lora_dropout=0.1,
-                    task_type=TaskType.CAUSAL_LM,
-                    target_modules=lora_target_modules,
-                )
-
             model_adapter, tokenizer = hf_utils.load_sliced_model(
-                args.model, args.load_model_path, args.sparsity, args.hf_token, lora_config=lora_config
+                args.model, args.load_model_path, args.sparsity, args.hf_token
             )
         else:
             model_adapter, tokenizer = hf_utils.get_model_and_tokenizer(args.model, token=args.hf_token)
@@ -64,7 +43,7 @@ class SlicedLM(BaseLM):
         self.batch_size_per_gpu = args.batch_size
         self.seqlen = self.model_adapter.seqlen
 
-        if not args.load_model_path:
+        if not args.load_model_path and args.sparsity > 0.0:
             self.apply_slicegpt(self.model_adapter, tokenizer, args)
 
     def apply_slicegpt(self, model_adapter: ModelAdapter, tokenizer, args):

@@ -216,13 +216,13 @@ def main() -> None:
         seed=args.seed,
     )
 
-    alpaca_ds = data_utils.get_dataset(args.finetune_dataset)
+    finetune_ds = data_utils.get_dataset(args.finetune_dataset)
     finetune_train_loader = data_utils.prepare_dataloader(
-        dataset=alpaca_ds["train"],
+        dataset=finetune_ds["train"],
         tokenizer=tokenizer,
-        max_seqlen=512,
-        batch_size=args.batch_size,
-        nsamples=args.cal_nsamples,
+        max_seqlen=2048,
+        batch_size=1,
+        nsamples=128,
         varied_seqlen=args.varied_seqlen,
         seed=args.seed,
     )
@@ -232,7 +232,7 @@ def main() -> None:
         tokenizer=tokenizer,
         max_seqlen=2048,
         batch_size=args.batch_size,
-        nsamples=args.test_nsamples,
+        nsamples=64,
         varied_seqlen=args.varied_seqlen,
         seed=args.seed,
     )
@@ -241,7 +241,7 @@ def main() -> None:
         tokenizer=tokenizer,
         max_seqlen=2048,
         batch_size=args.batch_size,
-        nsamples=args.test_nsamples,
+        nsamples=64,
         varied_seqlen=args.varied_seqlen,
         seed=args.seed,
     )
@@ -279,14 +279,26 @@ def main() -> None:
 
     utils.cleanup_memory()
 
-    lora_target_modules = [
-        "k_proj",
-        "v_proj",
-        "q_proj",
-        "out_proj",
-        "fc1",
-        "fc2",
-    ]  # TODO: make this applicable to other models
+    # TODO: make this configurable from CLI? More general
+    if "llama" in args.model:
+        lora_target_modules = [
+            "k_proj",
+            "v_proj",
+            "q_proj",
+            # "o_proj",
+            # "gate_proj",
+            # "up_proj",
+            # "down_proj",
+        ]
+    else:
+        lora_target_modules = [
+            "k_proj",
+            "v_proj",
+            "q_proj",
+            "out_proj",
+            "fc1",
+            "fc2",
+        ]
 
     # TODO: make this configurable from CLI
     lora_config = LoraConfig(
@@ -302,19 +314,19 @@ def main() -> None:
     model.print_trainable_parameters()
 
     # create optimizer and scheduler
-    optimizer, lr_scheduler = get_optimizer_and_scheduler(model, alpaca_ds["train"])
+    optimizer, lr_scheduler = get_optimizer_and_scheduler(model, finetune_ds["train"])
 
     training_args = TrainingArguments(
         output_dir=f"./results_{os.path.basename(args.model)}_{args.sparsity}",  # output directory
-        num_train_epochs=10,  # total number of training epochs
+        num_train_epochs=1,  # total number of training epochs
         per_device_train_batch_size=args.batch_size,  # batch size per device during training
         per_device_eval_batch_size=args.batch_size,  # batch size for evaluation
-        logging_steps=10,
-        save_steps=10,
-        save_total_limit=1,
+        logging_steps=1,
+        save_steps=16,
+        save_total_limit=2,
         disable_tqdm=False,
         load_best_model_at_end=True,
-        eval_steps=10,
+        eval_steps=16,
         evaluation_strategy="steps",
         metric_for_best_model="eval_loss",
         greater_is_better=False,  # lower eval_loss is better,
@@ -325,10 +337,10 @@ def main() -> None:
         model=model,
         tokenizer=tokenizer,
         train_loader=finetune_train_loader,
-        test_loader=finetune_test_loader,
+        test_loader=finetune_val_loader,
         args=training_args,
         optimizers=(optimizer, lr_scheduler),
-        callbacks=[EarlyStoppingCallback(early_stopping_patience=1)],
+        callbacks=[EarlyStoppingCallback(early_stopping_patience=5)],
     )
 
     # required to enable gradient_checkpointing
