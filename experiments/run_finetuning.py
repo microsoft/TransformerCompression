@@ -125,6 +125,9 @@ def argparser():
         default=128,
     )
     parser.add_argument("--ppl-eval-batch-size", type=int, default=8, help="Batch size for evaluating the perplexity.")
+    parser.add_argument(
+        "--ppl-eval-seqlen", type=int, default=2048, help="Sequence length for evaluating the perplexity."
+    )
 
     # finetuning command-line arguments
     parser.add_argument(
@@ -148,6 +151,12 @@ def argparser():
     )
     parser.add_argument("--finetune-train-batch-size", type=int, default=1, help="Batch size for finetuning training.")
     parser.add_argument("--finetune-test-batch-size", type=int, default=8, help="Batch size for finetuning testing.")
+    parser.add_argument(
+        "--finetune-train-seqlen", type=int, default=2048, help="Sequence length for finetuning training."
+    )
+    parser.add_argument(
+        "--finetune-test-seqlen", type=int, default=2048, help="Sequence length for finetuning testing."
+    )
 
     parser.add_argument('--learning-rate', type=float, default=2e-4)
     parser.add_argument('--weight-decay', type=float, default=1e-2)
@@ -222,7 +231,7 @@ def main() -> None:
     ppl_eval_loader = data_utils.prepare_dataloader(
         dataset=ppl_ds["train"],
         tokenizer=tokenizer,
-        max_seqlen=2048,
+        max_seqlen=args.ppl_eval_seqlen,
         batch_size=args.ppl_eval_batch_size,
         nsamples=args.ppl_eval_nsamples,
         varied_seqlen=args.varied_seqlen,
@@ -246,7 +255,7 @@ def main() -> None:
     finetune_train_loader = data_utils.prepare_dataloader(
         dataset=finetune_ds["train"],
         tokenizer=tokenizer,
-        max_seqlen=2048,
+        max_seqlen=args.finetune_train_seqlen,
         batch_size=args.finetune_train_batch_size,
         nsamples=args.finetune_train_nsamples,
         varied_seqlen=args.varied_seqlen,
@@ -255,7 +264,7 @@ def main() -> None:
     finetune_test_loader = data_utils.prepare_dataloader(
         dataset=finetune_ds["test"],
         tokenizer=tokenizer,
-        max_seqlen=2048,
+        max_seqlen=args.finetune_test_seqlen,
         batch_size=args.finetune_test_batch_size,
         nsamples=args.finetune_test_nsamples,
         varied_seqlen=args.varied_seqlen,
