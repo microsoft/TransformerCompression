@@ -12,7 +12,7 @@ from peft import LoraConfig, TaskType, get_peft_model
 from torch.utils.data import DataLoader
 from transformers import EarlyStoppingCallback, Trainer, TrainingArguments
 
-from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate, utils
+from slicegpt import data_utils, gpu_utils, hf_utils, utils
 from slicegpt.config import config
 
 utils.configure_logging()
@@ -20,22 +20,7 @@ utils.configure_logging()
 os.environ["WANDB__SERVICE_WAIT"] = "300"
 
 
-def get_optimizer_and_scheduler(model, train_dataset):
-
-    # Defaults vals from Liana's run.py. TODO: make this configurable from CLI
-    class Config:
-        learning_rate = 2e-4
-        adam_beta1 = 0.9
-        adam_beta2 = 0.95
-        adam_epsilon = 1e-8
-        weight_decay = 1e-2
-        num_warmup_steps = 400
-        epochs = 1
-        batch_size = 1
-        gradient_accumulation_steps = 4
-        lr_scheduler_type = "linear"
-
-    config = Config()
+def get_optimizer_and_scheduler(model, train_dataset, config):
 
     optimizer = torch.optim.AdamW(
         params=model.parameters(),
@@ -48,7 +33,9 @@ def get_optimizer_and_scheduler(model, train_dataset):
     kwargs_lr_scheduler = {
         "optimizer": optimizer,
         "num_warmup_steps": config.num_warmup_steps,
-        "num_training_steps": ((len(train_dataset) - 1) // (config.batch_size * config.gradient_accumulation_steps) + 1)
+        "num_training_steps": (
+            (len(train_dataset) - 1) // (config.finetune_train_batch_size * config.gradient_accumulation_steps) + 1
+        )
         * config.epochs,
     }
     if config.lr_scheduler_type in ("cosine", "cosine_with_warmup"):
@@ -98,39 +85,6 @@ def argparser():
         default="facebook/opt-125m",
     )
     parser.add_argument("--dtype", type=str, help="Data type to use.", choices=["fp32", "fp16"], default="fp16")
-    parser.add_argument(
-        "--cal-dataset",
-        type=str,
-        help="Dataset to calibrate on.",
-        choices=["wikitext2", "ptb", "c4", "alpaca"],
-        default="wikitext2",
-    )
-    parser.add_argument(
-        "--finetune-dataset",
-        type=str,
-        help="Dataset to calibrate on.",
-        choices=["wikitext2", "ptb", "c4", "alpaca"],
-        default="alpaca",
-    )
-    parser.add_argument(
-        "--cal-nsamples",
-        type=int,
-        help="Number of samples of the calibration data to load.",
-        default=128,
-    )
-    parser.add_argument(
-        "--test-nsamples",
-        type=int,
-        help="Number of samples to load from the test set.",
-        default=128,
-    )
-    parser.add_argument(
-        "--train-nsamples",
-        type=int,
-        help="Number of samples to load from the train set.",
-        default=128,
-    )
-    parser.add_argument("--batch-size", type=int, default=1, help="Batch size for loading the calibration data.")
     parser.add_argument("--varied-seqlen", action="store_true", help="Varied sequence lengths in the calibration data.")
     parser.add_argument("--seed", type=int, default=42, help="Seed for sampling the calibration data.")
     parser.add_argument(
@@ -143,7 +97,9 @@ def argparser():
     )
 
     parser.add_argument("--save-dir", type=str, default=None, help="Path to save the model.")
-    parser.add_argument("--load-model-path", type=str, default=None, help="Path to load the sliced model from.")
+    parser.add_argument(
+        "--load-model-path", type=str, default=None, required=True, help="Path to load the sliced model from."
+    )
     parser.add_argument('--hf-token', type=str, default=None)
 
     parser.add_argument('--no-wandb', action="store_true", help="Disable wandb.")
@@ -153,6 +109,69 @@ def argparser():
         default=None,
         help="PyTorch device to use. Example values are 'cpu', 'cuda', 'cuda:0'. If not specified it will be defaulted to 'cuda' if available and 'cpu' otherwise.",
     )
+
+    # Perplexity evaluation command-line arguments
+    parser.add_argument(
+        "--ppl-eval-dataset",
+        type=str,
+        help="Dataset to evaluate perplexity.",
+        choices=["wikitext2", "ptb", "c4", "alpaca"],
+        default="wikitext2",
+    )
+    parser.add_argument(
+        "--ppl-eval-nsamples",
+        type=int,
+        help="Number of samples of the perplexity eval dataset to load.",
+        default=128,
+    )
+    parser.add_argument("--ppl-eval-batch-size", type=int, default=8, help="Batch size for evaluating the perplexity.")
+
+    # finetuning command-line arguments
+    parser.add_argument(
+        "--finetune-dataset",
+        type=str,
+        help="Dataset to finetune on.",
+        choices=["wikitext2", "ptb", "c4", "alpaca"],
+        default="wikitext2",
+    )
+    parser.add_argument(
+        "--finetune-train-nsamples",
+        type=int,
+        help="Number of samples to load from the train set for finetuning.",
+        default=64,
+    )
+    parser.add_argument(
+        "--finetune-test-nsamples",
+        type=int,
+        help="Number of samples to load from the test set for finetuning.",
+        default=64,
+    )
+    parser.add_argument("--finetune-train-batch-size", type=int, default=1, help="Batch size for finetuning training.")
+    parser.add_argument("--finetune-test-batch-size", type=int, default=8, help="Batch size for finetuning testing.")
+
+    parser.add_argument('--learning-rate', type=float, default=2e-4)
+    parser.add_argument('--weight-decay', type=float, default=1e-2)
+    parser.add_argument('--adam-beta1', type=float, default=0.9)
+    parser.add_argument('--adam-beta2', type=float, default=0.95)
+    parser.add_argument('--adam-epsilon', type=float, default=1e-8)
+    parser.add_argument('--max-grad-norm', type=float, default=1.0)
+    parser.add_argument('--lr-scheduler-type', type=str, default="linear")
+    parser.add_argument('--num-warmup-steps', type=int, default=400)
+    parser.add_argument('--gradient-accumulation-steps', type=int, default=4)
+    parser.add_argument('--early-stopping-patience', type=int, default=5)
+
+    parser.add_argument('--epochs', type=int, default=1)
+    parser.add_argument('--evaluation-strategy', type=str, default="steps")
+    parser.add_argument('--eval-steps', type=int, default=16)
+    parser.add_argument('--save-steps', type=int, default=16)
+    parser.add_argument('--save-total-limit', type=int, default=1)
+    parser.add_argument('--logging-steps', type=int, default=1)
+
+    parser.add_argument('--lora-alpha', type=int, default=32)
+    parser.add_argument('--lora-dropout', type=float, default=0.1)
+    parser.add_argument('--lora-r', type=int, default=8)
+    parser.add_argument('--lora-bias', type=str, default="none")
+    parser.add_argument('--lora-target-modules', type=str, help="target modules to apply lora to")
 
     args = parser.parse_args()
 
@@ -173,9 +192,6 @@ def argparser():
     else:
         raise argparse.ArgumentTypeError(f"Data type should be one of 'fp16', 'fp32'")
 
-    if args.batch_size > args.cal_nsamples:
-        raise argparse.ArgumentTypeError(f"Batch size can not be greater than the number of calibration samples")
-
     return args
 
 
@@ -195,89 +211,56 @@ def main() -> None:
         logging.info(f'Failed to initialize wandb: {e}, continuing without wandb')
         wandb.init(project="slicegpt", mode='disabled')
 
-    if args.load_model_path:
-        # load the model from load_model_path to compute perplexity and skip rotation and slicing
-        logging.info(f"Loading sliced {args.model} model from {args.load_model_path} with sparsity {args.sparsity}")
-        model_adapter, tokenizer = hf_utils.load_sliced_model(
-            args.model, args.load_model_path, args.sparsity, token=args.hf_token
-        )
-    else:
-        # load one of the pre-trained models
-        model_adapter, tokenizer = hf_utils.get_model_and_tokenizer(args.model, token=args.hf_token, dtype=config.dtype)
-
-    wikitext_ds = data_utils.get_dataset(args.cal_dataset)
-    calibration_loader = data_utils.prepare_dataloader(
-        dataset=wikitext_ds["train"],
-        tokenizer=tokenizer,
-        max_seqlen=512,
-        batch_size=args.batch_size,
-        nsamples=args.cal_nsamples,
-        varied_seqlen=args.varied_seqlen,
-        seed=args.seed,
+    # load the sliced model
+    logging.info(f"Loading sliced {args.model} model from {args.load_model_path} with sparsity {args.sparsity}")
+    model_adapter, tokenizer = hf_utils.load_sliced_model(
+        args.model, args.load_model_path, args.sparsity, token=args.hf_token
     )
 
-    finetune_ds = data_utils.get_dataset(args.finetune_dataset)
-    finetune_train_loader = data_utils.prepare_dataloader(
-        dataset=finetune_ds["train"],
+    # get the dataset for perplexity evaluation
+    ppl_ds = data_utils.get_dataset(args.ppl_eval_dataset)
+    ppl_eval_loader = data_utils.prepare_dataloader(
+        dataset=ppl_ds["train"],
         tokenizer=tokenizer,
         max_seqlen=2048,
-        batch_size=1,
-        nsamples=128,
+        batch_size=args.ppl_eval_batch_size,
+        nsamples=args.ppl_eval_nsamples,
         varied_seqlen=args.varied_seqlen,
         seed=args.seed,
     )
-
-    finetune_test_loader = data_utils.prepare_dataloader(
-        dataset=wikitext_ds["test"],
-        tokenizer=tokenizer,
-        max_seqlen=2048,
-        batch_size=args.batch_size,
-        nsamples=64,
-        varied_seqlen=args.varied_seqlen,
-        seed=args.seed,
-    )
-    finetune_val_loader = data_utils.prepare_dataloader(
-        dataset=wikitext_ds["validation"],
-        tokenizer=tokenizer,
-        max_seqlen=2048,
-        batch_size=args.batch_size,
-        nsamples=64,
-        varied_seqlen=args.varied_seqlen,
-        seed=args.seed,
-    )
-
-    if not args.load_model_path:
-        # replace modules with compressible equivalents
-        layernorm_fusion.replace_layers(model_adapter)
-
-        # fuse layernorms and add rotations to skip connections
-        layernorm_fusion.fuse_modules(model_adapter)
-
-        original_param_count = sum(int(p.nelement()) for p in model_adapter.model.parameters())
-        logging.info(f'Original model parameters: {original_param_count:,d}')
-
-        # compute new embedding dimension given the desired sparsity level
-        new_embedding_dimension = int((1 - args.sparsity) * model_adapter.hidden_size)
-        logging.info(f"New embedding dimension: {new_embedding_dimension} (sparsity {args.sparsity})")
-
-        ignore_tokens = [tokenizer.pad_token_id]
-        rotate.rotate_and_slice(model_adapter, calibration_loader, new_embedding_dimension, ignore_tokens=ignore_tokens)
-
-        # save sliced model
-        model_file = os.path.join("sliced_models", os.path.basename(args.model) + "_" + str(args.sparsity) + ".pt")
-        torch.save(model_adapter.model.state_dict(), model_file)
-        logging.info(f"Saved sliced model to sliced_models")
 
     if args.distribute_model:
         gpu_utils.distribute_model(model_adapter)
     else:
         model_adapter.model.to(config.device)
 
-    dataset_ppl = gpu_utils.evaluate_ppl(model_adapter, finetune_val_loader)
+    # compute perplexity before finetuning
+    dataset_ppl = gpu_utils.evaluate_ppl(model_adapter, ppl_eval_loader)
     logging.info(f'PPL before finetuning: {dataset_ppl:.4f}')
     wandb.log({"pre_finetune_ppl": dataset_ppl})
 
     utils.cleanup_memory()
+
+    # get the dataset for finetuning
+    finetune_ds = data_utils.get_dataset(args.finetune_dataset)
+    finetune_train_loader = data_utils.prepare_dataloader(
+        dataset=finetune_ds["train"],
+        tokenizer=tokenizer,
+        max_seqlen=2048,
+        batch_size=args.finetune_train_batch_size,
+        nsamples=args.finetune_train_nsamples,
+        varied_seqlen=args.varied_seqlen,
+        seed=args.seed,
+    )
+    finetune_test_loader = data_utils.prepare_dataloader(
+        dataset=finetune_ds["test"],
+        tokenizer=tokenizer,
+        max_seqlen=2048,
+        batch_size=args.finetune_test_batch_size,
+        nsamples=args.finetune_test_nsamples,
+        varied_seqlen=args.varied_seqlen,
+        seed=args.seed,
+    )
 
     # TODO: make this configurable from CLI? More general
     if "llama" in args.model:
@@ -285,10 +268,10 @@ def main() -> None:
             "k_proj",
             "v_proj",
             "q_proj",
-            # "o_proj",
-            # "gate_proj",
-            # "up_proj",
-            # "down_proj",
+            "o_proj",
+            "gate_proj",
+            "up_proj",
+            "down_proj",
         ]
     else:
         lora_target_modules = [
@@ -300,11 +283,10 @@ def main() -> None:
             "fc2",
         ]
 
-    # TODO: make this configurable from CLI
     lora_config = LoraConfig(
-        r=8,
-        lora_alpha=32,
-        lora_dropout=0.1,
+        r=args.lora_r,
+        lora_alpha=args.lora_alpha,
+        lora_dropout=args.lora_dropout,
         task_type=TaskType.CAUSAL_LM,
         target_modules=lora_target_modules,
     )
@@ -314,20 +296,20 @@ def main() -> None:
     model.print_trainable_parameters()
 
     # create optimizer and scheduler
-    optimizer, lr_scheduler = get_optimizer_and_scheduler(model, finetune_ds["train"])
+    optimizer, lr_scheduler = get_optimizer_and_scheduler(model, finetune_ds["train"], args)
 
     training_args = TrainingArguments(
         output_dir=f"./results_{os.path.basename(args.model)}_{args.sparsity}",  # output directory
-        num_train_epochs=1,  # total number of training epochs
-        per_device_train_batch_size=args.batch_size,  # batch size per device during training
-        per_device_eval_batch_size=args.batch_size,  # batch size for evaluation
-        logging_steps=1,
-        save_steps=16,
-        save_total_limit=2,
+        num_train_epochs=args.epochs,
+        per_device_train_batch_size=args.finetune_train_batch_size,  # batch size per device during training
+        per_device_eval_batch_size=args.finetune_test_batch_size,  # batch size for evaluation
+        logging_steps=args.logging_steps,
+        save_steps=args.save_steps,
+        save_total_limit=args.save_total_limit,
         disable_tqdm=False,
         load_best_model_at_end=True,
-        eval_steps=16,
-        evaluation_strategy="steps",
+        eval_steps=args.eval_steps,
+        evaluation_strategy=args.evaluation_strategy,
         metric_for_best_model="eval_loss",
         greater_is_better=False,  # lower eval_loss is better,
         gradient_checkpointing=True,
@@ -337,10 +319,10 @@ def main() -> None:
         model=model,
         tokenizer=tokenizer,
         train_loader=finetune_train_loader,
-        test_loader=finetune_val_loader,
+        test_loader=finetune_test_loader,
         args=training_args,
         optimizers=(optimizer, lr_scheduler),
-        callbacks=[EarlyStoppingCallback(early_stopping_patience=5)],
+        callbacks=[EarlyStoppingCallback(early_stopping_patience=args.early_stopping_patience)],
     )
 
     # required to enable gradient_checkpointing
@@ -363,7 +345,8 @@ def main() -> None:
 
     utils.cleanup_memory()
 
-    dataset_ppl = gpu_utils.evaluate_ppl(model, finetune_val_loader)
+    # compute perplexity after finetuning
+    dataset_ppl = gpu_utils.evaluate_ppl(model, ppl_eval_loader)
     logging.info(f'PPL after finetuning: {dataset_ppl:.4f}')
     wandb.log({"post_finetune_ppl": dataset_ppl})
 
