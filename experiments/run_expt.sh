@@ -10,8 +10,8 @@ BASE_ARGS=--hf-token=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
 SLI_MOD_DIR=sliced_models
 FIN_MOD_DIR=finetuned_models
 
-FIN_SCRIPT=run_finetuning.py
-FIN_ARGS="--save-dir=$FIN_MOD_DIR --finetune-train-seqlen=128"
+FIN_SCRIPT=run_finetuning.py    
+FIN_ARGS="--save-dir=$FIN_MOD_DIR"
 
 ZER_SCRIPT="run_zero_shot_tasks.py"
 ZER_ARGS="--batch-size=8 --tasks=piqa,arc_easy,arc_challenge"

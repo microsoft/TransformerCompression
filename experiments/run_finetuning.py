@@ -229,7 +229,7 @@ def main() -> None:
     # get the dataset for perplexity evaluation
     ppl_ds = data_utils.get_dataset(args.ppl_eval_dataset)
     ppl_eval_loader = data_utils.prepare_dataloader(
-        dataset=ppl_ds["train"],
+        dataset=ppl_ds["validation"],
         tokenizer=tokenizer,
         max_seqlen=args.ppl_eval_seqlen,
         batch_size=args.ppl_eval_batch_size,
