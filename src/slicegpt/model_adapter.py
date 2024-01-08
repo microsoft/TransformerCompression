@@ -57,7 +57,6 @@ class LayerAdapter(ABC):
 
 
 class ModelAdapter(ABC):
-    
     @property
     @abstractmethod
     def model(self) -> Module:

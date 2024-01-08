@@ -2,8 +2,10 @@
 # Licensed under the MIT license.
 
 import logging
+import sys
 
 import torch
+from pyreporoot import project_root
 from transformers import (
     AutoTokenizer,
     LlamaConfig,
@@ -13,18 +15,17 @@ from transformers import (
     PreTrainedTokenizerBase,
 )
 
-
 from .adapters.llama_adapter import LlamaModelAdapter
 from .adapters.opt_adapter import OPTModelAdapter
 from .adapters.phi2hf_adapter import Phi2HFModelAdapter
 from .layernorm_fusion import fuse_modules, replace_layers
 from .model_adapter import ModelAdapter
 from .rotate import slice_rotated_model
-from pyreporoot import project_root
-import sys
+
 sys.path.append(project_root(__file__, root_files="pyproject.toml"))
 from phi2_hf.configuration_phi import PhiConfig
 from phi2_hf.modeling_phi import PhiForCausalLM
+
 
 class UninitializedOPTForCausalLM(OPTForCausalLM):
     def _init_weights(self, _) -> None:
@@ -36,6 +37,7 @@ class UninitializedLlamaForCausalLM(LlamaForCausalLM):
     def _init_weights(self, _) -> None:
         # Prevent weight initialization
         pass
+
 
 class UninitializedPhiForCausalLM(PhiForCausalLM):
     def _init_weights(self, _) -> None:
@@ -148,7 +150,7 @@ def load_sliced_model(
             layer_adapter.layer.mlp_shortcut_Q = torch.zeros(model_adapter.hidden_size, model_adapter.hidden_size).to(
                 dtype=torch.float16
             )
-            
+
         layer_adapter.layer.attn_shortcut_Q = torch.zeros(model_adapter.hidden_size, model_adapter.hidden_size).to(
             dtype=torch.float16
         )
