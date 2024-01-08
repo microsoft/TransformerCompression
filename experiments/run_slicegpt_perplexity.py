@@ -151,7 +151,7 @@ def main() -> None:
     train_loader = data_utils.prepare_dataloader(
         dataset=train_dataset,
         tokenizer=tokenizer,
-        max_seqlen=4096,
+        max_seqlen=2048,
         batch_size=args.batch_size,
         nsamples=args.cal_nsamples,
         varied_seqlen=args.varied_seqlen,
