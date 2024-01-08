@@ -21,8 +21,9 @@ config_space = {
     "lora-dropout": uniform(0, 1),
     "lora-r": randint(4, 64),
     "finetune-train-seqlen": randint(64, 2048),
-    "finetune-test-seqlen": 2048,
-    "finetune-train-nsamples": 8192,
+    "finetune-test-seqlen": 256,
+    "finetune-train-nsamples": 128,
+    "finetune-train-batch-size": randint(1, 24),
     "wandb-project": "syne-tune"
 }
 
