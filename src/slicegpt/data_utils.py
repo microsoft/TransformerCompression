@@ -9,41 +9,46 @@ from torch.utils.data import DataLoader, SubsetRandomSampler
 from transformers import PreTrainedTokenizerBase
 
 
-def get_dataset(dataset_name: str) -> tuple[datasets.Dataset, datasets.Dataset]:
+def get_dataset(name: str) -> datasets.DatasetDict:
     """
-    Get the train and test dataset from the HuggingFace datasets library.
+    Get the dataset from the HuggingFace datasets library.
 
     Args:
-        dataset_name: The name of the dataset to load. Must be one of "wikitext2", "ptb", or "c4".
+        name: The name of the HuggingFace dataset to load. Must be one of "wikitext2", "ptb", "c4" or "alpaca".
 
     Returns:
-        The train and test datasets.
+        The dataset.
     """
-    logging.info(f"Loading dataset: {dataset_name}")
+    logging.info(f"Loading dataset: {name}")
 
-    train_data_files = None
-    test_data_files = None
-    test_split = "test"
-    if dataset_name == "wikitext2":
-        path = "wikitext"
-        name = "wikitext-2-raw-v1"
-    elif dataset_name == "ptb":
-        path = "ptb_text_only"
-        name = "penn_treebank"
-    elif dataset_name == "c4":
-        path = "allenai/c4"
-        name = "allenai--c4"
-        train_data_files = {"train": "en/c4-train.00000-of-01024.json.gz"}
-        test_data_files = {"validation": "en/c4-validation.00000-of-00008.json.gz"}
-        test_split = "validation"
-    else:
+    ds_properties = {
+        "wikitext2": {"path": "wikitext", "config_name": "wikitext-2-raw-v1"},
+        "ptb": {"path": "ptb_text_only", "config_name": "penn_treebank"},
+        "c4": {
+            "path": "allenai/c4",
+            "config_name": "allenai--c4",
+            "data_files": {
+                "train": "en/c4-train.00000-of-01024.json.gz",
+                "validation": "en/c4-validation.00000-of-00008.json.gz",
+            },
+            "cols_to_remove": ['url', 'timestamp'],
+        },
+        "alpaca": {"path": "tatsu-lab/alpaca", "cols_to_remove": ['input', 'output', 'instruction']},
+    }
+
+    if name not in ds_properties:
         raise NotImplementedError("The provided dataset is not supported")
 
-    train_dataset = datasets.load_dataset(path, name=name, data_files=train_data_files, split="train")
-    test_dataset = datasets.load_dataset(path, name=name, data_files=test_data_files, split=test_split)
+    properties = ds_properties[name]
+    ds = datasets.load_dataset(
+        properties["path"], name=properties.get("config_name"), data_files=properties.get("data_files")
+    )
+
+    if "cols_to_remove" in properties:
+        ds = ds.remove_columns(properties["cols_to_remove"])
 
     logging.info("Loading dataset done")
-    return train_dataset, test_dataset
+    return ds
 
 
 def prepare_dataloader(
@@ -78,11 +83,11 @@ def prepare_dataloader(
         )
 
     data_name = dataset.column_names[0]
-    dataset = dataset.filter(lambda x: len(x[data_name]) > 0)
+    ds = dataset.filter(lambda x: len(x[data_name]) > 0)
 
     if not varied_seqlen:
         # create a new dataset where each example is a concatenation of multiple examples of total length = max_seqlen.
-        data_list = dataset[data_name]
+        data_list = ds[data_name]
         new_data_list = []
 
         torch.manual_seed(seed)
@@ -98,31 +103,32 @@ def prepare_dataloader(
                 tokens += tokenizer.tokenize(sep + item)
                 idx += 1
 
-            # TODO(max): pls double check that we want non-overlapping examples
-            indices = indices[:start_idx] + indices[idx:]
+            indices = indices[:start_idx] + indices[idx:]  # remove the used indices
 
             if len(tokens) >= max_seqlen:
                 tokens = tokens[:max_seqlen]  # truncate to max_seqlen
                 new_data_list.append(tokenizer.convert_tokens_to_string(tokens))
 
-        dataset = datasets.Dataset.from_dict({data_name: new_data_list})
+        ds = datasets.Dataset.from_dict({data_name: new_data_list})
 
     def tokenize(data_batch):
         # tokenize then pad each batch according to the longest sequence in the batch
-        return tokenizer(
+        batch = tokenizer(
             data_batch[data_name],
             padding="longest",
             max_length=max_seqlen,
             truncation=True,
             return_tensors="pt",
         )
+        batch["labels"] = batch["input_ids"].clone()
+        return batch
 
     # tokenize lazily
-    dataset.set_transform(tokenize)
+    ds.set_transform(tokenize)
 
     torch.manual_seed(seed)
-    sampler = SubsetRandomSampler(torch.randperm(len(dataset))[:nsamples])
+    sampler = SubsetRandomSampler(torch.randperm(len(ds))[:nsamples])
 
-    loader = DataLoader(dataset, batch_size=batch_size, sampler=sampler)
+    loader = DataLoader(ds, batch_size=batch_size, sampler=sampler)
     logging.info(f"Preparing dataloader done")
     return loader

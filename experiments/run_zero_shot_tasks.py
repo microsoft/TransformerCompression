@@ -11,6 +11,7 @@ import wandb
 from lm_eval import evaluator, tasks
 from lm_eval import utils as lm_eval_utils
 from lm_eval.base import BaseLM
+from peft import LoraConfig, TaskType
 
 from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate, utils
 from slicegpt.config import config
@@ -42,7 +43,7 @@ class SlicedLM(BaseLM):
         self.batch_size_per_gpu = args.batch_size
         self.seqlen = self.model_adapter.seqlen
 
-        if (not args.load_model_path) and (not args.baseline):
+        if not args.load_model_path and args.sparsity > 0.0:
             self.apply_slicegpt(self.model_adapter, tokenizer, args)
 
     def apply_slicegpt(self, model_adapter: ModelAdapter, tokenizer, args):
@@ -51,7 +52,7 @@ class SlicedLM(BaseLM):
 
         dataset, _ = data_utils.get_dataset(args.cal_dataset)
         dataloader = data_utils.prepare_dataloader(
-            dataset=dataset,
+            dataset=dataset["train"],
             tokenizer=tokenizer,
             max_seqlen=model_adapter.seqlen,
             batch_size=args.batch_size,
@@ -171,10 +172,10 @@ def parse_args():
     )
 
     parser.add_argument("--load-model-path", type=str, default=None, help="Path to load the sliced model from.")
-
-    parser.add_argument("--baseline", action="store_true", help="Evaluate the dense (un-sliced) model.")
+    parser.add_argument("--finetuned", action="store_true", help="Whether the model to load is a finetuned one.")
 
     parser.add_argument('--hf-token', type=str, default=None)
+    parser.add_argument('--no-wandb', action="store_true", help="Disable wandb.")
 
     return parser.parse_args()
 
@@ -210,11 +211,25 @@ def main() -> None:
 
     logging.info(f"Selected Tasks: {task_names}")
 
-    # Run the evaluation.
+    # run the evaluation.
     results = evaluator.simple_evaluate(model=model, tasks=task_names, no_cache=True)
+
     wandb.log(results['results'])
     logging.info(json.dumps(results, indent=2))
     logging.info(evaluator.make_table(results))
+
+    # calculate the avg across the tasks
+    n_tasks = len(task_names)
+    acc_cumul = 0
+    for task in results['results']:
+        if results['results'][task].get('acc_norm', None):
+            acc_cumul += results['results'][task]['acc_norm']
+        else:
+            acc_cumul += results['results'][task]['acc']
+
+    acc_avg = acc_cumul / n_tasks
+    wandb.log({'acc_avg': acc_avg})
+    logging.info(f"Average accuracy across tasks: {acc_avg}")
 
 
 if __name__ == "__main__":
