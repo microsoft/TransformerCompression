@@ -213,7 +213,7 @@ def rotate_and_slice_sequential(
 
         rotate_mlp_output(layer_adapter, Q)
         slice_mlp_output(layer_adapter, dim)
-        layer_adapter.layer.mlp_shortcut_Q = layer_adapter.layer.mlp_shortcut_Q[:, :new_embedding_dimension]
+        layer_adapter.layer.mlp_shortcut_Q = layer_adapter.layer.mlp_shortcut_Q[:, :dim]
 
         layer.to('cpu')
 
