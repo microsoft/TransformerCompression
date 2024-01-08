@@ -55,7 +55,6 @@ def prepare_dataloader(
     dataset: datasets.Dataset,
     tokenizer: PreTrainedTokenizerBase,
     max_seqlen: int = 2048,
-    min_seqlen: int = None,
     batch_size: int = 1,
     nsamples: int = 128,
     varied_seqlen: bool = False,
@@ -104,8 +103,7 @@ def prepare_dataloader(
                 tokens += tokenizer.tokenize(sep + item)
                 idx += 1
 
-            # TODO(max): pls double check that we want non-overlapping examples
-            indices = indices[:start_idx] + indices[idx:]
+            indices = indices[:start_idx] + indices[idx:]  # remove the used indices
 
             if len(tokens) >= max_seqlen:
                 tokens = tokens[:max_seqlen]  # truncate to max_seqlen
@@ -131,6 +129,6 @@ def prepare_dataloader(
     torch.manual_seed(seed)
     sampler = SubsetRandomSampler(torch.randperm(len(ds))[:nsamples])
 
-    loader = DataLoader(ds, batch_size=batch_size, sampler=sampler, num_workers=1)
+    loader = DataLoader(ds, batch_size=batch_size, sampler=sampler)
     logging.info(f"Preparing dataloader done")
     return loader
