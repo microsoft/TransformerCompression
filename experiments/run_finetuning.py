@@ -102,6 +102,7 @@ def argparser():
     )
     parser.add_argument('--hf-token', type=str, default=None)
 
+    parser.add_argument('--wandb-project', type=str, default="slicegpt-finetuning")
     parser.add_argument('--no-wandb', action="store_true", help="Disable wandb.")
     parser.add_argument(
         '--device',
@@ -180,7 +181,10 @@ def argparser():
     parser.add_argument('--lora-dropout', type=float, default=0.1)
     parser.add_argument('--lora-r', type=int, default=8)
     parser.add_argument('--lora-bias', type=str, default="none")
-    parser.add_argument('--lora-target-modules', type=str, help="target modules to apply lora to")
+
+    # For LLAMA 2 models, possible modules: k_proj, v_proj, q_proj, o_proj, gate_proj, up_proj, down_proj
+    # For OPT models, possible modules: k_proj, v_proj, q_proj, out_proj, fc1, fc2
+    parser.add_argument('--lora-target-modules', nargs='+', default=["k_proj", "v_proj", "q_proj"], help="target modules to apply lora to")
 
     args = parser.parse_args()
 
@@ -213,12 +217,12 @@ def main() -> None:
     logging.info(f"Number of available cuda devices: {torch.cuda.device_count()}")
 
     try:
-        wandb.init(project="slicegpt-finetuning", config=args, mode='disabled' if args.no_wandb else None)
+        wandb.init(project=args.wandb_project, config=args, mode='disabled' if args.no_wandb else None)
     except wandb.UsageError as e:
         # wandb.init will throw an error if the user is not logged in and the process is running in a non-shell
         # environment, e.g. notebook, IDE, no-shell process, etc. In this case, we want to continue without wandb.
         logging.info(f'Failed to initialize wandb: {e}, continuing without wandb')
-        wandb.init(project="slicegpt", mode='disabled')
+        wandb.init(project=args.wandb_project, mode='disabled')
 
     # load the sliced model
     logging.info(f"Loading sliced {args.model} model from {args.load_model_path} with sparsity {args.sparsity}")
@@ -271,33 +275,12 @@ def main() -> None:
         seed=args.seed,
     )
 
-    # TODO: make this configurable from CLI? More general
-    if "llama" in args.model:
-        lora_target_modules = [
-            "k_proj",
-            "v_proj",
-            "q_proj",
-            "o_proj",
-            "gate_proj",
-            "up_proj",
-            "down_proj",
-        ]
-    else:
-        lora_target_modules = [
-            "k_proj",
-            "v_proj",
-            "q_proj",
-            "out_proj",
-            "fc1",
-            "fc2",
-        ]
-
     lora_config = LoraConfig(
         r=args.lora_r,
         lora_alpha=args.lora_alpha,
         lora_dropout=args.lora_dropout,
         task_type=TaskType.CAUSAL_LM,
-        target_modules=lora_target_modules,
+        target_modules=args.lora_target_modules,
     )
 
     model = model_adapter.model
