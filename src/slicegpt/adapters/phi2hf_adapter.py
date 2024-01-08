@@ -1,12 +1,13 @@
 import sys
-from typing import cast, Optional, Union
+from typing import Optional, Union, cast
 
-from torch import FloatTensor, Tensor, matmul, BoolTensor
-from torch.nn import Linear, Module, LayerNorm
 from pyreporoot import project_root
+from torch import BoolTensor, FloatTensor, Tensor, matmul
+from torch.nn import LayerNorm, Linear, Module
+
 sys.path.append(project_root(__file__, root_files="pyproject.toml"))
-from phi2_hf.modeling_phi import PhiForCausalLM, ParallelBlock, InferenceParams
 from phi2_hf.configuration_phi import PhiConfig
+from phi2_hf.modeling_phi import InferenceParams, ParallelBlock, PhiForCausalLM
 from slicegpt.model_adapter import LayerAdapter, ModelAdapter
 
 
@@ -18,11 +19,11 @@ class CompressibleParallelBlock(ParallelBlock):
     """
 
     def forward(
-            self,
-            hidden_states: FloatTensor,
-            past_key_values: Optional[Union[FloatTensor, InferenceParams]] = None,
-            attention_mask: Optional[BoolTensor] = None,
-            **kwargs,
+        self,
+        hidden_states: FloatTensor,
+        past_key_values: Optional[Union[FloatTensor, InferenceParams]] = None,
+        attention_mask: Optional[BoolTensor] = None,
+        **kwargs,
     ) -> FloatTensor:
         residual = hidden_states
         hidden_states = self.ln(hidden_states)  # ln = nn.LayerNorm
@@ -85,7 +86,7 @@ class Phi2HFLayerAdapter(LayerAdapter):
 
 class Phi2HFModelAdapter(ModelAdapter):
     parallel_blocks = True
-    
+
     def __init__(self, model: PhiForCausalLM) -> None:
         super().__init__()
         self._model: PhiForCausalLM = model

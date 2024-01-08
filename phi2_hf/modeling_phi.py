@@ -498,11 +498,13 @@ def _update_kv_cache(kv: torch.FloatTensor, inference_params: InferenceParams, l
     # When the current sequence length is equal to or larger than the maximum sequence length,
     # we need to concatenate the current `kv` with the cached `kv` to expand its length
     if sequence_end >= inference_params.max_seqlen:
-        inference_params.key_value_memory_dict[layer_idx] = torch.concatenate((inference_params.key_value_memory_dict[layer_idx], kv), dim=1)
+        inference_params.key_value_memory_dict[layer_idx] = torch.concatenate(
+            (inference_params.key_value_memory_dict[layer_idx], kv), dim=1
+        )
 
     inference_params.key_value_memory_dict[layer_idx][batch_start:batch_end, sequence_start:sequence_end, ...] = kv
     kv = inference_params.key_value_memory_dict[layer_idx][batch_start:batch_end, :sequence_end, ...]
-        
+
     return kv
 
 

@@ -84,8 +84,6 @@ def slice_mlp_output(layer_adapter: LayerAdapter, new_embedding_dimension: int) 
         W.bias.data = W.bias.data[:new_embedding_dimension]
     W.out_features = new_embedding_dimension
 
-    
-
 
 def rotate_embeddings(model_adapter: ModelAdapter, Q: torch.Tensor) -> None:
     # Rotate the embeddings.
@@ -118,6 +116,7 @@ def slice_head(model_adapter: ModelAdapter, new_embedding_dimension: int) -> Non
     lm_head.weight.data = lm_head.weight.data[:, :new_embedding_dimension]
     lm_head.in_features = new_embedding_dimension
 
+
 def rotate_and_slice(
     model_adapter: ModelAdapter,
     dataloader: torch.utils.data.DataLoader[torch.Tensor],
@@ -133,6 +132,7 @@ def rotate_and_slice(
     else:
         rotate_and_slice_sequential(model_adapter, dataloader, new_embedding_dimension, do_slice_head, ignore_tokens)
 
+
 @torch.no_grad()
 def rotate_and_slice_sequential(
     model_adapter: ModelAdapter,
@@ -143,7 +143,7 @@ def rotate_and_slice_sequential(
 ) -> None:
     """
     Rotate and slice a model, with interleaved slicing and PCA calculations
-    
+
     This method works for models where the MLP block is computed after the attention block.
     """
     model_adapter.model.eval()
@@ -226,7 +226,8 @@ def rotate_and_slice_sequential(
         slice_head(model_adapter, new_embedding_dimension)
 
     logging.info("Rotate and slice layers done")
-    
+
+
 @torch.no_grad()
 def rotate_and_slice_parallel(
     model_adapter: ModelAdapter,
@@ -237,8 +238,8 @@ def rotate_and_slice_parallel(
 ) -> None:
     """
     Rotate and slice a model, with interleaved slicing and PCA calculations
-    
-    This version works for models where the MLP block and the attention block are computed in parallel. 
+
+    This version works for models where the MLP block and the attention block are computed in parallel.
     """
     model_adapter.model.eval()
     dtype = next(iter(model_adapter.model.parameters())).dtype
@@ -278,7 +279,7 @@ def rotate_and_slice_parallel(
                 torch.matmul(inp.to(device=config.device), Q.to(dtype=dtype))[:, :, :new_embedding_dimension].cpu(),
                 args[i],
             )
-        
+
         # the simpler equivalent of get_signals
         outputs = []
         layer = layer.to(config.device)
@@ -291,7 +292,7 @@ def rotate_and_slice_parallel(
                 out = out[layer_adapter.hidden_states_output_position]
             out = out.cpu()
             outputs.append(out)
-        
+
         inps = outputs
         _, Q = pca_calc(inps, ignore_masks)
 
@@ -308,7 +309,7 @@ def rotate_and_slice_parallel(
         rotate_attention_output(layer_adapter, Q)
         slice_mlp_output(layer_adapter, dim)
         slice_attention_output(layer_adapter, dim)
-        
+
         # slice the shortcut (there is only one, we use attn_shortcut buffer)
         layer.attn_shortcut_Q = layer.attn_shortcut_Q[:new_embedding_dimension, :dim]
 
@@ -407,9 +408,9 @@ def slice_rotated_model(model_adapter: ModelAdapter, new_embedding_dimension: in
     for layer_adapter in layers:
         layer = layer_adapter.layer
         slice_attention_inputs(layer_adapter, new_embedding_dimension)
-        
+
         slice_mlp_input(layer_adapter, new_embedding_dimension)
-        
+
         # slice mlp shortcut
         if layer_adapter.layer.mlp_shortcut_Q is not None:
             layer_adapter.layer.mlp_shortcut_Q = layer_adapter.layer.mlp_shortcut_Q[:new_embedding_dimension, :]
@@ -419,17 +420,16 @@ def slice_rotated_model(model_adapter: ModelAdapter, new_embedding_dimension: in
         if layer_adapter is layers[-1]:
             if not do_slice_head:
                 dim = model_adapter.hidden_size
-        
+
         slice_mlp_output(layer_adapter, dim)
-        if layer_adapter.layer.mlp_shortcut_Q is None: # parallel case
+        if layer_adapter.layer.mlp_shortcut_Q is None:  # parallel case
             print(new_embedding_dimension, dim)
             layer.attn_shortcut_Q = layer.attn_shortcut_Q[:new_embedding_dimension, :dim]
             slice_attention_output(layer_adapter, dim)
-        else:# sequential case
+        else:  # sequential case
             layer.attn_shortcut_Q = layer.attn_shortcut_Q[:new_embedding_dimension, :new_embedding_dimension]
             layer.mlp_shortcut_Q = layer.mlp_shortcut_Q[:new_embedding_dimension, :dim]
             slice_attention_output(layer_adapter, new_embedding_dimension)
-        
 
     if do_slice_head:
         slice_head(model_adapter, new_embedding_dimension)
