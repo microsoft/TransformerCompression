@@ -13,18 +13,18 @@ from syne_tune.config_space import randint, uniform, loguniform, choice
 
 # Configuration space (or search space)
 config_space = {
-    "model": "facebook/opt-125m",
-    "sparsity": 0.3,
-    "load-model-path": "sliced_models/opt-125m_0.3.pt",
-    "lora-target-modules": choice(["k_proj v_proj q_proj out_proj", "k_proj v_proj q_proj out_proj fc1 fc2"]),
-    "lora-alpha": loguniform(1e-2, 1e2),
-    "lora-dropout": uniform(0, 1),
+    "model": "microsoft/phi-2",
+    "sparsity": 0.25,
+    "load-model-path": "sliced_models/phi-2_0.25.pt",
+    "lora-target-modules": choice(["Wqkv out_proj", "Wqkv out_proj fc1 fc2"]),
+    "lora-alpha": loguniform(1e-2, 1e4),
+    "lora-dropout": uniform(0, 0.3),
     "lora-r": randint(4, 64),
-    "finetune-train-seqlen": randint(64, 2048),
-    "finetune-test-seqlen": 256,
-    "finetune-train-nsamples": 128,
+    "finetune-train-seqlen": randint(64, 256),
+    "finetune-test-seqlen": 2048,
+    "finetune-train-nsamples": 8192,
     "finetune-train-batch-size": randint(1, 24),
-    "wandb-project": "syne-tune"
+    "wandb-project": "syne-tune-phi"
 }
 
 if __name__ == "__main__":

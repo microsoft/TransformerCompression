@@ -81,6 +81,8 @@ def argparser():
             'meta-llama/Llama-2-7b-hf',
             'meta-llama/Llama-2-13b-hf',
             'meta-llama/Llama-2-70b-hf',
+            # Phi 2 Models
+            'microsoft/phi-2',
         ],
         default="facebook/opt-125m",
     )
@@ -186,6 +188,7 @@ def argparser():
 
     # For LLAMA 2 models, possible modules: k_proj, v_proj, q_proj, o_proj, gate_proj, up_proj, down_proj
     # For OPT models, possible modules: k_proj, v_proj, q_proj, out_proj, fc1, fc2
+    # For Phi-2 models, possible modules: Wqkv, out_proj, fc1, fc2
     parser.add_argument(
         '--lora-target-modules',
         nargs='+',
@@ -255,9 +258,9 @@ def main() -> None:
         model_adapter.model.to(config.device)
 
     # compute perplexity before finetuning
-    dataset_ppl = gpu_utils.evaluate_ppl(model_adapter, ppl_eval_loader)
-    logging.info(f'PPL before finetuning: {dataset_ppl:.4f}')
-    wandb.log({"pre_finetune_ppl": dataset_ppl})
+    # dataset_ppl = gpu_utils.evaluate_ppl(model_adapter, ppl_eval_loader)
+    # logging.info(f'PPL before finetuning: {dataset_ppl:.4f}')
+    # wandb.log({"pre_finetune_ppl": dataset_ppl})
 
     utils.cleanup_memory()
 
@@ -297,6 +300,11 @@ def main() -> None:
     # create optimizer and scheduler
     optimizer, lr_scheduler = get_optimizer_and_scheduler(model, finetune_ds["train"], args)
 
+    if "phi" in args.model:
+        gradient_checkpointing = False
+    else:
+        gradient_checkpointing = True
+
     training_args = TrainingArguments(
         output_dir=args.st_checkpoint_dir,  # output directory
         num_train_epochs=args.epochs,
@@ -311,7 +319,7 @@ def main() -> None:
         evaluation_strategy=args.evaluation_strategy,
         metric_for_best_model="eval_loss",
         greater_is_better=False,  # lower eval_loss is better,
-        gradient_checkpointing=True,
+        gradient_checkpointing=gradient_checkpointing,
     )
 
     trainer = CustomTrainer(
