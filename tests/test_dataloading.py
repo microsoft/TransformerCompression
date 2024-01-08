@@ -8,20 +8,19 @@ from slicegpt import data_utils, hf_utils
 
 @pytest.mark.parametrize(
     "dataset_name",
-    [
-        "wikitext2",
-        "ptb",
-        "c4",
-    ],
+    ["wikitext2", "ptb", "c4", "alpaca"],
 )
 def test_get_dataset(dataset_name) -> None:
-    train_dataset, test_dataset = data_utils.get_dataset(dataset_name=dataset_name)
+    ds = data_utils.get_dataset(name=dataset_name)
 
-    assert train_dataset is not None
-    assert test_dataset is not None
+    assert ds is not None
+    assert "train" in ds
 
-    assert len(train_dataset) > 0
-    assert len(test_dataset) > 0
+    if dataset_name == "wikitext2" or dataset_name == "ptb":
+        assert "test" in ds
+        assert "validation" in ds
+    elif dataset_name == "c4":
+        assert "validation" in ds
 
 
 @pytest.mark.parametrize(
@@ -31,9 +30,9 @@ def test_get_dataset(dataset_name) -> None:
         ("wikitext2", None, None, 8),
         ("wikitext2", 512, None, 8),
         ("wikitext2", 512, 4, 8),
-        ("wikitext2", 512, 4, 8),
         ("ptb", 256, 2, 4),
         ("c4", 128, 2, 4),
+        ("alpaca", 64, 2, 4),
     ],
 )
 def test_get_loaders(dataset_name: str, max_seqlen: int, batch_size: int, nsamples: int) -> None:
@@ -41,7 +40,7 @@ def test_get_loaders(dataset_name: str, max_seqlen: int, batch_size: int, nsampl
     model_name = "facebook/opt-125m"
     _, tokenizer = hf_utils.get_model_and_tokenizer(model_name)
 
-    dataset, _ = data_utils.get_dataset(dataset_name=dataset_name)
+    dataset = data_utils.get_dataset(name=dataset_name)
 
     def get_default_args(func):
         signature = inspect.signature(func)
@@ -57,7 +56,7 @@ def test_get_loaders(dataset_name: str, max_seqlen: int, batch_size: int, nsampl
         nsamples = defaults["nsamples"]
 
     loader_varied_seqlen = data_utils.prepare_dataloader(
-        dataset=dataset,
+        dataset=dataset["train"],
         tokenizer=tokenizer,
         max_seqlen=max_seqlen,
         batch_size=batch_size,
@@ -66,7 +65,7 @@ def test_get_loaders(dataset_name: str, max_seqlen: int, batch_size: int, nsampl
     )
 
     loader_fixed_seqlen = data_utils.prepare_dataloader(
-        dataset=dataset,
+        dataset=dataset["train"],
         tokenizer=tokenizer,
         max_seqlen=max_seqlen,
         batch_size=batch_size,
