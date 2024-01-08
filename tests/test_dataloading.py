@@ -11,7 +11,16 @@ from slicegpt import data_utils, hf_utils
     ["wikitext2", "ptb", "c4", "alpaca"],
 )
 def test_get_dataset(dataset_name) -> None:
-    data_utils.get_dataset(name=dataset_name)
+    ds = data_utils.get_dataset(name=dataset_name)
+
+    assert ds is not None
+    assert "train" in ds
+
+    if dataset_name == "wikitext2" or dataset_name == "ptb":
+        assert "test" in ds
+        assert "validation" in ds
+    elif dataset_name == "c4":
+        assert "validation" in ds
 
 
 @pytest.mark.parametrize(
