@@ -4,6 +4,7 @@
 import logging
 
 import torch
+from peft import LoraConfig, get_peft_model
 from transformers import (
     AutoTokenizer,
     LlamaConfig,
@@ -93,6 +94,7 @@ def get_model_and_tokenizer(
             model = LlamaForCausalLM.from_pretrained(model_path, torch_dtype=dtype, token=token)
             model.config.torch_dtype = dtype
 
+        # TODO: change to <eos>
         tokenizer.add_special_tokens({"pad_token": "<pad>"})  # Llama-2 models don't have a pad token by default
         model.config.pad_token_id = tokenizer.pad_token_id
         model.resize_token_embeddings(len(tokenizer), pad_to_multiple_of=8)
@@ -111,9 +113,10 @@ def get_model_and_tokenizer(
 
 @do_not_initialize
 def load_sliced_model(
-    model_name: str, model_path: str, sparsity: float, token: str
+    model_name: str, model_path: str, sparsity: float, token: str, lora_config: LoraConfig = None
 ) -> tuple[ModelAdapter, PreTrainedTokenizerBase]:
-    """Loads the sliced model and the tokenizer from the given path."""
+    """Loads the sliced model and the tokenizer from the given path. If lora_config is supplied as an arg then this
+    function will return a PEFT model (post-slicing finetuned model)."""
     model_adapter, tokenizer = get_model_and_tokenizer(model_name, uninitialized=True, token=token)
     replace_layers(model_adapter)
     fuse_modules(model_adapter)
@@ -128,6 +131,9 @@ def load_sliced_model(
         )
 
     slice_rotated_model(model_adapter, new_embedding_dimension)
+
+    if lora_config:
+        model_adapter.model = get_peft_model(model_adapter.model, lora_config)
 
     model_adapter.model.load_state_dict(torch.load(model_path, map_location="cpu"))
     model_adapter.model.eval()
