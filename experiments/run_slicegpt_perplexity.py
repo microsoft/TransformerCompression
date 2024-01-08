@@ -147,11 +147,12 @@ def main() -> None:
         else:
             model.to(config.device)
 
-    train_dataset, test_dataset = data_utils.get_dataset(args.cal_dataset)
+    dataset = data_utils.get_dataset(args.cal_dataset)
+    train_dataset, test_dataset = dataset["train"], dataset["validation"]
     train_loader = data_utils.prepare_dataloader(
         dataset=train_dataset,
         tokenizer=tokenizer,
-        max_seqlen=model.seqlen,
+        max_seqlen=2048,
         batch_size=args.batch_size,
         nsamples=args.cal_nsamples,
         varied_seqlen=args.varied_seqlen,
@@ -160,9 +161,9 @@ def main() -> None:
     test_loader = data_utils.prepare_dataloader(
         dataset=test_dataset,
         tokenizer=tokenizer,
-        nsamples=args.cal_nsamples,
-        max_seqlen=model_adapter.seqlen,
+        max_seqlen=2048,
         batch_size=args.batch_size,
+        nsamples=args.cal_nsamples,
         varied_seqlen=args.varied_seqlen,
         seed=args.seed,
     )

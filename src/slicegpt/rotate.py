@@ -183,6 +183,7 @@ def rotate_and_slice_sequential(
                 args[i],
             )
 
+        # TODO: fix seqlen issue for batches of varying seqlen here
         mlp_ln_inputs, _ = get_signals(layer_adapter, model_adapter.seqlen, args, kwargs)
         _, Q = pca_calc(mlp_ln_inputs, ignore_masks)
         Q = Q.to(device=config.device, dtype=torch.float64)
