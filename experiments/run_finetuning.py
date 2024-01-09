@@ -258,9 +258,9 @@ def main() -> None:
         model_adapter.model.to(config.device)
 
     # compute perplexity before finetuning
-    # dataset_ppl = gpu_utils.evaluate_ppl(model_adapter, ppl_eval_loader)
-    # logging.info(f'PPL before finetuning: {dataset_ppl:.4f}')
-    # wandb.log({"pre_finetune_ppl": dataset_ppl})
+    dataset_ppl = gpu_utils.evaluate_ppl(model_adapter, ppl_eval_loader)
+    logging.info(f'PPL before finetuning: {dataset_ppl:.4f}')
+    wandb.log({"pre_finetune_ppl": dataset_ppl})
 
     utils.cleanup_memory()
 

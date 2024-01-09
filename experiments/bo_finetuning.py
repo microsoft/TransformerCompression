@@ -18,12 +18,12 @@ config_space = {
     "load-model-path": "sliced_models/phi-2_0.25.pt",
     "lora-target-modules": choice(["Wqkv out_proj", "Wqkv out_proj fc1 fc2"]),
     "lora-alpha": loguniform(1e-2, 1e4),
-    "lora-dropout": uniform(0, 0.3),
-    "lora-r": randint(4, 64),
-    "finetune-train-seqlen": randint(64, 256),
+    "lora-dropout": uniform(0, 0.5),
+    "lora-r": randint(2, 64),
+    "finetune-train-seqlen": randint(64, 1024),
     "finetune-test-seqlen": 2048,
     "finetune-train-nsamples": 8192,
-    "finetune-train-batch-size": randint(1, 24),
+    "finetune-train-batch-size": randint(1, 8),
     "wandb-project": "syne-tune-phi"
 }
 
