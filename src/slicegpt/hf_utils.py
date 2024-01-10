@@ -19,10 +19,9 @@ from .adapters.opt_adapter import OPTModelAdapter
 from .adapters.phi2_adapter import Phi2HFModelAdapter
 from .layernorm_fusion import fuse_modules, replace_layers
 from .model_adapter import ModelAdapter
-from .rotate import slice_rotated_model
-
 from .model_code.configuration_phi import PhiConfig
 from .model_code.modeling_phi import PhiForCausalLM
+from .rotate import slice_rotated_model
 
 
 class UninitializedOPTForCausalLM(OPTForCausalLM):

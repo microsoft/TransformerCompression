@@ -16,6 +16,7 @@ from transformers.models.opt.modeling_opt import OPTConfig, OPTForCausalLM
 sys.path.append(project_root(__file__, root_files="pyproject.toml"))
 from phi2_hf.configuration_phi import PhiConfig
 from phi2_hf.modeling_phi import InferenceParams, ParallelBlock, PhiForCausalLM
+
 from slicegpt.adapters.llama_adapter import LlamaModelAdapter
 from slicegpt.adapters.opt_adapter import OPTModelAdapter
 from slicegpt.adapters.phi2hf_adapter import Phi2HFModelAdapter

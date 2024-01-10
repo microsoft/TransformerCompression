@@ -39,6 +39,10 @@ dev = [
     "pytest>=7.4.2",
 ]
 
+finetune = [
+    "syne-tune==0.10.0"
+]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 exclude = ["*_test.py", "tests/*"]
