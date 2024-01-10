@@ -147,7 +147,9 @@ class OPTLayerAdapter(LayerAdapter):
 
 
 class OPTModelAdapter(ModelAdapter):
-    parallel_blocks = False
+    @property
+    def parallel_blocks(self) -> bool:
+        return False
 
     def __init__(self, model: OPTForCausalLM) -> None:
         super().__init__()

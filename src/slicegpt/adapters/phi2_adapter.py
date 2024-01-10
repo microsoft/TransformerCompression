@@ -84,7 +84,9 @@ class Phi2HFLayerAdapter(LayerAdapter):
 
 
 class Phi2HFModelAdapter(ModelAdapter):
-    parallel_blocks = True
+    @property
+    def parallel_blocks(self) -> bool:
+        return True
 
     def __init__(self, model: PhiForCausalLM) -> None:
         super().__init__()

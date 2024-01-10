@@ -124,7 +124,9 @@ class LlamaLayerAdapter(LayerAdapter):
 
 
 class LlamaModelAdapter(ModelAdapter):
-    parallel_blocks = False
+    @property
+    def parallel_blocks(self) -> bool:
+        return False
 
     def __init__(self, model: LlamaForCausalLM) -> None:
         super().__init__()
