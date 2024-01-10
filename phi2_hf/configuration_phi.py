@@ -1,5 +1,7 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
+#
+# taken from https://huggingface.co/microsoft/phi-2/blob/main/configuration_phi.py
 
 import math
 from typing import Optional
