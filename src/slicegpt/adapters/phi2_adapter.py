@@ -1,13 +1,11 @@
 import sys
 from typing import Optional, Union, cast
 
-from pyreporoot import project_root
 from torch import BoolTensor, FloatTensor, Tensor, matmul
 from torch.nn import LayerNorm, Linear, Module
 
-sys.path.append(project_root(__file__, root_files="pyproject.toml"))
-from phi2_hf.configuration_phi import PhiConfig
-from phi2_hf.modeling_phi import InferenceParams, ParallelBlock, PhiForCausalLM
+from ..model_code.configuration_phi import PhiConfig
+from ..model_code.modeling_phi import InferenceParams, ParallelBlock, PhiForCausalLM
 from slicegpt.model_adapter import LayerAdapter, ModelAdapter
 
 
@@ -113,7 +111,7 @@ class Phi2HFModelAdapter(ModelAdapter):
 
     @property
     def should_bake_mean_into_linear(self) -> bool:
-        return False
+        return True
 
     @property
     def original_layer_type(self) -> type[ParallelBlock]:

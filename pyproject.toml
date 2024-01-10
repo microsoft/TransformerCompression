@@ -28,8 +28,7 @@ dependencies = [
     "tqdm",
     "transformers",
     "wandb",
-    "ml-collections",
-    "py-repo-root"
+    "ml-collections"
 ]
 
 [project.optional-dependencies]
