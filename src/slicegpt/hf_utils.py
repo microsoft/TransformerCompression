@@ -2,11 +2,9 @@
 # Licensed under the MIT license.
 
 import logging
-import sys
 
 import torch
 from peft import LoraConfig, get_peft_model
-from pyreporoot import project_root
 from transformers import (
     AutoTokenizer,
     LlamaConfig,
@@ -18,14 +16,13 @@ from transformers import (
 
 from .adapters.llama_adapter import LlamaModelAdapter
 from .adapters.opt_adapter import OPTModelAdapter
-from .adapters.phi2hf_adapter import Phi2HFModelAdapter
+from .adapters.phi2_adapter import Phi2HFModelAdapter
 from .layernorm_fusion import fuse_modules, replace_layers
 from .model_adapter import ModelAdapter
 from .rotate import slice_rotated_model
 
-sys.path.append(project_root(__file__, root_files="pyproject.toml"))
-from phi2_hf.configuration_phi import PhiConfig
-from phi2_hf.modeling_phi import PhiForCausalLM
+from .model_code.configuration_phi import PhiConfig
+from .model_code.modeling_phi import PhiForCausalLM
 
 
 class UninitializedOPTForCausalLM(OPTForCausalLM):
