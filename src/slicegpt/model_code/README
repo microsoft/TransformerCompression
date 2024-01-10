@@ -1,1 +1,1 @@
-This code for the phi model is taken from huggingface. It's not yet available in transformers: when it is we'll delete this code and import it from there. We need this coce locally so that we can subclass the model for slicegpt. 
+This code for the phi model is taken from huggingface. It's not yet available in transformers: when it is we'll delete this code and import it from there. We need this code locally so that we can subclass the model for slicegpt. 
