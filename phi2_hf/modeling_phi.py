@@ -3,6 +3,8 @@
 #
 # Copyright (c) 2022, Tri Dao, trid@cs.stanford.edu.
 # Licensed under the BSD 3-Clause License.
+#
+# taken from https://huggingface.co/microsoft/phi-2/blob/main/modeling_phi.py
 
 from __future__ import annotations
 
