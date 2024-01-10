@@ -14,7 +14,7 @@ class LayerAdapter(ABC):
     @abstractmethod
     def parallel_blocks(self) -> bool:
         raise NotImplementedError
-    
+
     @property
     @abstractmethod
     def layer(self) -> Module:
