@@ -128,7 +128,7 @@ class Phi2HFModelAdapter(ModelAdapter):
 
     @use_cache.setter
     def use_cache(self, value: bool) -> None:
-        pass  # raise NotImplementedError("cache managed internally in phi-2")
+        pass  # cache managed internally in phi-2
 
     def compute_output_logits(self, input_ids: Tensor) -> FloatTensor:
         return self._model(input_ids=input_ids).logits
