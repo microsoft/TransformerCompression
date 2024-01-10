@@ -7,19 +7,17 @@ from inspect import get_annotations
 from typing import Any, Protocol, runtime_checkable
 
 import pytest
-from pyreporoot import project_root
 from torch import Tensor
 from torch.nn import Module, Parameter
 from transformers.models.llama.modeling_llama import LlamaConfig, LlamaForCausalLM
 from transformers.models.opt.modeling_opt import OPTConfig, OPTForCausalLM
 
-sys.path.append(project_root(__file__, root_files="pyproject.toml"))
-from phi2_hf.configuration_phi import PhiConfig
-from phi2_hf.modeling_phi import InferenceParams, ParallelBlock, PhiForCausalLM
+from slicegpt.model_code.configuration_phi import PhiConfig
+from slicegpt.model_code.modeling_phi import InferenceParams, ParallelBlock, PhiForCausalLM
 
 from slicegpt.adapters.llama_adapter import LlamaModelAdapter
 from slicegpt.adapters.opt_adapter import OPTModelAdapter
-from slicegpt.adapters.phi2hf_adapter import Phi2HFModelAdapter
+from slicegpt.adapters.phi2_adapter import Phi2HFModelAdapter
 from slicegpt.model_adapter import ModelAdapter
 
 
