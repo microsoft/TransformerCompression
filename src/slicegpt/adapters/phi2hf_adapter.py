@@ -113,7 +113,7 @@ class Phi2HFModelAdapter(ModelAdapter):
 
     @property
     def should_bake_mean_into_linear(self) -> bool:
-        return False
+        return True
 
     @property
     def original_layer_type(self) -> type[ParallelBlock]:

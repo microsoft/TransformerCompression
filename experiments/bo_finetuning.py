@@ -17,7 +17,7 @@ config_space = {
     "sparsity": 0.25,
     "load-model-path": "sliced_models/phi-2_0.25.pt",
     "lora-target-modules": choice(["Wqkv out_proj", "Wqkv out_proj fc1 fc2"]),
-    "lora-alpha": loguniform(1e-2, 1e4),
+    "lora-alpha": loguniform(1e-2, 1e3),
     "lora-dropout": uniform(0, 0.5),
     "lora-r": randint(2, 64),
     "finetune-train-seqlen": randint(64, 1024),
