@@ -48,7 +48,7 @@ def parse_args() -> argparse.Namespace:
         default="facebook/opt-125m",
     )
     parser.add_argument(
-        "--load-model-path", type=str, default=None, help="Path to load the sliced model from.", required=True
+        "--load-model-path", type=str, default=None, help="Path to load the sliced model from.",
     )
     parser.add_argument(
         "--sparsity", type=float, default=0.0, help="A measure of how much slicing is applied (in the range [0, 1))"
@@ -87,11 +87,16 @@ def main() -> None:
         logging.info(f'Failed to initialize wandb: {e}, continuing without wandb.')
         wandb.init(project="slicegpt-lm-eval", mode='disabled')
 
-    # load the sliced model
-    logging.info(f"Loading sliced {args.model} model from {args.load_model_path} with sparsity {args.sparsity}")
-    model_adapter, tokenizer = hf_utils.load_sliced_model(
-        args.model, args.load_model_path, args.sparsity, token=args.hf_token
-    )
+    if args.load_model_path:
+        # load the sliced model
+        logging.info(f"Loading sliced {args.model} model from {args.load_model_path} with sparsity {args.sparsity}")
+        model_adapter, tokenizer = hf_utils.load_sliced_model(
+            args.model, args.load_model_path, args.sparsity, token=args.hf_token
+        )
+    else:
+        # load the original model
+        logging.info(f"Loading {args.model} model")
+        model_adapter, tokenizer = hf_utils.get_model_and_tokenizer(args.model, token=args.hf_token)
 
     # the lm eval harness ties the weights, but this should not be done for sliced models unless the lm_head was sliced
     model_adapter.model.tie_weights = lambda: None

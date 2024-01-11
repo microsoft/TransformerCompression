@@ -44,7 +44,7 @@ def argparser() -> argparse.Namespace:
         "--cal-dataset",
         type=str,
         help="Dataset to calibrate on.",
-        choices=["wikitext2", "ptb", "c4"],
+        choices=["wikitext2", "ptb", "c4", "alpaca"],
         default="wikitext2",
     )
     parser.add_argument(
