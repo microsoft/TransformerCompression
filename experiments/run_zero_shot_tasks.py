@@ -46,43 +46,25 @@ def parse_args():
         default="facebook/opt-125m",
     )
     parser.add_argument(
-        "--cal-dataset",
-        type=str,
-        help="Dataset to calibrate on.",
-        choices=["wikitext2", "ptb", "c4"],
-        default="wikitext2",
+        "--load-model-path", type=str, default=None, help="Path to load the sliced model from.", required=True
     )
-    parser.add_argument(
-        "--cal-nsamples",
-        type=int,
-        help="Number of samples of the calibration data to load.",
-        default=128,
-    )
-    parser.add_argument(
-        "--tasks",
-        default="piqa,hellaswag,arc_easy,arc_challenge,winogrande",
-        choices=lm_eval_utils.MultiChoice(tasks.ALL_TASKS),
-    )
-    parser.add_argument("--no-cache", action="store_true")
     parser.add_argument(
         "--sparsity", type=float, default=0.0, help="A measure of how much slicing is applied (in the range [0, 1))"
     )
-    parser.add_argument("--batch-size", type=int, default=1, help="Batch size for loading the calibration data.")
+    parser.add_argument('--hf-token', type=str, default=None)
+    parser.add_argument("--batch-size", type=int, default=1, help="Batch size for evaluating with lm eval harness.")
     parser.add_argument(
         "--distribute-model",
         action="store_true",
         help="Use accelerate to put the model on multiple GPUs for evaluation. It is recommended to use it for models with 30B parameters and above.",
     )
-
-    parser.add_argument(
-        "--load-model-path", type=str, default=None, help="Path to load the sliced model from.", required=True
-    )
-
-    parser.add_argument('--hf-token', type=str, default=None)
     parser.add_argument('--no-wandb', action="store_true", help="Disable wandb.")
-    parser.add_argument("--varied-seqlen", action="store_true", help="Varied sequence lengths in the calibration data.")
-    parser.add_argument("--seed", type=int, default=42, help="Seed for sampling the calibration data.")
-
+    parser.add_argument(
+        '--tasks',
+        nargs='+',
+        default=["piqa", "hellaswag", "arc_easy", "arc_challenge", "winogrande"],
+        choices=lm_eval_utils.MultiChoice(tasks.ALL_TASKS),
+    )
     return parser.parse_args()
 
 
@@ -96,12 +78,12 @@ def main() -> None:
     logging.info(f"Number of available cuda devices: {torch.cuda.device_count()}")
 
     try:
-        wandb.init(project="slicegpt-zeroshot", config=args)
+        wandb.init(project="slicegpt-lm-eval", config=args, mode='disabled' if args.no_wandb else None)
     except wandb.UsageError as e:
         # wandb.init will throw an error if the user is not logged in and the process is running in a non-shell
         # environment, e.g. notebook, IDE, no-shell process, etc. In this case, we want to continue without wandb.
         logging.info(f'Failed to initialize wandb: {e}, continuing without wandb.')
-        wandb.init(project="slicegpt", mode='disabled')
+        wandb.init(project="slicegpt-lm-eval", mode='disabled')
 
     # load the sliced model
     logging.info(f"Loading sliced {args.model} model from {args.load_model_path} with sparsity {args.sparsity}")
