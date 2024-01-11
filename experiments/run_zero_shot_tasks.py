@@ -23,7 +23,7 @@ utils.configure_logging()
 os.environ["WANDB__SERVICE_WAIT"] = "300"
 
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--model",
