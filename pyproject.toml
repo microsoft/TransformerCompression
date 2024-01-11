@@ -30,7 +30,7 @@ dependencies = [
     "wandb",
     "ml-collections",
     "py-repo-root",
-    "peft=0.6.0"
+    "peft==0.6.0"
 ]
 
 [project.optional-dependencies]
