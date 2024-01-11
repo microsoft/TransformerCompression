@@ -8,21 +8,40 @@ from typing import Any, final
 from torch import FloatTensor, Tensor
 from torch.nn import Linear, Module
 
+"""
+To add support for a new model, you need to create a new adapter class that inherits from ModelAdapter, and a new adapter class that inherits from LayerAdapter.
+
+The ModelAdapter class tells sliceGPT how to interact with the model, an instance of which is stored at self.model. For example, how to access each of the layers f the model. 
+
+Similarly, the LayerAdapter class tells sliceGPT how to interact with each layer of the model. For example, how to access the attention and MLP components of the layer, and how to update the arguments to the layer's forward method.
+
+See src/slicegpt/adapters/llama_adapter.py for an example of how to implement these classes.
+"""
+
 
 class LayerAdapter(ABC):
     @property
     @abstractmethod
     def layer(self) -> Module:
+        """
+        Returns the layer that this adapter wraps.
+        """
         raise NotImplementedError
 
     @property
     @abstractmethod
     def hidden_states_args_position(self) -> int:
+        """
+        Returns the position of the hidden_states argument in the layer's forward method.
+        """
         raise NotImplementedError
 
     @property
     @abstractmethod
     def hidden_states_output_position(self) -> int:
+        """
+        Returns the position of the hidden_states in the output of the layer's forward method.
+        """
         raise NotImplementedError
 
     @abstractmethod
