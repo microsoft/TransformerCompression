@@ -117,6 +117,7 @@ class TestLlamaAdapter(ModelAdapterTestBase):
 @pytest.mark.skip(reason="times out on current CI")
 class TestPhi2HFAdapter(ModelAdapterTestBase):
     def create_adapter(self) -> Phi2HFModelAdapter:
-        config = PhiConfig()
+        # a tiny phi, just to test adapter.
+        config = PhiConfig(vocab_size=500, n_positions=20, n_embd=16, n_layer=2, n_head=1, rotary_dim=4)
         model = PhiForCausalLM(config)
         return Phi2HFModelAdapter(model)
