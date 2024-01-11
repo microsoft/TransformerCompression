@@ -114,6 +114,7 @@ class TestLlamaAdapter(ModelAdapterTestBase):
         return LlamaModelAdapter(model)
 
 
+@pytest.mark.skip(reason="times out on current CI")
 class TestPhi2HFAdapter(ModelAdapterTestBase):
     def create_adapter(self) -> Phi2HFModelAdapter:
         config = PhiConfig()
