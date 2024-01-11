@@ -12,11 +12,6 @@ from torch.nn import Linear, Module
 class LayerAdapter(ABC):
     @property
     @abstractmethod
-    def parallel_blocks(self) -> bool:
-        raise NotImplementedError
-
-    @property
-    @abstractmethod
     def layer(self) -> Module:
         raise NotImplementedError
 
@@ -62,6 +57,11 @@ class LayerAdapter(ABC):
 
 
 class ModelAdapter(ABC):
+    @property
+    @abstractmethod
+    def parallel_blocks(self) -> bool:
+        raise NotImplementedError
+
     @property
     @abstractmethod
     def model(self) -> Module:
