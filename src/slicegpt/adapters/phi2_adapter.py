@@ -68,7 +68,7 @@ class Phi2HFLayerAdapter(LayerAdapter):
         return self._layer.ln
 
     def get_second_layernorm(self) -> LayerNorm:
-        raise NotImplementedError("Phi-2-HF does not have a post-attention layer norm")
+        return None
 
     def get_attention_inputs(self) -> list[Linear]:
         return [self._layer.mixer.Wqkv]
