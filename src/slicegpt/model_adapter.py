@@ -191,7 +191,7 @@ class ModelAdapter(ABC):
     @abstractmethod
     def convert_layer_to_compressible(self, layer: Module) -> Module:
         """
-        Replace the given layer with a compressed version of the layer.
+        Replace the given layer with a compressible version of the layer.
         """
         raise NotImplementedError
 
