@@ -67,6 +67,7 @@ def parse_args() -> argparse.Namespace:
         default=["piqa", "hellaswag", "arc_easy", "arc_challenge", "winogrande"],
         choices=lm_eval_utils.MultiChoice(tasks.ALL_TASKS),
     )
+    parser.add_argument('--num-fewshot', type=int, default=0, help="Number of fewshots for all tasks.")
     return parser.parse_args()
 
 
@@ -117,7 +118,7 @@ def main() -> None:
 
     logging.info(f"Selected Tasks: {task_names}")
 
-    results = lm_eval.simple_evaluate(hflm, tasks=task_names, batch_size=args.batch_size)['results']
+    results = lm_eval.simple_evaluate(hflm, tasks=task_names, num_fewshot=args.num_fewshot, batch_size=args.batch_size)['results']
 
     wandb.log(results)
     logging.info(json.dumps(results, indent=2))

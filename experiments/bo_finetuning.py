@@ -24,7 +24,9 @@ config_space = {
     "finetune-test-seqlen": 2048,
     "finetune-train-nsamples": 8192,
     "finetune-train-batch-size": randint(1, 8),
-    "wandb-project": "syne-tune-phi"
+    "wandb-project": "syne-tune-phi",
+    "finetune-dataset": "alpaca",
+    "ppl-eval-dataset": "alpaca"
 }
 
 if __name__ == "__main__":

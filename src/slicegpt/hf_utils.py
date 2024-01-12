@@ -110,7 +110,7 @@ def get_model_and_tokenizer(
         model_adapter = LlamaModelAdapter(model)
     elif "microsoft/phi-2" in model_path:
         if uninitialized:
-            config = PhiConfig.from_pretrained(model_path, token=token)
+            config = PhiConfig.from_pretrained(model_path, token=token, revision="d3186761bf5c4409f7679359284066c25ab668ee")
             model = UninitializedPhiForCausalLM(config)
             model = model.to(dtype=dtype)
         else:
