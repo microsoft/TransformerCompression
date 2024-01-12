@@ -5,6 +5,7 @@ import argparse
 import logging
 import os
 
+import syne_tune
 import torch
 import transformers
 import wandb
@@ -177,10 +178,12 @@ def argparser():
     parser.add_argument('--save-total-limit', type=int, default=1)
     parser.add_argument('--logging-steps', type=int, default=1)
 
-    parser.add_argument('--lora-alpha', type=int, default=32)
+    parser.add_argument('--lora-alpha', type=float, default=32.0)
     parser.add_argument('--lora-dropout', type=float, default=0.1)
     parser.add_argument('--lora-r', type=int, default=8)
     parser.add_argument('--lora-bias', type=str, default="none")
+
+    parser.add_argument('--st_checkpoint_dir', type=str, default=".")
 
     # For LLAMA 2 models, possible modules: k_proj, v_proj, q_proj, o_proj, gate_proj, up_proj, down_proj
     # For OPT models, possible modules: k_proj, v_proj, q_proj, out_proj, fc1, fc2
@@ -232,7 +235,7 @@ def main() -> None:
     # load the sliced model
     logging.info(f"Loading sliced {args.model} model from {args.load_model_path} with sparsity {args.sparsity}")
     model_adapter, tokenizer = hf_utils.load_sliced_model(
-        args.model, args.load_model_path, args.sparsity, token=args.hf_token
+        args.model, args.load_model_path, args.sparsity, token=args.hf_token, round_interval=8
     )
 
     # get the dataset for perplexity evaluation
@@ -296,7 +299,7 @@ def main() -> None:
     optimizer, lr_scheduler = get_optimizer_and_scheduler(model, finetune_ds["train"], args)
 
     training_args = TrainingArguments(
-        output_dir=f"./results_{os.path.basename(args.model)}_{args.sparsity}",  # output directory
+        output_dir=args.st_checkpoint_dir,  # output directory
         num_train_epochs=args.epochs,
         per_device_train_batch_size=args.finetune_train_batch_size,  # batch size per device during training
         per_device_eval_batch_size=args.finetune_test_batch_size,  # batch size for evaluation
@@ -346,6 +349,8 @@ def main() -> None:
     dataset_ppl = gpu_utils.evaluate_ppl(model, ppl_eval_loader)
     logging.info(f'PPL after finetuning: {dataset_ppl:.4f}')
     wandb.log({"post_finetune_ppl": dataset_ppl})
+
+    syne_tune.Reporter()(ppl=dataset_ppl)
 
 
 if __name__ == "__main__":

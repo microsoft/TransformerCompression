@@ -138,7 +138,12 @@ def get_model_and_tokenizer(
 
 @do_not_initialize
 def load_sliced_model(
-    model_name: str, model_path: str, sparsity: float, token: str, lora_config: LoraConfig = None
+    model_name: str,
+    model_path: str,
+    sparsity: float,
+    token: str,
+    lora_config: LoraConfig = None,
+    round_interval: int = 1,
 ) -> tuple[ModelAdapter, PreTrainedTokenizerBase]:
     """Loads the sliced model and the tokenizer from the given path. If lora_config is supplied as an arg then this
     function will return a PEFT model (post-slicing finetuned model)."""
@@ -146,6 +151,7 @@ def load_sliced_model(
     replace_layers(model_adapter)
     fuse_modules(model_adapter)
     new_embedding_dimension = int((1 - sparsity) * model_adapter.hidden_size)
+    new_embedding_dimension = new_embedding_dimension - (new_embedding_dimension % round_interval)
 
     for layer_adapter in model_adapter.get_layers():
         if not model_adapter.parallel_blocks:
