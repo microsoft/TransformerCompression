@@ -2,7 +2,7 @@
 
 This repository contains the code for the paper [SliceGPT](link made available on publication). 
 
-Slice GPT is a new post-training sparsification scheme that makes transformer networks (including LLMs) smaller by first applying orthogonal transformations to each layer that leave the model unchanged, and then slicing off the least-significant rows and columns (chosen by the eigenvalue decay) of the weight matrices. Thus, the model structure is left unchanged, but each weight matrix is replaced by a smaller (dense) weight matrix, reducing the embedding dimension of the model. This results in speedups (without any additional code optimization) and a reduced memory footprint.  
+Slice GPT is a new post-training sparsification scheme that makes transformer networks (including LLMs) smaller by first applying orthogonal transformations to each layer that leave the model unchanged, and then slicing off the least-significant rows and columns (chosen by the eigenvalue decay) of the weight matrices. The model structure is left unchanged, but each weight matrix is replaced by a smaller (dense) weight matrix, reducing the embedding dimension of the model. This results in speedups (without any additional code optimization) and a reduced memory footprint.  
 
 The code is arranged as a package 'slicegpt' in /src, and script to replicate experiments from the paper are in /experiments. To install the sliceGPT package, we recommend
 
