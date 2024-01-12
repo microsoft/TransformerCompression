@@ -13,10 +13,9 @@ The code is arranged as a package 'slicegpt' in /src, and script to replicate ex
 
 To run sliceGPT on `microsoft/phi-2`, from the `experiments` folder, run 
 ```
-    python run_slicegpt_perplexity.py --model microsoft/phi-2 --save-dir <path/to/save/sliced_model/to> \
-    --hf-token <HF_TOKEN> --eval-baseline --eval-fused-model --sparsity 0.25 --no-wandb --device cuda:0 \    
+    python run_slicegpt_perplexity.py --model microsoft/phi-2 --save-dir path/to/save/sliced_model --sparsity 0.25 --no-wandb --device cuda:0 
 ```
-This will compress the `microsoft/phi-2` model, show the perplexity evaluation before and after compressing the model and save the compressed model to the specified path.
+This will compress the `microsoft/phi-2` model and save the compressed model to the specified path. To show the perplexity evaluation before and after compressing the model, add options `--eval-baseline --eval-fused-model`. Please consult the script for the full set of options.
 
 The experiments folder also contains scripts for 
 - [finetuning](./experiments/run_finetuning.py) the compressed model to recover most of the quality lost during compression
@@ -42,6 +41,7 @@ The following models from Huggingface hub are currently supported
 The model you wish to support must be available in HuggingFace. To add sliceGPT support for a new model, one needs to: 
 - Implement the [ModelAdapter](./src/slicegpt/model_adapter.py) interface for the new model. The ModelAdapter class tells sliceGPT how to interact with the model, an instance of which is stored at self.model. For example, how to access each of the layers of the model.
 - Implement the [LayerAdapter](./src/slicegpt/model_adapter.py) interface for the layer. The LayerAdapter class tells sliceGPT how to interact with each layer of the model. For example, how to access the attention and MLP components of the layer, and how to update the arguments to the layer's forward method.
+- Implement a compressible layer class that subclasses the decoder layer and provides an adapted `forward()` method to work with the compressed model 
 - See [llama_adapter.py](./src/slicegpt/adapters/llama_adapter.py) for an example of how to implement these classes.
 
 _Note:_ If the model you wish to support is not available in HuggingFace, you will also need to implement custom model loading and initialization functionality.
