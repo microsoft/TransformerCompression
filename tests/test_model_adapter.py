@@ -1,6 +1,7 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
+import sys
 from abc import ABC, abstractmethod
 from inspect import get_annotations
 from typing import Any, Protocol, runtime_checkable
@@ -13,7 +14,10 @@ from transformers.models.opt.modeling_opt import OPTConfig, OPTForCausalLM
 
 from slicegpt.adapters.llama_adapter import LlamaModelAdapter
 from slicegpt.adapters.opt_adapter import OPTModelAdapter
+from slicegpt.adapters.phi2_adapter import Phi2HFModelAdapter
 from slicegpt.model_adapter import ModelAdapter
+from slicegpt.model_code.configuration_phi import PhiConfig
+from slicegpt.model_code.modeling_phi import InferenceParams, ParallelBlock, PhiForCausalLM
 
 
 @runtime_checkable
@@ -68,8 +72,9 @@ class ModelAdapterTestBase(ABC):
             assert isinstance(first_layernorm, Module), f"First layernorm of layer {i} is not a torch module"
             _validate_protocol_attr(first_layernorm, HasWeight, f"First layernorm of layer {i} is invalid")
             second_layernorm = layer_adapter.get_second_layernorm()
-            assert isinstance(second_layernorm, Module), f"Second layernorm of layer {i} is not a torch module"
-            _validate_protocol_attr(second_layernorm, HasWeight, f"Second layernorm of layer {i} is invalid")
+            if second_layernorm is not None:
+                assert isinstance(second_layernorm, Module), f"Second layernorm of layer {i} is not a torch module"
+                _validate_protocol_attr(second_layernorm, HasWeight, f"Second layernorm of layer {i} is invalid")
 
     def test_embeddings_have_weight(self, model_adapter: ModelAdapter) -> None:
         for i, emb in enumerate(model_adapter.get_embeddings()):
@@ -108,3 +113,11 @@ class TestLlamaAdapter(ModelAdapterTestBase):
         )
         model = LlamaForCausalLM(config)
         return LlamaModelAdapter(model)
+
+
+class TestPhi2HFAdapter(ModelAdapterTestBase):
+    def create_adapter(self) -> Phi2HFModelAdapter:
+        # a tiny phi, just to test adapter.
+        config = PhiConfig(vocab_size=500, n_positions=20, n_embd=16, n_layer=2, n_head=1, rotary_dim=4)
+        model = PhiForCausalLM(config)
+        return Phi2HFModelAdapter(model)

@@ -16,8 +16,11 @@ from transformers import (
 
 from .adapters.llama_adapter import LlamaModelAdapter
 from .adapters.opt_adapter import OPTModelAdapter
+from .adapters.phi2_adapter import Phi2HFModelAdapter
 from .layernorm_fusion import fuse_modules, replace_layers
 from .model_adapter import ModelAdapter
+from .model_code.configuration_phi import PhiConfig
+from .model_code.modeling_phi import PhiForCausalLM
 from .rotate import slice_rotated_model
 
 
@@ -28,6 +31,12 @@ class UninitializedOPTForCausalLM(OPTForCausalLM):
 
 
 class UninitializedLlamaForCausalLM(LlamaForCausalLM):
+    def _init_weights(self, _) -> None:
+        # Prevent weight initialization
+        pass
+
+
+class UninitializedPhiForCausalLM(PhiForCausalLM):
     def _init_weights(self, _) -> None:
         # Prevent weight initialization
         pass
@@ -99,6 +108,22 @@ def get_model_and_tokenizer(
         model.config.pad_token_id = tokenizer.pad_token_id
         model.resize_token_embeddings(len(tokenizer), pad_to_multiple_of=8)
         model_adapter = LlamaModelAdapter(model)
+    elif "microsoft/phi-2" in model_path:
+        if uninitialized:
+            config = PhiConfig.from_pretrained(model_path, token=token)
+            model = UninitializedPhiForCausalLM(config)
+            model = model.to(dtype=dtype)
+        else:
+            # TODO make this revision track the latest once we're pulling the code from transformers.
+            model = PhiForCausalLM.from_pretrained(
+                model_path, torch_dtype=dtype, token=token, revision="834565c23f9b28b96ccbeabe614dd906b6db551a"
+            )
+            model.config.torch_dtype = dtype
+
+        tokenizer.add_special_tokens({"pad_token": "<pad>"})  # Phi-2 models don't have a pad token by default
+        model.config.pad_token_id = tokenizer.pad_token_id
+        model.resize_token_embeddings(len(tokenizer), pad_to_multiple_of=8)
+        model_adapter = Phi2HFModelAdapter(model)
     else:
         raise NotImplementedError
 
@@ -123,9 +148,11 @@ def load_sliced_model(
     new_embedding_dimension = int((1 - sparsity) * model_adapter.hidden_size)
 
     for layer_adapter in model_adapter.get_layers():
-        layer_adapter.layer.mlp_shortcut_Q = torch.zeros(model_adapter.hidden_size, model_adapter.hidden_size).to(
-            dtype=torch.float16
-        )
+        if not model_adapter.parallel_blocks:
+            layer_adapter.layer.mlp_shortcut_Q = torch.zeros(model_adapter.hidden_size, model_adapter.hidden_size).to(
+                dtype=torch.float16
+            )
+
         layer_adapter.layer.attn_shortcut_Q = torch.zeros(model_adapter.hidden_size, model_adapter.hidden_size).to(
             dtype=torch.float16
         )
