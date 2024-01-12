@@ -116,7 +116,7 @@ def get_model_and_tokenizer(
         else:
             # TODO make this revision track the latest once we're pulling the code from transformers.
             model = PhiForCausalLM.from_pretrained(
-                model_path, torch_dtype=dtype, token=token, revision="d3186761bf5c4409f7679359284066c25ab668ee"
+                model_path, torch_dtype=dtype, token=token, revision="834565c23f9b28b96ccbeabe614dd906b6db551a"
             )
             model.config.torch_dtype = dtype
 
