@@ -11,7 +11,7 @@ from torch.nn import Linear, Module
 """
 To add support for a new model, you need to create a new adapter class that inherits from ModelAdapter, and a new adapter class that inherits from LayerAdapter.
 
-The ModelAdapter class tells sliceGPT how to interact with the model, an instance of which is stored at self.model. For example, how to access each of the layers f the model. 
+The ModelAdapter class tells sliceGPT how to interact with the model, an instance of which is stored at self.model. For example, how to access each of the layers of the model. 
 
 Similarly, the LayerAdapter class tells sliceGPT how to interact with each layer of the model. For example, how to access the attention and MLP components of the layer, and how to update the arguments to the layer's forward method.
 
@@ -69,7 +69,7 @@ class LayerAdapter(ABC):
     @abstractmethod
     def get_attention_output(self) -> Linear:
         """
-        returns the Linear layer (nn.module) that is the output of the attention component.
+        Returns the Linear layer (nn.module) that is the output of the attention component.
         """
         raise NotImplementedError
 
@@ -146,8 +146,8 @@ class ModelAdapter(ABC):
     @abstractmethod
     def should_bake_mean_into_linear(self) -> bool:
         """
-        Whether the models normalization layers (e.g. Layernorm) contain a mean-subtraction
-        operation that neds to be absorbed into previous linear layers.
+        Whether the model's normalization layers (e.g. LayerNorm) contain a mean-subtraction
+        operation that needs to be absorbed into previous linear layers.
 
         For LayerNorm, this is True. For RMSNorm, this is False.
         """
@@ -157,7 +157,7 @@ class ModelAdapter(ABC):
     @abstractmethod
     def original_layer_type(self) -> type:
         """
-        The class of the layer that is being compressed (so that we can replace it with a compressed version)
+        The class of the compressible layer (so that we can replace it with a compressed version)
         """
         raise NotImplementedError
 
@@ -183,7 +183,7 @@ class ModelAdapter(ABC):
     @abstractmethod
     def compute_output_logits(self, input_ids: Tensor) -> FloatTensor:
         """
-        returns the logits for the model on the given input_ids. For example, this might look like:
+        Returns the logits for the model on the given input_ids. For example, this might look like:
             `self._model(input_ids=input_ids).logits`
         """
         raise NotImplementedError
@@ -205,7 +205,7 @@ class ModelAdapter(ABC):
     @abstractmethod
     def get_raw_layer_at(self, index: int) -> Module:
         """
-        Returns the raw layer (no adpter) at the given index.
+        Returns the raw layer (no adapter) at the given index.
         """
         raise NotImplementedError
 
@@ -233,7 +233,7 @@ class ModelAdapter(ABC):
     @abstractmethod
     def get_lm_head(self) -> Linear:
         """
-        Returns the linear layer at the head of the model (usually of size hidden-ize x vocab-size)
+        Returns the linear layer at the head of the model (usually of size hidden-size x vocab-size)
         """
         raise NotImplementedError
 
