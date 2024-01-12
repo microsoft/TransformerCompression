@@ -1,14 +1,13 @@
 import sys
 from typing import Optional, Union, cast
 
-from pyreporoot import project_root
 from torch import BoolTensor, FloatTensor, Tensor, matmul
 from torch.nn import LayerNorm, Linear, Module
 
-sys.path.append(project_root(__file__, root_files="pyproject.toml"))
-from phi2_hf.configuration_phi import PhiConfig
-from phi2_hf.modeling_phi import InferenceParams, ParallelBlock, PhiForCausalLM
 from slicegpt.model_adapter import LayerAdapter, ModelAdapter
+
+from ..model_code.configuration_phi import PhiConfig
+from ..model_code.modeling_phi import InferenceParams, ParallelBlock, PhiForCausalLM
 
 
 class CompressibleParallelBlock(ParallelBlock):
@@ -69,7 +68,7 @@ class Phi2HFLayerAdapter(LayerAdapter):
         return self._layer.ln
 
     def get_second_layernorm(self) -> LayerNorm:
-        raise NotImplementedError("Phi-2-HF does not have a post-attention layer norm")
+        return None
 
     def get_attention_inputs(self) -> list[Linear]:
         return [self._layer.mixer.Wqkv]
@@ -85,7 +84,9 @@ class Phi2HFLayerAdapter(LayerAdapter):
 
 
 class Phi2HFModelAdapter(ModelAdapter):
-    parallel_blocks = True
+    @property
+    def parallel_blocks(self) -> bool:
+        return True
 
     def __init__(self, model: PhiForCausalLM) -> None:
         super().__init__()
@@ -129,7 +130,7 @@ class Phi2HFModelAdapter(ModelAdapter):
 
     @use_cache.setter
     def use_cache(self, value: bool) -> None:
-        pass  # raise NotImplementedError("cache managed internally in phi-2")
+        pass  # cache managed internally in phi-2
 
     def compute_output_logits(self, input_ids: Tensor) -> FloatTensor:
         return self._model(input_ids=input_ids).logits

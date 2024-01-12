@@ -2,11 +2,9 @@
 # Licensed under the MIT license.
 
 import logging
-import sys
 
 import torch
 from peft import LoraConfig, get_peft_model
-from pyreporoot import project_root
 from transformers import (
     AutoTokenizer,
     LlamaConfig,
@@ -18,14 +16,12 @@ from transformers import (
 
 from .adapters.llama_adapter import LlamaModelAdapter
 from .adapters.opt_adapter import OPTModelAdapter
-from .adapters.phi2hf_adapter import Phi2HFModelAdapter
+from .adapters.phi2_adapter import Phi2HFModelAdapter
 from .layernorm_fusion import fuse_modules, replace_layers
 from .model_adapter import ModelAdapter
+from .model_code.configuration_phi import PhiConfig
+from .model_code.modeling_phi import PhiForCausalLM
 from .rotate import slice_rotated_model
-
-sys.path.append(project_root(__file__, root_files="pyproject.toml"))
-from phi2_hf.configuration_phi import PhiConfig
-from phi2_hf.modeling_phi import PhiForCausalLM
 
 
 class UninitializedOPTForCausalLM(OPTForCausalLM):
@@ -118,10 +114,13 @@ def get_model_and_tokenizer(
             model = UninitializedPhiForCausalLM(config)
             model = model.to(dtype=dtype)
         else:
-            model = PhiForCausalLM.from_pretrained(model_path, torch_dtype=dtype, token=token)
+            # TODO make this revision track the latest once we're pulling the code from transformers.
+            model = PhiForCausalLM.from_pretrained(
+                model_path, torch_dtype=dtype, token=token, revision="d3186761bf5c4409f7679359284066c25ab668ee"
+            )
             model.config.torch_dtype = dtype
 
-        tokenizer.add_special_tokens({"pad_token": "<pad>"})  # Llama-2 models don't have a pad token by default
+        tokenizer.add_special_tokens({"pad_token": "<pad>"})  # Phi-2 models don't have a pad token by default
         model.config.pad_token_id = tokenizer.pad_token_id
         model.resize_token_embeddings(len(tokenizer), pad_to_multiple_of=8)
         model_adapter = Phi2HFModelAdapter(model)

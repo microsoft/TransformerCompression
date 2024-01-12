@@ -20,6 +20,7 @@ requires-python = ">=3.10"
 dependencies = [
     "accelerate",
     "datasets",
+    "einops",
     "huggingface-hub>=0.16.4,<0.18",
     "lm-eval @ git+https://github.com/EleutherAI/lm-evaluation-harness.git@9b0b15b1ccace3534ffbd13298c569869ce8eaf3",
     "numpy",
@@ -29,7 +30,6 @@ dependencies = [
     "transformers",
     "wandb",
     "ml-collections",
-    "py-repo-root",
     "peft==0.6.0"
 ]
 
@@ -39,6 +39,10 @@ dev = [
     "pre-commit",
     "pylint>=3.0.0",
     "pytest>=7.4.2",
+]
+
+finetune = [
+    "syne-tune==0.10.0"
 ]
 
 [tool.setuptools.packages.find]
