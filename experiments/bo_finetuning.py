@@ -79,6 +79,8 @@ if __name__ == "__main__":
         scheduler = RandomSearch(config_space, **method_kwargs)
     elif args.method == "BO":
         scheduler = BayesianOptimization(config_space, **method_kwargs)
+    else:
+        raise ValueError(f"Unknown method: {args.method}")
 
     # Stopping criterion: We stop after `args.max_wallclock_time` seconds
     stop_criterion = StoppingCriterion(max_wallclock_time=args.max_wallclock_time)
