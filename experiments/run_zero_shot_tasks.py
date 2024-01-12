@@ -5,6 +5,7 @@ import argparse
 import json
 import logging
 import os
+import time
 
 import lm_eval
 import torch
@@ -15,7 +16,8 @@ from lm_eval.api.registry import ALL_TASKS
 from lm_eval.models.huggingface import HFLM
 from lm_eval.tasks import initialize_tasks
 
-from slicegpt import gpu_utils, hf_utils, utils
+from slicegpt import hf_utils, utils
+from slicegpt.gpu_utils import sync_gpus
 from slicegpt.config import config
 
 utils.configure_logging()
@@ -61,6 +63,7 @@ def parse_args() -> argparse.Namespace:
         help="Use accelerate to put the model on multiple GPUs for evaluation. It is recommended to use it for models with 30B parameters and above.",
     )
     parser.add_argument('--no-wandb', action="store_true", help="Disable wandb.")
+    parser.add_argument('--time', action="store_true", help="Time the evaluation.")
     parser.add_argument(
         '--tasks',
         nargs='+',
@@ -109,7 +112,7 @@ def main() -> None:
         model_adapter.model.to(config.device)
 
     ### LM Eval Harness ###
-    hflm = HFLM(pretrained=model_adapter.model, tokenizer=tokenizer)
+    hflm = HFLM(pretrained=model_adapter.model, tokenizer=tokenizer, batch_size=args.batch_size)
 
     if args.tasks is None:
         task_names = tasks.ALL_TASKS
@@ -118,7 +121,20 @@ def main() -> None:
 
     logging.info(f"Selected Tasks: {task_names}")
 
+    if args.time:
+        sync_gpus()
+        start_time = time.time()
+
     results = lm_eval.simple_evaluate(hflm, tasks=task_names, num_fewshot=args.num_fewshot, batch_size=args.batch_size)['results']
+
+    if args.time:
+        sync_gpus()
+        elapsed = time.time() - start_time
+        wandb.log({'time_eval': elapsed})
+        logging.info(
+            "Time spent on evaluation: %s",
+            time.strftime("%H:%M:%S.{}".format(str(elapsed % 1)[2:])[:13], time.gmtime(elapsed)),
+        )
 
     wandb.log(results)
     logging.info(json.dumps(results, indent=2))
