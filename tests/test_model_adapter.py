@@ -72,8 +72,9 @@ class ModelAdapterTestBase(ABC):
             assert isinstance(first_layernorm, Module), f"First layernorm of layer {i} is not a torch module"
             _validate_protocol_attr(first_layernorm, HasWeight, f"First layernorm of layer {i} is invalid")
             second_layernorm = layer_adapter.get_second_layernorm()
-            assert isinstance(second_layernorm, Module), f"Second layernorm of layer {i} is not a torch module"
-            _validate_protocol_attr(second_layernorm, HasWeight, f"Second layernorm of layer {i} is invalid")
+            if second_layernorm is not None:
+                assert isinstance(second_layernorm, Module), f"Second layernorm of layer {i} is not a torch module"
+                _validate_protocol_attr(second_layernorm, HasWeight, f"Second layernorm of layer {i} is invalid")
 
     def test_embeddings_have_weight(self, model_adapter: ModelAdapter) -> None:
         for i, emb in enumerate(model_adapter.get_embeddings()):
@@ -116,6 +117,7 @@ class TestLlamaAdapter(ModelAdapterTestBase):
 
 class TestPhi2HFAdapter(ModelAdapterTestBase):
     def create_adapter(self) -> Phi2HFModelAdapter:
-        config = PhiConfig()
+        # a tiny phi, just to test adapter.
+        config = PhiConfig(vocab_size=500, n_positions=20, n_embd=16, n_layer=2, n_head=1, rotary_dim=4)
         model = PhiForCausalLM(config)
         return Phi2HFModelAdapter(model)

@@ -114,7 +114,10 @@ def get_model_and_tokenizer(
             model = UninitializedPhiForCausalLM(config)
             model = model.to(dtype=dtype)
         else:
-            model = PhiForCausalLM.from_pretrained(model_path, torch_dtype=dtype, token=token)
+            # TODO make this revision track the latest once we're pulling the code from transformers.
+            model = PhiForCausalLM.from_pretrained(
+                model_path, torch_dtype=dtype, token=token, revision="834565c23f9b28b96ccbeabe614dd906b6db551a"
+            )
             model.config.torch_dtype = dtype
 
         tokenizer.add_special_tokens({"pad_token": "<pad>"})  # Phi-2 models don't have a pad token by default
