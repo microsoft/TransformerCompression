@@ -20,6 +20,7 @@ requires-python = ">=3.10"
 dependencies = [
     "accelerate",
     "datasets",
+    "einops",
     "huggingface-hub>=0.16.4,<0.18",
     "lm-eval @ git+https://github.com/EleutherAI/lm-evaluation-harness.git",
     "numpy",

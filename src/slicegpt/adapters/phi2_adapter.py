@@ -68,7 +68,7 @@ class Phi2HFLayerAdapter(LayerAdapter):
         return self._layer.ln
 
     def get_second_layernorm(self) -> LayerNorm:
-        raise NotImplementedError("Phi-2-HF does not have a post-attention layer norm")
+        return None
 
     def get_attention_inputs(self) -> list[Linear]:
         return [self._layer.mixer.Wqkv]
@@ -124,13 +124,15 @@ class Phi2HFModelAdapter(ModelAdapter):
     def original_layer_norm_type(self) -> type[LayerNorm]:
         return LayerNorm
 
+    _use_cache = False
+
     @property
     def use_cache(self) -> bool:
-        return False  # managed internally in phi-2
+        return self._use_cache  # managed internally in phi-2
 
     @use_cache.setter
     def use_cache(self, value: bool) -> None:
-        pass  # cache managed internally in phi-2
+        self._use_cache = value  # does nothing: cache managed internally in phi-2
 
     def compute_output_logits(self, input_ids: Tensor) -> FloatTensor:
         return self._model(input_ids=input_ids).logits
