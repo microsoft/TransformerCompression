@@ -75,7 +75,7 @@ class CompressiblePhiDecoderLayer(PhiDecoderLayer):
         return outputs
 
 
-class Phi2HFLayerAdapter(LayerAdapter):
+class Phi2LayerAdapter(LayerAdapter):
     def __init__(self, layer: PhiDecoderLayer) -> None:
         super().__init__()
         self._layer: PhiDecoderLayer = layer
@@ -111,7 +111,7 @@ class Phi2HFLayerAdapter(LayerAdapter):
         return self._layer.mlp.fc2
 
 
-class Phi2HFModelAdapter(ModelAdapter):
+class Phi2ModelAdapter(ModelAdapter):
     @property
     def parallel_blocks(self) -> bool:
         return True
@@ -168,8 +168,8 @@ class Phi2HFModelAdapter(ModelAdapter):
         compressed_layer.load_state_dict(layer.state_dict(), strict=True)
         return compressed_layer
 
-    def get_layers(self) -> list[Phi2HFLayerAdapter]:
-        return [Phi2HFLayerAdapter(cast(PhiDecoderLayer, layer)) for layer in self._model.model.layers]
+    def get_layers(self) -> list[Phi2LayerAdapter]:
+        return [Phi2LayerAdapter(cast(PhiDecoderLayer, layer)) for layer in self._model.model.layers]
 
     def get_raw_layer_at(self, index: int) -> Module:
         return self._model.model.layers[index]

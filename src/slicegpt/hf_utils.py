@@ -18,7 +18,7 @@ from transformers import (
 
 from .adapters.llama_adapter import LlamaModelAdapter
 from .adapters.opt_adapter import OPTModelAdapter
-from .adapters.phi2_adapter import Phi2HFModelAdapter
+from .adapters.phi2_adapter import Phi2ModelAdapter
 from .layernorm_fusion import fuse_modules, replace_layers
 from .model_adapter import ModelAdapter
 from .rotate import slice_rotated_model
@@ -120,7 +120,7 @@ def get_model_and_tokenizer(
         tokenizer.add_special_tokens({"pad_token": "<pad>"})  # Phi-2 models don't have a pad token by default
         model.config.pad_token_id = tokenizer.pad_token_id
         model.resize_token_embeddings(len(tokenizer), pad_to_multiple_of=8)
-        model_adapter = Phi2HFModelAdapter(model)
+        model_adapter = Phi2ModelAdapter(model)
     else:
         raise NotImplementedError
 

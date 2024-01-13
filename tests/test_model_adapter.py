@@ -1,7 +1,6 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
-import sys
 from abc import ABC, abstractmethod
 from inspect import get_annotations
 from typing import Any, Protocol, runtime_checkable
@@ -15,7 +14,7 @@ from transformers.models.phi.modeling_phi import PhiConfig, PhiForCausalLM
 
 from slicegpt.adapters.llama_adapter import LlamaModelAdapter
 from slicegpt.adapters.opt_adapter import OPTModelAdapter
-from slicegpt.adapters.phi2_adapter import Phi2HFModelAdapter
+from slicegpt.adapters.phi2_adapter import Phi2ModelAdapter
 from slicegpt.model_adapter import ModelAdapter
 
 
@@ -114,9 +113,9 @@ class TestLlamaAdapter(ModelAdapterTestBase):
         return LlamaModelAdapter(model)
 
 
-class TestPhi2HFAdapter(ModelAdapterTestBase):
-    def create_adapter(self) -> Phi2HFModelAdapter:
+class TestPhi2Adapter(ModelAdapterTestBase):
+    def create_adapter(self) -> Phi2ModelAdapter:
         # a tiny phi, just to test adapter.
         config = PhiConfig(vocab_size=500, n_positions=20, n_embd=16, n_layer=2, n_head=1, rotary_dim=4)
         model = PhiForCausalLM(config)
-        return Phi2HFModelAdapter(model)
+        return Phi2ModelAdapter(model)
