@@ -13,9 +13,9 @@ The code is arranged as a package 'slicegpt' in /src, and script to replicate ex
 
 To run sliceGPT on `microsoft/phi-2`, from the `experiments` folder, run 
 ```
-    python run_slicegpt_perplexity.py --model microsoft/phi-2 --save-dir path/to/save/sliced_model --sparsity 0.25 --no-wandb --device cuda:0 
+    python run_slicegpt_perplexity.py --model microsoft/phi-2 --save-dir path/to/save/sliced_model --sparsity 0.25 --no-wandb --device cuda:0 --eval-baseline
 ```
-This will compress the `microsoft/phi-2` model and save the compressed model to the specified path. To show the perplexity evaluation before and after compressing the model, add options `--eval-baseline --eval-fused-model`. Please consult the script for the full set of options.
+This will compress the `microsoft/phi-2` model and save the compressed model to the specified path. Please consult the script for the full set of options.
 
 The experiments folder also contains scripts for 
 - [finetuning](./experiments/run_finetuning.py) the compressed model to recover most of the quality lost during compression
