@@ -47,6 +47,14 @@ def get_dataset(name: str) -> datasets.DatasetDict:
     if "cols_to_remove" in properties:
         ds = ds.remove_columns(properties["cols_to_remove"])
 
+    # if alpaca, create a test and validation set from the training set
+    if name == "alpaca":
+        ds = ds["train"].train_test_split(test_size=0.2, seed=42)
+        temp_ds = ds.pop("test")
+        temp_ds = temp_ds.train_test_split(test_size=0.5, seed=42)
+        ds["test"] = temp_ds["train"]
+        ds["validation"] = temp_ds["test"]
+
     logging.info("Loading dataset done")
     return ds
 
