@@ -187,11 +187,12 @@ def argparser():
 
     # For LLAMA 2 models, possible modules: k_proj, v_proj, q_proj, o_proj, gate_proj, up_proj, down_proj
     # For OPT models, possible modules: k_proj, v_proj, q_proj, out_proj, fc1, fc2
+    # For phi models, possible modules: q_proj k_proj v_proj dense fc1 fc2
     parser.add_argument(
         '--lora-target-modules',
         nargs='+',
-        default=["k_proj", "v_proj", "q_proj"],
-        help="target modules to apply lora to",
+        required=True,
+        help="target modules to apply lora to (names of attn i/p, attn o/p and mlp in LayerAdapter)",
     )
 
     args = parser.parse_args()
