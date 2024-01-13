@@ -11,6 +11,8 @@ from transformers import (
     LlamaForCausalLM,
     OPTConfig,
     OPTForCausalLM,
+    PhiConfig,
+    PhiForCausalLM,
     PreTrainedTokenizerBase,
 )
 
@@ -19,8 +21,6 @@ from .adapters.opt_adapter import OPTModelAdapter
 from .adapters.phi2_adapter import Phi2HFModelAdapter
 from .layernorm_fusion import fuse_modules, replace_layers
 from .model_adapter import ModelAdapter
-from .model_code.configuration_phi import PhiConfig
-from .model_code.modeling_phi import PhiForCausalLM
 from .rotate import slice_rotated_model
 
 
@@ -114,10 +114,7 @@ def get_model_and_tokenizer(
             model = UninitializedPhiForCausalLM(config)
             model = model.to(dtype=dtype)
         else:
-            # TODO make this revision track the latest once we're pulling the code from transformers.
-            model = PhiForCausalLM.from_pretrained(
-                model_path, torch_dtype=dtype, token=token, revision="834565c23f9b28b96ccbeabe614dd906b6db551a"
-            )
+            model = PhiForCausalLM.from_pretrained(model_path, torch_dtype=dtype, token=token)
             model.config.torch_dtype = dtype
 
         tokenizer.add_special_tokens({"pad_token": "<pad>"})  # Phi-2 models don't have a pad token by default

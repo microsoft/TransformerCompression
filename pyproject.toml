@@ -27,7 +27,7 @@ dependencies = [
     "sentencepiece",
     "torch",
     "tqdm",
-    "transformers",
+    "transformers @ git+https://github.com/huggingface/transformers.git@5509058",
     "wandb",
     "ml-collections"
 ]
