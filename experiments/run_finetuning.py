@@ -185,9 +185,9 @@ def argparser():
 
     parser.add_argument('--st_checkpoint_dir', type=str, default=".")
 
-    # For LLAMA 2 models, possible modules: k_proj, v_proj, q_proj, o_proj, gate_proj, up_proj, down_proj
-    # For OPT models, possible modules: k_proj, v_proj, q_proj, out_proj, fc1, fc2
-    # For phi models, possible modules: q_proj k_proj v_proj dense fc1 fc2
+    # For LLAMA 2 models, possible modules: k_proj v_proj q_proj o_proj gate_proj up_proj down_proj
+    # For OPT models, possible modules: k_proj v_proj q_proj out_proj fc1 fc2
+    # For phi models, possible modules: k_proj v_proj q_proj dense fc1 fc2
     parser.add_argument(
         '--lora-target-modules',
         nargs='+',
