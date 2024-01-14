@@ -82,6 +82,8 @@ def argparser():
             'meta-llama/Llama-2-7b-hf',
             'meta-llama/Llama-2-13b-hf',
             'meta-llama/Llama-2-70b-hf',
+            # Phi-2 model
+            'microsoft/phi-2'
         ],
         default="facebook/opt-125m",
     )
