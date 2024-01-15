@@ -184,7 +184,7 @@ def argparser():
     parser.add_argument('--lora-bias', type=str, default="none")
 
     parser.add_argument(
-        '--st-checkpoint-dir', type=str, default=".", help="Path for syne-tune to save finetuning checkpoints."
+        '--st_checkpoint_dir', type=str, default=".", help="Path for syne-tune to save finetuning checkpoints."
     )
 
     # For LLAMA 2 models, possible modules: k_proj v_proj q_proj o_proj gate_proj up_proj down_proj

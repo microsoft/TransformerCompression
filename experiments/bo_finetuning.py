@@ -11,8 +11,8 @@ from syne_tune.optimizer.baselines import BayesianOptimization, RandomSearch
 config_space = {
     "model": "microsoft/phi-2",
     "sparsity": 0.25,
-    "load-model-path": "sliced_models/phi-2_0.25.pt",
-    "lora-target-modules": choice(["Wqkv out_proj", "Wqkv out_proj fc1 fc2"]),
+    "load-model-path": "sliced_models_alpaca/phi-2_0.25.pt",
+    "lora-target-modules": choice(["k_proj v_proj q_proj dense fc1 fc2", "k_proj v_proj q_proj dense"]),
     "lora-alpha": loguniform(1e-2, 1e3),
     "lora-dropout": uniform(0, 0.5),
     "lora-r": randint(2, 64),
