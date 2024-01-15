@@ -185,7 +185,9 @@ def argparser():
     parser.add_argument('--lora-r', type=int, default=8)
     parser.add_argument('--lora-bias', type=str, default="none")
 
-    parser.add_argument('--st-checkpoint-dir', type=str, default=".", help="Path for syne-tune to save finetuning checkpoints.")
+    parser.add_argument(
+        '--st-checkpoint-dir', type=str, default=".", help="Path for syne-tune to save finetuning checkpoints."
+    )
 
     # For LLAMA 2 models, possible modules: k_proj v_proj q_proj o_proj gate_proj up_proj down_proj
     # For OPT models, possible modules: k_proj v_proj q_proj out_proj fc1 fc2
@@ -301,11 +303,6 @@ def main() -> None:
     # create optimizer and scheduler
     optimizer, lr_scheduler = get_optimizer_and_scheduler(model, finetune_ds["train"], args)
 
-    if "phi" in args.model:
-        gradient_checkpointing = False
-    else:
-        gradient_checkpointing = True
-
     training_args = TrainingArguments(
         output_dir=args.st_checkpoint_dir,  # output directory
         num_train_epochs=args.epochs,
@@ -320,7 +317,7 @@ def main() -> None:
         evaluation_strategy=args.evaluation_strategy,
         metric_for_best_model="eval_loss",
         greater_is_better=False,  # lower eval_loss is better,
-        gradient_checkpointing=gradient_checkpointing,
+        gradient_checkpointing=True,
     )
 
     trainer = CustomTrainer(
