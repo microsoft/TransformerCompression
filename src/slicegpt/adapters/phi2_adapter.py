@@ -4,7 +4,7 @@
 # This file contains derivations from
 # https://github.com/huggingface/transformers/blob/main/src/transformers/models/phi/modeling_phi.py
 # Copyright 2023 Microsoft and the HuggingFace Inc. team. All rights reserved.
-# 
+#
 # License updated to MIT license since 7e10f3e in https://huggingface.co/microsoft/phi-2/blob/main/LICENSE
 
 from typing import Optional, Tuple, cast
