@@ -35,7 +35,7 @@ The experiments folder also contains scripts for
 ### Supported models
 
 The following models from Huggingface hub are currently supported
-- [microsoft/phi-2](https://huggingface.co/microsoft/phi-2) (commit 834565c)
+- [microsoft/phi-2](https://huggingface.co/microsoft/phi-2)
 - [meta-llama/Llama-2-7b-hf](https://huggingface.co/meta-llama/Llama-2-7b)
 - [meta-llama/Llama-2-13b-hf](https://huggingface.co/meta-llama/Llama-2-13b)
 - [meta-llama/Llama-2-70b-hf](https://huggingface.co/meta-llama/Llama-2-70b)
