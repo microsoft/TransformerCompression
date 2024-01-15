@@ -2,7 +2,7 @@
 
 This repository contains the code for the paper [SliceGPT](link/to/be/made/available/upon/publication). 
 
-Slice GPT is a new post-training sparsification scheme that makes transformer networks (including LLMs) smaller by 
+SliceGPT is a new post-training sparsification scheme that makes transformer networks (including LLMs) smaller by 
 first applying orthogonal transformations to each layer that leave the model unchanged, and then slicing off the 
 least-significant rows and columns (chosen by the eigenvalue decay) of the weight matrices. The model structure is 
 left unchanged, but each weight matrix is replaced by a smaller (dense) weight matrix, reducing the embedding dimension 
@@ -20,14 +20,13 @@ To run sliceGPT on `microsoft/phi-2`, from the `experiments` folder, run
 ```
     python run_slicegpt_perplexity.py \
            --model microsoft/phi-2 \
-           --save-dir path/to/save/sliced_model \
+           --save-dir dir/to/save/sliced_model/in \
            --sparsity 0.25 \
            --no-wandb \
            --device cuda:0 \
            --eval-baseline
 ```
-This will compress the `microsoft/phi-2` model and save the compressed model to the specified path. Please consult the 
-script for the full set of options.
+This will compress the `microsoft/phi-2` model and save the compressed model to the specified directory. Please consult the script for the full set of options.
 
 The experiments folder also contains scripts for 
 - [finetuning](./experiments/run_finetuning.py) the compressed model to recover most of the quality lost during compression
