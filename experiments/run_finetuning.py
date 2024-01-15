@@ -184,8 +184,8 @@ def argparser():
     parser.add_argument('--lora-dropout', type=float, default=0.1)
     parser.add_argument('--lora-r', type=int, default=8)
     parser.add_argument('--lora-bias', type=str, default="none")
-    
-    parser.add_argument('--st-checkpoint-dir', type=str, default=".")
+
+    parser.add_argument('--st-checkpoint-dir', type=str, default=".", help="Path for syne-tune to save finetuning checkpoints.")
 
     # For LLAMA 2 models, possible modules: k_proj v_proj q_proj o_proj gate_proj up_proj down_proj
     # For OPT models, possible modules: k_proj v_proj q_proj out_proj fc1 fc2
@@ -357,8 +357,9 @@ def main() -> None:
     dataset_ppl = gpu_utils.evaluate_ppl(model, ppl_eval_loader)
     logging.info(f'PPL after finetuning: {dataset_ppl:.4f}')
     wandb.log({"post_finetune_ppl": dataset_ppl})
-    
+
     from syne_tune import Reporter
+
     Reporter()(ppl=dataset_ppl)
 
     syne_tune.Reporter()(ppl=dataset_ppl)

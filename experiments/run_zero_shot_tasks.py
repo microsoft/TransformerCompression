@@ -5,7 +5,6 @@ import argparse
 import json
 import logging
 import os
-import time
 
 import lm_eval
 import torch
@@ -43,13 +42,16 @@ def parse_args() -> argparse.Namespace:
             'meta-llama/Llama-2-7b-hf',
             'meta-llama/Llama-2-13b-hf',
             'meta-llama/Llama-2-70b-hf',
-            # Phi 2 Models
+            # Phi-2 model
             'microsoft/phi-2',
         ],
         default="facebook/opt-125m",
     )
     parser.add_argument(
-        "--load-model-path", type=str, default=None, help="Path to load the sliced model from.",
+        "--load-model-path",
+        type=str,
+        default=None,
+        help="Path to load the sliced model from.",
     )
     parser.add_argument(
         "--sparsity", type=float, default=0.0, help="A measure of how much slicing is applied (in the range [0, 1))"
@@ -120,11 +122,15 @@ def main() -> None:
     mmlu_task_num_questions = {}
     for task_name in task_names:
         if 'mmlu' in task_name:
-            mmlu_task_num_questions[task_name] = lm_eval.tasks.get_task_dict([task_name])[task_name].dataset["test"].num_rows
+            mmlu_task_num_questions[task_name] = (
+                lm_eval.tasks.get_task_dict([task_name])[task_name].dataset["test"].num_rows
+            )
 
     logging.info(f"Selected Tasks: {task_names}")
 
-    results = lm_eval.simple_evaluate(hflm, tasks=task_names, num_fewshot=args.num_fewshot, batch_size=args.batch_size)['results']
+    results = lm_eval.simple_evaluate(hflm, tasks=task_names, num_fewshot=args.num_fewshot, batch_size=args.batch_size)[
+        'results'
+    ]
 
     wandb.log(results)
     logging.info(json.dumps(results, indent=2))

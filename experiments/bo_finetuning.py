@@ -2,14 +2,10 @@ import logging
 from argparse import ArgumentParser
 from pathlib import Path
 
+from syne_tune import StoppingCriterion, Tuner
 from syne_tune.backend import LocalBackend
-from syne_tune.optimizer.baselines import (
-    RandomSearch,
-    BayesianOptimization
-)
-from syne_tune import Tuner, StoppingCriterion
-from syne_tune.config_space import randint, uniform, loguniform, choice
-
+from syne_tune.config_space import choice, loguniform, randint, uniform
+from syne_tune.optimizer.baselines import BayesianOptimization, RandomSearch
 
 # Configuration space (or search space)
 config_space = {
@@ -26,7 +22,7 @@ config_space = {
     "finetune-train-batch-size": randint(1, 8),
     "wandb-project": "syne-tune-phi",
     "finetune-dataset": "alpaca",
-    "ppl-eval-dataset": "alpaca"
+    "ppl-eval-dataset": "alpaca",
 }
 
 if __name__ == "__main__":
