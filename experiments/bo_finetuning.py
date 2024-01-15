@@ -12,7 +12,9 @@ config_space = {
     "model": "facebook/opt-125m",
     "sparsity": 0.3,
     "load-model-path": "sliced_models/opt-125m_0.3.pt",
-    "lora-target-modules": choice(["k_proj v_proj q_proj out_proj", "k_proj v_proj q_proj out_proj fc1 fc2", "k_proj v_proj q_proj dense fc1 fc2"]),
+    "lora-target-modules": choice(
+        ["k_proj v_proj q_proj out_proj", "k_proj v_proj q_proj out_proj fc1 fc2", "k_proj v_proj q_proj dense fc1 fc2"]
+    ),
     "lora-alpha": loguniform(1e-2, 1e2),
     "lora-dropout": uniform(0, 1),
     "lora-r": randint(4, 64),
