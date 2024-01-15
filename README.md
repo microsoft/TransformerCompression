@@ -26,11 +26,15 @@ To run sliceGPT on `microsoft/phi-2`, from the `experiments` folder, run
            --device cuda:0 \
            --eval-baseline
 ```
-This will compress the `microsoft/phi-2` model and save the compressed model to the specified directory. Please consult the script for the full set of options.
+This will compress the `microsoft/phi-2` model and save the compressed model to the specified directory. Please consult 
+the script for the full set of options.
 
 The experiments folder also contains scripts for 
 - [finetuning](./experiments/run_finetuning.py) the compressed model to recover most of the quality lost during compression
-- [zero-shot task evaluation](./experiments/run_zero_shot_tasks.py) on a given version of the model (dense, compressed or finetuned)
+- [zero-shot task evaluation](./experiments/run_zero_shot_tasks.py) of a dense, compressed or fine-tuned model
+
+_Note:_ For models that require HuggingFace authentication, set the `--hf-token` argument 
+manually or using a key vault. Alternatively, set the environment variable 'HF_TOKEN'.
 
 ### Supported models
 
