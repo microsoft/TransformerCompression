@@ -100,9 +100,7 @@ def argparser():
     )
 
     parser.add_argument("--save-dir", type=str, default=None, help="Path to save the model.")
-    parser.add_argument(
-        "--load-model-path", type=str, default=None, required=True, help="Path to load the sliced model from."
-    )
+    parser.add_argument("--load-model-path", type=str, default=None, help="Path to load the sliced model from.")
     parser.add_argument('--hf-token', type=str, default=None)
 
     parser.add_argument('--wandb-project', type=str, default="slicegpt-finetuning")
@@ -237,11 +235,16 @@ def main() -> None:
         logging.info(f'Failed to initialize wandb: {e}, continuing without wandb')
         wandb.init(project=args.wandb_project, mode='disabled')
 
-    # load the sliced model
-    logging.info(f"Loading sliced {args.model} model from {args.load_model_path} with sparsity {args.sparsity}")
-    model_adapter, tokenizer = hf_utils.load_sliced_model(
-        args.model, args.load_model_path, args.sparsity, token=args.hf_token, round_interval=8
-    )
+    if args.load_model_path:
+        # load the sliced model
+        logging.info(f"Loading sliced {args.model} model from {args.load_model_path} with sparsity {args.sparsity}")
+        model_adapter, tokenizer = hf_utils.load_sliced_model(
+            args.model, args.load_model_path, args.sparsity, token=args.hf_token
+        )
+    else:
+        # load the original model
+        logging.info(f"Loading {args.model} model")
+        model_adapter, tokenizer = hf_utils.get_model_and_tokenizer(args.model, token=args.hf_token)
 
     # get the dataset for perplexity evaluation
     ppl_ds = data_utils.get_dataset(args.ppl_eval_dataset)
