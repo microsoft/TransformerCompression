@@ -119,6 +119,11 @@ def main() -> None:
     else:
         task_names = lm_eval_utils.pattern_match(args.tasks, ALL_TASKS)
 
+    mmlu_task_num_questions = {}
+    for task_name in task_names:
+        if 'mmlu' in task_name:
+            mmlu_task_num_questions[task_name] = lm_eval.tasks.get_task_dict([task_name])[task_name].dataset["test"].num_rows
+
     logging.info(f"Selected Tasks: {task_names}")
 
     if args.time:
@@ -142,13 +147,23 @@ def main() -> None:
     # calculate the avg across the tasks
     n_tasks = len(task_names)
     acc_cumul = 0
-    for task in results:
-        if results[task].get('acc_norm,none', None):
-            acc_cumul += results[task]['acc_norm,none']
-        else:
-            acc_cumul += results[task]['acc,none']
+    acc_mmlu = 0
 
-    acc_avg = acc_cumul / n_tasks
+    # Iterate over tasks and accumulate results
+    for task, result in results.items():
+        acc = result.get('acc_norm,none', result['acc,none'])
+        if 'mmlu' in task:
+            acc_mmlu += acc * mmlu_task_num_questions[task]
+        else:
+            acc_cumul += acc
+
+    # Calculate average accuracy for mmlu tasks if any
+    acc_mmlu_avg = acc_mmlu / sum(mmlu_task_num_questions.values()) if mmlu_task_num_questions else 0
+    wandb.log({'acc_mmlu_avg': acc_mmlu_avg})
+
+    # Calculate average accuracy
+    acc_avg = (acc_cumul + acc_mmlu_avg) / n_tasks
+
     wandb.log({'acc_avg': acc_avg})
     logging.info(f"Average accuracy across tasks: {acc_avg}")
 
