@@ -113,7 +113,7 @@ class ModelAdapter(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def convert_layer_to_compressible(self, layer: Module) -> Module:
+    def convert_layer_to_compressible(self, layer: Module, layer_idx: int | None) -> Module:
         raise NotImplementedError
 
     @abstractmethod
@@ -141,8 +141,8 @@ class ModelAdapter(ABC):
         raise NotImplementedError
 
     @final
-    def convert_layer_to_compressible_and_register_buffers(self, layer: Module) -> Module:
-        compressed_layer = self.convert_layer_to_compressible(layer)
+    def convert_layer_to_compressible_and_register_buffers(self, layer: Module, layer_idx: int | None) -> Module:
+        compressed_layer = self.convert_layer_to_compressible(layer, layer_idx)
         compressed_layer.register_buffer('mlp_shortcut_Q', None)
         compressed_layer.register_buffer('attn_shortcut_Q', None)
         return compressed_layer

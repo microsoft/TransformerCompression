@@ -35,6 +35,7 @@ def argparser() -> argparse.Namespace:
             'meta-llama/Llama-2-7b-hf',
             'meta-llama/Llama-2-13b-hf',
             'meta-llama/Llama-2-70b-hf',
+            # Phi-2 model
             'microsoft/phi-2',
         ],
         default="facebook/opt-125m",
@@ -44,7 +45,7 @@ def argparser() -> argparse.Namespace:
         "--cal-dataset",
         type=str,
         help="Dataset to calibrate on.",
-        choices=["wikitext2", "ptb", "c4"],
+        choices=["wikitext2", "ptb", "c4", "alpaca"],
         default="wikitext2",
     )
     parser.add_argument(
