@@ -103,7 +103,7 @@ def argparser():
     parser.add_argument(
         "--load-model-path", type=str, default=None, required=True, help="Path to load the sliced model from."
     )
-    parser.add_argument('--hf-token', type=str, default=None)
+    parser.add_argument('--hf-token', type=str, default=os.getenv('HF_TOKEN', None))
 
     parser.add_argument('--wandb-project', type=str, default="slicegpt-finetuning")
     parser.add_argument('--no-wandb', action="store_true", help="Disable wandb.")
