@@ -11,9 +11,9 @@ from typing import Optional, Tuple, cast
 
 from torch import FloatTensor, LongTensor, Tensor, matmul
 from torch.nn import LayerNorm, Linear, Module
+from transformers.models.phi.modeling_phi import PhiConfig, PhiDecoderLayer, PhiForCausalLM
 
 from slicegpt.model_adapter import LayerAdapter, ModelAdapter
-from transformers.models.phi.modeling_phi import PhiConfig, PhiForCausalLM, PhiDecoderLayer
 
 
 class CompressiblePhiDecoderLayer(PhiDecoderLayer):
@@ -172,7 +172,9 @@ class Phi2ModelAdapter(ModelAdapter):
     def compute_output_logits(self, input_ids: Tensor) -> FloatTensor:
         return self._model(input_ids=input_ids).logits
 
-    def convert_layer_to_compressible(self, layer: PhiDecoderLayer, layer_idx: int | None) -> CompressiblePhiDecoderLayer:
+    def convert_layer_to_compressible(
+        self, layer: PhiDecoderLayer, layer_idx: int | None
+    ) -> CompressiblePhiDecoderLayer:
         compressed_layer = CompressiblePhiDecoderLayer(self._config, layer_idx).to(self._config.torch_dtype)
         compressed_layer.load_state_dict(layer.state_dict(), strict=True)
         return compressed_layer

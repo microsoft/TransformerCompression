@@ -198,7 +198,9 @@ class OPTModelAdapter(ModelAdapter):
     def compute_output_logits(self, input_ids: Tensor) -> FloatTensor:
         return self._model(input_ids=input_ids).logits
 
-    def convert_layer_to_compressible(self, layer: OPTDecoderLayer, layer_idx: int | None) -> CompressibleOPTDecoderLayer:
+    def convert_layer_to_compressible(
+        self, layer: OPTDecoderLayer, layer_idx: int | None
+    ) -> CompressibleOPTDecoderLayer:
         compressed_layer = CompressibleOPTDecoderLayer(self._config).to(self._config.torch_dtype)
         compressed_layer.load_state_dict(layer.state_dict(), strict=True)
         return compressed_layer

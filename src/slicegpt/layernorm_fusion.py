@@ -2,7 +2,7 @@
 # Licensed under the MIT license.
 
 import logging
-from typing import Callable, Iterable, TypeVar, Optional
+from typing import Callable, Iterable, Optional, TypeVar
 
 import torch
 from torch.nn import Linear, Module, Parameter
@@ -24,7 +24,7 @@ def replace_layers(model_adapter: ModelAdapter, verbose: bool = True) -> None:
         model_adapter.model,
         model_adapter.original_layer_type,
         model_adapter.convert_layer_to_compressible_and_register_buffers,
-        replace_layers=True
+        replace_layers=True,
     )
 
     if verbose:
@@ -35,7 +35,14 @@ AnyModule = TypeVar("AnyModule", bound=Module)
 
 
 def replace_modules(
-    root: Module, type_to_replace: type[AnyModule], new_module_factory: Callable[[AnyModule, Optional[int]], Module, ], replace_layers: bool) -> None:
+    root: Module,
+    type_to_replace: type[AnyModule],
+    new_module_factory: Callable[
+        [AnyModule, Optional[int]],
+        Module,
+    ],
+    replace_layers: bool,
+) -> None:
     """Replace modules of given type using the supplied module factory.
 
     Perform a depth-first search of a module hierarchy starting at root
@@ -53,7 +60,7 @@ def replace_modules(
         if isinstance(module, type_to_replace):
             if replace_layers:  # layernorm_fusion.replace_layers case where ModuleList[Decooderlayer] is replaced
                 new_module = new_module_factory(module, int(name))
-            else: # layernorm_fusion.fuse_modules case where layernorms are fused
+            else:  # layernorm_fusion.fuse_modules case where layernorms are fused
                 new_module = new_module_factory(module)
         elif len(list(module.children())) > 0:
             replace_modules(module, type_to_replace, new_module_factory, replace_layers)
@@ -103,7 +110,10 @@ def fuse_modules(model_adapter: ModelAdapter) -> None:
     fuse_ln_linear(model_adapter.get_pre_head_layernorm(), [model_adapter.get_lm_head()])
 
     replace_modules(
-        model_adapter.model, model_adapter.original_layer_norm_type, lambda _: RMSN(model_adapter.hidden_size), replace_layers=False
+        model_adapter.model,
+        model_adapter.original_layer_norm_type,
+        lambda _: RMSN(model_adapter.hidden_size),
+        replace_layers=False,
     )
     logging.info("Fusing layernorm modules done")
 
