@@ -43,38 +43,35 @@ if __name__ == "__main__":
         default="RS",
     )
     parser.add_argument(
-        "--random_seed",
+        "--random-seed",
         type=int,
         default=42,
     )
     parser.add_argument(
-        "--n_workers",
+        "--n-workers",
         type=int,
         default=4,
     )
     parser.add_argument(
-        "--max_wallclock_time",
+        "--max-wallclock-time",
         type=int,
         default=3600,
     )
     parser.add_argument(
-        "--experiment_tag",
+        "--experiment-tag",
         type=str,
         default="bo-finetune",
     )
     args, _ = parser.parse_known_args()
-
 
     train_file = "run_finetuning.py"
     entry_point = Path(__file__).parent / train_file
     mode = "min"
     metric = "ppl"
 
-
     # Local backend: Responsible for scheduling trials  [3]
     # The local backend runs trials as sub-processes on a single instance
     trial_backend = LocalBackend(entry_point=str(entry_point))
-
 
     # Common scheduler kwargs
     method_kwargs = dict(
@@ -88,7 +85,8 @@ if __name__ == "__main__":
         scheduler = RandomSearch(config_space, **method_kwargs)
     elif args.method == "BO":
         scheduler = BayesianOptimization(config_space, **method_kwargs)
-
+    else:
+        raise ValueError(f"Unknown method: {args.method}")
 
     # Stopping criterion: We stop after `args.max_wallclock_time` seconds
     stop_criterion = StoppingCriterion(max_wallclock_time=args.max_wallclock_time)

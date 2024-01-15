@@ -5,6 +5,7 @@ import argparse
 import logging
 import os
 
+import syne_tune
 import torch
 import transformers
 import wandb
@@ -81,7 +82,7 @@ def argparser():
             'meta-llama/Llama-2-7b-hf',
             'meta-llama/Llama-2-13b-hf',
             'meta-llama/Llama-2-70b-hf',
-            # Phi 2 Models
+            # Phi-2 model
             'microsoft/phi-2',
         ],
         default="facebook/opt-125m",
@@ -184,16 +185,16 @@ def argparser():
     parser.add_argument('--lora-r', type=int, default=8)
     parser.add_argument('--lora-bias', type=str, default="none")
     
-    parser.add_argument('--st_checkpoint_dir', type=str, default=".")
+    parser.add_argument('--st-checkpoint-dir', type=str, default=".")
 
-    # For LLAMA 2 models, possible modules: k_proj, v_proj, q_proj, o_proj, gate_proj, up_proj, down_proj
-    # For OPT models, possible modules: k_proj, v_proj, q_proj, out_proj, fc1, fc2
-    # For Phi-2 models, possible modules: Wqkv, out_proj, fc1, fc2
+    # For LLAMA 2 models, possible modules: k_proj v_proj q_proj o_proj gate_proj up_proj down_proj
+    # For OPT models, possible modules: k_proj v_proj q_proj out_proj fc1 fc2
+    # For phi models, possible modules: k_proj v_proj q_proj dense fc1 fc2
     parser.add_argument(
         '--lora-target-modules',
         nargs='+',
-        default=["k_proj", "v_proj", "q_proj"],
-        help="target modules to apply lora to",
+        required=True,
+        help="target modules to apply lora to (names of attn i/p, attn o/p and mlp in LayerAdapter)",
     )
 
     args = parser.parse_args()
@@ -359,6 +360,8 @@ def main() -> None:
     
     from syne_tune import Reporter
     Reporter()(ppl=dataset_ppl)
+
+    syne_tune.Reporter()(ppl=dataset_ppl)
 
 
 if __name__ == "__main__":
