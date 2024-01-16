@@ -8,8 +8,8 @@ least-significant rows and columns (chosen by the eigenvalue decay) of the weigh
 left unchanged, but each weight matrix is replaced by a smaller (dense) weight matrix, reducing the embedding dimension 
 of the model. This results in speedups (without any additional code optimization) and a reduced memory footprint.  
 
-The code is arranged as a package 'slicegpt' in /src, and script to replicate experiments from the paper are in 
-'/experiments'. To install the sliceGPT package, we recommend
+The code is arranged as a package `slicegpt` in /src, and script to replicate experiments from the paper are in 
+`/experiments`. To install the sliceGPT package, we recommend
 
 `pip install -e .`
 
@@ -35,7 +35,7 @@ The experiments folder also contains scripts for
 - [zero-shot task evaluation](./experiments/run_zero_shot_tasks.py) of a dense, compressed or fine-tuned model
 
 _Note:_ For models that require HuggingFace authentication, set the `--hf-token` argument 
-manually or using a key vault. Alternatively, set the environment variable 'HF_TOKEN'.
+manually or using a key vault. Alternatively, set the environment variable `HF_TOKEN`.
 
 
 ### Supported models
@@ -66,15 +66,15 @@ The model you wish to support must be available in HuggingFace. To add sliceGPT 
   the compressed model. The `forward()` method should specify how the skip connection orthogonal matrices are used, depending on 
   whether MLP and attention blocks are sequential ([OPT](./src/slicegpt/adapters/opt_adapter.py), 
   [Llama-2](./src/slicegpt/adapters/llama_adapter.py)) or parallel 
-  ([Phi-2](./src/slicegpt/adapters/phi2_adapter.py)). The 'self.*_shortcut_Q' matrices are attached to the modules during
-  slicing and are available in 'forward()'. If the skip connection does not need modification, these matrices will be None, 
-  and the 'forward()' method can follow the original workflow. For more details on this, 
+  ([Phi-2](./src/slicegpt/adapters/phi2_adapter.py)). The `self.*_shortcut_Q` matrices are attached to the modules during
+  slicing and are available in `forward()`. If the skip connection does not need modification, these matrices will be None, 
+  and the `forward()` method can follow the original workflow. For more details on this, 
   please read [Section 3 in the paper](link/made/available/on/publication).
 - See [llama_adapter.py](./src/slicegpt/adapters/llama_adapter.py) for an example of how to implement these classes.
 - Once a model adapter is implemented, compressing the model involves three conceptual steps:
-  - Replace modules with compressible equivalents (via 'slicegpt.layernorm_fusion.replace_layers')
-  - Fuse layernorms and add rotations to skip connections (via 'slicegpt.layernorm_fusion.fuse_modules')
-  - Rotate the inputs and slice the layers (via 'slicegpt.rotate.rotate_and_slice')
+  - Replace modules with compressible equivalents (via `slicegpt.layernorm_fusion.replace_layers`)
+  - Fuse layernorms and add rotations to skip connections (via `slicegpt.layernorm_fusion.fuse_modules`)
+  - Rotate the inputs and slice the layers (via `slicegpt.rotate.rotate_and_slice`)
 - See [run_slicegpt_perplexity.py](./experiments/run_slicegpt_perplexity.py) for an example of how to compress a model
 
 _Note:_ If the model you wish to support is not available in HuggingFace, you will also need to implement 
