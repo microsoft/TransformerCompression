@@ -245,14 +245,12 @@ def main() -> None:
         # load the sliced model
         logging.info(f"Loading sliced {args.model} model from {args.load_model_path} with sparsity {args.sparsity}")
         model_adapter, tokenizer = hf_utils.load_sliced_model(
-            args.model, args.load_model_path, args.sparsity, token=args.hf_token
+            args.model, args.load_model_path, args.sparsity, token=args.hf_token, round_interval=args.round_interval
         )
     else:
         # load the original model
         logging.info(f"Loading {args.model} model")
-        model_adapter, tokenizer = hf_utils.get_model_and_tokenizer(
-            args.model, token=args.hf_token, round_interval=args.round_interval
-        )
+        model_adapter, tokenizer = hf_utils.get_model_and_tokenizer(args.model, token=args.hf_token)
 
     # get the dataset for perplexity evaluation
     ppl_ds = data_utils.get_dataset(args.ppl_eval_dataset)
