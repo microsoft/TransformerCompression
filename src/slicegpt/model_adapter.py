@@ -9,12 +9,11 @@ from torch import FloatTensor, Tensor
 from torch.nn import Linear, Module
 
 """
-To add support for a new model, you need to create a new adapter class that inherits from ModelAdapter, and a new adapter class that inherits from LayerAdapter.
-
-The ModelAdapter class tells sliceGPT how to interact with the model, an instance of which is stored at self.model. For example, how to access each of the layers of the model. 
-
-Similarly, the LayerAdapter class tells sliceGPT how to interact with each layer of the model. For example, how to access the attention and MLP components of the layer, and how to update the arguments to the layer's forward method.
-
+To add support for a new model, you need to create a new adapter class that inherits from ModelAdapter, and a new 
+adapter class that inherits from LayerAdapter. The ModelAdapter class tells sliceGPT how to interact with the model, 
+an instance of which is stored at self.model. For example, how to access each of the layers of the model. Similarly, 
+the LayerAdapter class tells sliceGPT how to interact with each layer of the model. For example, how to access the 
+attention and MLP components of the layer, and how to update the arguments to the layer's forward method.
 See src/slicegpt/adapters/llama_adapter.py for an example of how to implement these classes.
 """
 
@@ -77,7 +76,6 @@ class LayerAdapter(ABC):
     def get_mlp_inputs(self) -> Sequence[Linear]:
         """
         Returns a list of the Linear layers (nn.modules) that are inputs to the MLP component.
-
         For simple mlps, this will be a list of length 1. For gated mlps (as in the Llama models) there will be two.
         """
         raise NotImplementedError
@@ -91,8 +89,8 @@ class LayerAdapter(ABC):
 
     def get_updated_args(self, hidden_states: Any, args: tuple) -> tuple:
         """
-        `args` is a tuple of the arguments to the layer's forward method. hidden_states is the new value for the hidden_states argument.
-        This method returns a new tuple of arguments with the hidden_states argument updated.
+        `args` is a tuple of the arguments to the layer's forward method. hidden_states is the new value for the
+        hidden_states argument. This method returns a new tuple of arguments with the hidden_states argument updated.
         """
         return (
             args[: self.hidden_states_args_position] + (hidden_states,) + args[self.hidden_states_args_position + 1 :]
@@ -121,7 +119,6 @@ class ModelAdapter(ABC):
     def no_split_module_classes(self) -> list[str] | None:
         """
         A list of string specifying the names of modules that should not be split.
-
         See https://huggingface.co/docs/accelerate/concept_guides/big_model_inference for more details.
         """
         raise NotImplementedError
@@ -148,7 +145,6 @@ class ModelAdapter(ABC):
         """
         Whether the model's normalization layers (e.g. LayerNorm) contain a mean-subtraction
         operation that needs to be absorbed into previous linear layers.
-
         For LayerNorm, this is True. For RMSNorm, this is False.
         """
         raise NotImplementedError
@@ -165,7 +161,8 @@ class ModelAdapter(ABC):
     @abstractmethod
     def original_layer_norm_type(self) -> type:
         """
-        The class of the LayerNorm (or equivalent) in the original model, so that we can replace it with RMSNorm (needed for computational invariance).
+        The class of the LayerNorm (or equivalent) in the original model, so that we can replace it with RMSNorm
+        (needed for computational invariance).
         """
         raise NotImplementedError
 
@@ -189,7 +186,7 @@ class ModelAdapter(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def convert_layer_to_compressible(self, layer: Module) -> Module:
+    def convert_layer_to_compressible(self, layer: Module, layer_idx: int | None) -> Module:
         """
         Replace the given layer with a compressible version of the layer.
         """
@@ -239,6 +236,10 @@ class ModelAdapter(ABC):
 
     @final
     def convert_layer_to_compressible_and_register_buffers(self, layer: Module) -> Module:
+        """
+        Replace the given layer with a compressible version of the layer. Also register the shortcut_Q matrices
+        to be used in CompressibleDecoderlayer's forward() method to be updated during slicing.
+        """
         compressed_layer = self.convert_layer_to_compressible(layer)
         compressed_layer.register_buffer('mlp_shortcut_Q', None)
         compressed_layer.register_buffer('attn_shortcut_Q', None)
