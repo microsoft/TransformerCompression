@@ -94,6 +94,12 @@ def argparser():
         "--sparsity", type=float, default=0.0, help="A measure of how much slicing is applied (in the range [0, 1))"
     )
     parser.add_argument(
+        "--round-interval",
+        type=int,
+        default=8,
+        help="Interval for rounding the weights (the best value may depend on your hardware)",
+    )
+    parser.add_argument(
         "--distribute-model",
         action="store_true",
         help="Use accelerate to put the model on multiple GPUs for evaluation. It is recommended to use it for models with 30B parameters and above.",
@@ -244,7 +250,9 @@ def main() -> None:
     else:
         # load the original model
         logging.info(f"Loading {args.model} model")
-        model_adapter, tokenizer = hf_utils.get_model_and_tokenizer(args.model, token=args.hf_token)
+        model_adapter, tokenizer = hf_utils.get_model_and_tokenizer(
+            args.model, token=args.hf_token, round_interval=args.round_interval
+        )
 
     # get the dataset for perplexity evaluation
     ppl_ds = data_utils.get_dataset(args.ppl_eval_dataset)
