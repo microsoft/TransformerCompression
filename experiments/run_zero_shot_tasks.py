@@ -51,7 +51,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--sparsity", type=float, default=0.0, help="A measure of how much slicing is applied (in the range [0, 1))"
     )
-    parser.add_argument('--hf-token', type=str, default=None)
+    parser.add_argument('--hf-token', type=str, default=os.getenv('HF_TOKEN', None))
     parser.add_argument("--batch-size", type=int, default=1, help="Batch size for evaluating with lm eval harness.")
     parser.add_argument(
         "--distribute-model",
