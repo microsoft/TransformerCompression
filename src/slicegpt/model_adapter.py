@@ -235,12 +235,12 @@ class ModelAdapter(ABC):
         raise NotImplementedError
 
     @final
-    def convert_layer_to_compressible_and_register_buffers(self, layer: Module) -> Module:
+    def convert_layer_to_compressible_and_register_buffers(self, layer: Module, layer_idx: int | None) -> Module:
         """
         Replace the given layer with a compressible version of the layer. Also register the shortcut_Q matrices
         to be used in CompressibleDecoderlayer's forward() method to be updated during slicing.
         """
-        compressed_layer = self.convert_layer_to_compressible(layer)
+        compressed_layer = self.convert_layer_to_compressible(layer, layer_idx)
         compressed_layer.register_buffer('mlp_shortcut_Q', None)
         compressed_layer.register_buffer('attn_shortcut_Q', None)
         return compressed_layer

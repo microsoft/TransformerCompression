@@ -35,6 +35,7 @@ def argparser() -> argparse.Namespace:
             'meta-llama/Llama-2-7b-hf',
             'meta-llama/Llama-2-13b-hf',
             'meta-llama/Llama-2-70b-hf',
+            # Phi-2 model
             'microsoft/phi-2',
         ],
         default="facebook/opt-125m",
@@ -44,7 +45,7 @@ def argparser() -> argparse.Namespace:
         "--cal-dataset",
         type=str,
         help="Dataset to calibrate on.",
-        choices=["wikitext2", "ptb", "c4"],
+        choices=["wikitext2", "ptb", "c4", "alpaca"],
         default="wikitext2",
     )
     parser.add_argument(
@@ -77,7 +78,7 @@ def argparser() -> argparse.Namespace:
     parser.add_argument("--save-dir", type=str, default=None, help="Path to save the model.")
     parser.add_argument("--load-model-path", type=str, default=None, help="Path to load the sliced model from.")
 
-    parser.add_argument('--hf-token', type=str, default=None)
+    parser.add_argument('--hf-token', type=str, default=os.getenv('HF_TOKEN', None))
 
     parser.add_argument('--no-wandb', action="store_true", help="Disable wandb.")
     parser.add_argument(
