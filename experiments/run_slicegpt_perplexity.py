@@ -117,9 +117,6 @@ def argparser() -> argparse.Namespace:
     else:
         raise argparse.ArgumentTypeError(f"Data type should be one of 'fp16', 'fp32'")
 
-    if args.batch_size > args.cal_nsamples:
-        raise argparse.ArgumentTypeError(f"Batch size can not be greater than the number of calibration samples")
-
     return args
 
 
