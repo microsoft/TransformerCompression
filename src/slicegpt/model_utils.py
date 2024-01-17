@@ -87,7 +87,7 @@ def get_signals(
     second_layernorm = layer_adapter.get_second_layernorm()
     assert isinstance(second_layernorm, RMSN)
     hook = second_layernorm.register_forward_hook(hook_fn)
-    for layer_args_batch, layer_kwargs_batch in zip(layer_args, layer_kwargs):
+    for i, (layer_args_batch, layer_kwargs_batch) in enumerate(zip(layer_args, layer_kwargs)):
         layer_args_batch, layer_kwargs_batch = utils.map_tensors(
             [layer_args_batch, layer_kwargs_batch], device=config.device
         )
@@ -96,6 +96,9 @@ def get_signals(
             out = out[layer_adapter.hidden_states_output_position]
         out = out.cpu()
         outputs.append(out)
+
+        batch_size, seqlen, _ = out.shape
+        mlp_ln_inputs[i] = mlp_ln_inputs[i].reshape(batch_size, seqlen, -1)
 
     hook.remove()
     return mlp_ln_inputs, outputs
