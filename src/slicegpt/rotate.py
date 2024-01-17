@@ -183,8 +183,7 @@ def rotate_and_slice_sequential(
                 args[i],
             )
 
-        # TODO: fix seqlen issue for batches of varying seqlen here
-        mlp_ln_inputs, _ = get_signals(layer_adapter, model_adapter.seqlen, args, kwargs)
+        mlp_ln_inputs, _ = get_signals(layer_adapter, args, kwargs)
         _, Q = pca_calc(mlp_ln_inputs, ignore_masks)
         Q = Q.to(device=config.device, dtype=torch.float64)
 
@@ -201,7 +200,7 @@ def rotate_and_slice_sequential(
 
         # now compute the outputs of the current layer/inputs for the next layer
         # with slicing between Attention and mlp.
-        _, inps = get_signals(layer_adapter, model_adapter.seqlen, args, kwargs)
+        _, inps = get_signals(layer_adapter, args, kwargs)
         _, Q = pca_calc(inps, ignore_masks)
 
         layer.mlp_shortcut_Q = torch.matmul(layer.mlp_shortcut_Q, Q.to(dtype=dtype))
@@ -360,7 +359,7 @@ def rotate(model_adapter: ModelAdapter, dataloader: torch.utils.data.DataLoader[
         # Extract the inputs and outputs of the second layernorm input and calculate the Q_3
         for i, inp in enumerate(inps):
             args[i] = layer_adapter.get_updated_args(inp, args[i])
-        mlp_ln_inputs, outs = get_signals(layer_adapter, model_adapter.seqlen, args, kwargs)
+        mlp_ln_inputs, outs = get_signals(layer_adapter, args, kwargs)
         _, Q_3 = pca_calc(mlp_ln_inputs)
         Q_3 = Q_3.to(device=config.device)
         _, Q_5 = pca_calc(outs)

@@ -69,7 +69,7 @@ def get_layer0_inputs(model_adapter: ModelAdapter, batch: Tensor) -> tuple[Tenso
 
 
 def get_signals(
-    layer_adapter: LayerAdapter, seqlen: int, layer_args: list[tuple], layer_kwargs: list[dict[str, Any]]
+    layer_adapter: LayerAdapter, layer_args: list[tuple], layer_kwargs: list[dict[str, Any]]
 ) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
     """
     Take the input signals ("activations") for a layer, run the layer forward.
@@ -82,8 +82,7 @@ def get_signals(
 
     def hook_fn(_, args: tuple, _output: Any) -> None:
         inp = args[0]  # Position in RMSN.forward args
-        # The mlp operates on (batch_size * seqlen, hidden_size) tensors, so recover batch dimension.
-        mlp_ln_inputs.append(inp.cpu().reshape(-1, seqlen, inp.shape[-1]))
+        mlp_ln_inputs.append(inp.cpu())
 
     second_layernorm = layer_adapter.get_second_layernorm()
     assert isinstance(second_layernorm, RMSN)
