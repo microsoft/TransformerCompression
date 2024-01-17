@@ -424,7 +424,6 @@ def slice_rotated_model(model_adapter: ModelAdapter, new_embedding_dimension: in
 
         slice_mlp_output(layer_adapter, dim)
         if layer_adapter.layer.mlp_shortcut_Q is None:  # parallel case
-            print(new_embedding_dimension, dim)
             layer.attn_shortcut_Q = layer.attn_shortcut_Q[:new_embedding_dimension, :dim]
             slice_attention_output(layer_adapter, dim)
         else:  # sequential case

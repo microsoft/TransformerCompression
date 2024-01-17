@@ -42,14 +42,25 @@ def parse_args() -> argparse.Namespace:
             'meta-llama/Llama-2-7b-hf',
             'meta-llama/Llama-2-13b-hf',
             'meta-llama/Llama-2-70b-hf',
+            # Phi-2 model
+            'microsoft/phi-2',
         ],
         default="facebook/opt-125m",
     )
     parser.add_argument(
-        "--load-model-path", type=str, default=None, help="Path to load the sliced model from.", required=True
+        "--load-model-path",
+        type=str,
+        default=None,
+        help="Path to load the sliced model from.",
     )
     parser.add_argument(
         "--sparsity", type=float, default=0.0, help="A measure of how much slicing is applied (in the range [0, 1))"
+    )
+    parser.add_argument(
+        "--round-interval",
+        type=int,
+        default=8,
+        help="Interval for rounding the weights (the best value may depend on your hardware)",
     )
     parser.add_argument('--hf-token', type=str, default=os.getenv('HF_TOKEN', None))
     parser.add_argument("--batch-size", type=int, default=1, help="Batch size for evaluating with lm eval harness.")
@@ -65,6 +76,7 @@ def parse_args() -> argparse.Namespace:
         default=["piqa", "hellaswag", "arc_easy", "arc_challenge", "winogrande"],
         choices=lm_eval_utils.MultiChoice(tasks.ALL_TASKS),
     )
+    parser.add_argument('--num-fewshot', type=int, default=0, help="Number of fewshots for all tasks.")
     return parser.parse_args()
 
 
@@ -85,11 +97,16 @@ def main() -> None:
         logging.info(f'Failed to initialize wandb: {e}, continuing without wandb.')
         wandb.init(project="slicegpt-lm-eval", mode='disabled')
 
-    # load the sliced model
-    logging.info(f"Loading sliced {args.model} model from {args.load_model_path} with sparsity {args.sparsity}")
-    model_adapter, tokenizer = hf_utils.load_sliced_model(
-        args.model, args.load_model_path, args.sparsity, token=args.hf_token
-    )
+    if args.load_model_path:
+        # load the sliced model
+        logging.info(f"Loading sliced {args.model} model from {args.load_model_path} with sparsity {args.sparsity}")
+        model_adapter, tokenizer = hf_utils.load_sliced_model(
+            args.model, args.load_model_path, args.sparsity, token=args.hf_token, round_interval=args.round_interval
+        )
+    else:
+        # load the original model
+        logging.info(f"Loading {args.model} model")
+        model_adapter, tokenizer = hf_utils.get_model_and_tokenizer(args.model, token=args.hf_token)
 
     # the lm eval harness ties the weights, but this should not be done for sliced models unless the lm_head was sliced
     model_adapter.model.tie_weights = lambda: None
@@ -101,7 +118,7 @@ def main() -> None:
         model_adapter.model.to(config.device)
 
     ### LM Eval Harness ###
-    hflm = HFLM(pretrained=model_adapter.model, tokenizer=tokenizer)
+    hflm = HFLM(pretrained=model_adapter.model, tokenizer=tokenizer, batch_size=args.batch_size)
 
     if args.tasks is None:
         task_names = tasks.ALL_TASKS
@@ -110,21 +127,40 @@ def main() -> None:
 
     logging.info(f"Selected Tasks: {task_names}")
 
-    results = lm_eval.simple_evaluate(hflm, tasks=task_names, batch_size=args.batch_size)['results']
+    results = lm_eval.simple_evaluate(hflm, tasks=task_names, num_fewshot=args.num_fewshot, batch_size=args.batch_size)[
+        'results'
+    ]
 
     wandb.log(results)
     logging.info(json.dumps(results, indent=2))
 
-    # calculate the avg across the tasks
-    n_tasks = len(task_names)
-    acc_cumul = 0
-    for task in results:
-        if results[task].get('acc_norm,none', None):
-            acc_cumul += results[task]['acc_norm,none']
-        else:
-            acc_cumul += results[task]['acc,none']
+    def calculate_avg_accuracy(task_names, results):
+        n_tasks = len(task_names)
+        acc_cumul = sum(
+            result.get('acc_norm,none', result['acc,none']) for task, result in results.items() if 'mmlu' not in task
+        )
 
-    acc_avg = acc_cumul / n_tasks
+        questions_per_mmlu_task = {
+            task_name: lm_eval.tasks.get_task_dict([task_name])[task_name].dataset["test"].num_rows
+            for task_name in task_names
+            if 'mmlu' in task_name
+        }
+
+        if not questions_per_mmlu_task:
+            return acc_cumul / n_tasks
+
+        # Calculate average accuracy for mmlu tasks, weighted by number of questions in each task
+        acc_mmlu = sum(
+            result.get('acc_norm,none', result['acc,none']) * questions_per_mmlu_task[task]
+            for task, result in results.items()
+            if 'mmlu' in task
+        )
+        acc_mmlu_avg = acc_mmlu / sum(questions_per_mmlu_task.values())
+        wandb.log({'acc_mmlu_avg': acc_mmlu_avg})
+
+        return (acc_cumul + acc_mmlu_avg) / (n_tasks - len(questions_per_mmlu_task) + 1)
+
+    acc_avg = calculate_avg_accuracy(task_names, results)
     wandb.log({'acc_avg': acc_avg})
     logging.info(f"Average accuracy across tasks: {acc_avg}")
 
