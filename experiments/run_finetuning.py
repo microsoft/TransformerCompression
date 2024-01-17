@@ -10,6 +10,7 @@ import torch
 import transformers
 import wandb
 from peft import LoraConfig, TaskType, get_peft_model
+from syne_tune import Reporter
 from torch.utils.data import DataLoader
 from transformers import EarlyStoppingCallback, Trainer, TrainingArguments
 
@@ -92,6 +93,12 @@ def argparser():
     parser.add_argument("--seed", type=int, default=42, help="Seed for sampling the calibration data.")
     parser.add_argument(
         "--sparsity", type=float, default=0.0, help="A measure of how much slicing is applied (in the range [0, 1))"
+    )
+    parser.add_argument(
+        "--round-interval",
+        type=int,
+        default=8,
+        help="Interval for rounding the weights (the best value may depend on your hardware)",
     )
     parser.add_argument(
         "--distribute-model",
@@ -185,7 +192,9 @@ def argparser():
     parser.add_argument('--lora-r', type=int, default=8)
     parser.add_argument('--lora-bias', type=str, default="none")
 
-    parser.add_argument('--st_checkpoint_dir', type=str, default=".")
+    parser.add_argument(
+        '--st_checkpoint_dir', type=str, default=".", help="Path for syne-tune to save finetuning checkpoints."
+    )
 
     # For LLAMA 2 models, possible modules: k_proj v_proj q_proj o_proj gate_proj up_proj down_proj
     # For OPT models, possible modules: k_proj v_proj q_proj out_proj fc1 fc2
@@ -235,11 +244,16 @@ def main() -> None:
         logging.info(f'Failed to initialize wandb: {e}, continuing without wandb')
         wandb.init(project=args.wandb_project, mode='disabled')
 
-    # load the sliced model
-    logging.info(f"Loading sliced {args.model} model from {args.load_model_path} with sparsity {args.sparsity}")
-    model_adapter, tokenizer = hf_utils.load_sliced_model(
-        args.model, args.load_model_path, args.sparsity, token=args.hf_token, round_interval=8
-    )
+    if args.load_model_path:
+        # load the sliced model
+        logging.info(f"Loading sliced {args.model} model from {args.load_model_path} with sparsity {args.sparsity}")
+        model_adapter, tokenizer = hf_utils.load_sliced_model(
+            args.model, args.load_model_path, args.sparsity, token=args.hf_token, round_interval=args.round_interval
+        )
+    else:
+        # load the original model
+        logging.info(f"Loading {args.model} model")
+        model_adapter, tokenizer = hf_utils.get_model_and_tokenizer(args.model, token=args.hf_token)
 
     # get the dataset for perplexity evaluation
     ppl_ds = data_utils.get_dataset(args.ppl_eval_dataset)
@@ -353,6 +367,7 @@ def main() -> None:
     logging.info(f'PPL after finetuning: {dataset_ppl:.4f}')
     wandb.log({"post_finetune_ppl": dataset_ppl})
 
+    Reporter()(ppl=dataset_ppl)
     syne_tune.Reporter()(ppl=dataset_ppl)
 
 

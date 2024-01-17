@@ -9,20 +9,20 @@ from syne_tune.optimizer.baselines import BayesianOptimization, RandomSearch
 
 # Configuration space (or search space)
 config_space = {
-    "model": "facebook/opt-125m",
-    "sparsity": 0.3,
-    "load-model-path": "sliced_models/opt-125m_0.3.pt",
-    "lora-target-modules": choice(
-        ["k_proj v_proj q_proj out_proj", "k_proj v_proj q_proj out_proj fc1 fc2", "k_proj v_proj q_proj dense fc1 fc2"]
-    ),
-    "lora-alpha": loguniform(1e-2, 1e2),
-    "lora-dropout": uniform(0, 1),
-    "lora-r": randint(4, 64),
-    "finetune-train-seqlen": randint(64, 2048),
-    "finetune-test-seqlen": 256,
-    "finetune-train-nsamples": 128,
-    "finetune-train-batch-size": randint(1, 24),
-    "wandb-project": "syne-tune",
+    "model": "microsoft/phi-2",
+    "sparsity": 0.25,
+    "load-model-path": "sliced_models_alpaca/phi-2_0.25.pt",
+    "lora-target-modules": choice(["k_proj v_proj q_proj dense fc1 fc2", "k_proj v_proj q_proj dense"]),
+    "lora-alpha": loguniform(1e-2, 1e3),
+    "lora-dropout": uniform(0, 0.5),
+    "lora-r": randint(2, 64),
+    "finetune-train-seqlen": randint(64, 1024),
+    "finetune-test-seqlen": 2048,
+    "finetune-train-nsamples": 8192,
+    "finetune-train-batch-size": randint(1, 8),
+    "wandb-project": "syne-tune-phi",
+    "finetune-dataset": "alpaca",
+    "ppl-eval-dataset": "alpaca",
 }
 
 if __name__ == "__main__":

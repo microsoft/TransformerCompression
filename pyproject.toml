@@ -18,18 +18,18 @@ authors = [
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "torch",
-    "tqdm",
     "accelerate",
-    "sentencepiece",
-    "einops",
-    "numpy",
     "datasets==2.14.7",
-    "ml-collections",
-    "wandb",
+    "einops",
     "huggingface-hub==0.20.2",
     "lm-eval @ git+https://github.com/EleutherAI/lm-evaluation-harness.git@9b0b15b1ccace3534ffbd13298c569869ce8eaf3",
-    "transformers @ git+https://github.com/huggingface/transformers.git@55090585619d7ab880d9a7d7c8b327a746f7cc40"
+    "ml-collections",
+    "numpy",
+    "sentencepiece",
+    "torch",
+    "tqdm",
+    "transformers @ git+https://github.com/huggingface/transformers.git@55090585619d7ab880d9a7d7c8b327a746f7cc40",
+    "wandb",
 ]
 
 [project.optional-dependencies]
