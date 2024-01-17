@@ -97,8 +97,9 @@ def get_signals(
         out = out.cpu()
         outputs.append(out)
 
-        batch_size, seqlen, _ = out.shape
-        mlp_ln_inputs[i] = mlp_ln_inputs[i].reshape(batch_size, seqlen, -1)
+        if mlp_ln_inputs[i].ndim == 2:
+            batch_size, seqlen, _ = out.shape  # both batch_size and seqlen are can vary from batch to batch
+            mlp_ln_inputs[i] = mlp_ln_inputs[i].reshape(batch_size, seqlen, -1)
 
     hook.remove()
     return mlp_ln_inputs, outputs

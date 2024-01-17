@@ -44,7 +44,7 @@ def argparser() -> argparse.Namespace:
     parser.add_argument(
         "--cal-dataset",
         type=str,
-        help="Dataset to calibrate on.",
+        help="Dataset to calibrate and calculate perplexity on.",
         choices=["wikitext2", "ptb", "c4", "alpaca"],
         default="wikitext2",
     )
@@ -54,7 +54,10 @@ def argparser() -> argparse.Namespace:
         help="Number of samples of the calibration data to load.",
         default=128,
     )
-    parser.add_argument("--batch-size", type=int, default=1, help="Batch size for loading the calibration data.")
+    parser.add_argument("--cal-batch-size", type=int, default=1, help="Batch size for loading the calibration data.")
+    parser.add_argument(
+        "--cal-max-seqlen", type=int, default=2048, help="Maximum sequence length for the calibration data."
+    )
     parser.add_argument("--varied-seqlen", action="store_true", help="Varied sequence lengths in the calibration data.")
     parser.add_argument("--seed", type=int, default=42, help="Seed for sampling the calibration data.")
     parser.add_argument(
@@ -65,6 +68,13 @@ def argparser() -> argparse.Namespace:
         type=int,
         default=8,
         help="Interval for rounding the weights (the best value may depend on your hardware)",
+    )
+    parser.add_argument(
+        "--ppl-eval-seqlen", type=int, default=2048, help="Sequence length for evaluating the perplexity."
+    )
+    parser.add_argument("--ppl-eval-batch-size", type=int, default=8, help="Batch size for evaluating the perplexity.")
+    parser.add_argument(
+        "--ppl-eval-nsamples", type=int, default=128, help="Number of samples to evaluate the perplexity on."
     )
     parser.add_argument("--eval-baseline", action="store_true", help="Evaluate the baseline model.")
     parser.add_argument("--eval-fused-model", action="store_true", help="Evaluate the fused model.")
@@ -153,8 +163,8 @@ def main() -> None:
     train_loader = data_utils.prepare_dataloader(
         dataset=train_dataset,
         tokenizer=tokenizer,
-        max_seqlen=2048,
-        batch_size=args.batch_size,
+        max_seqlen=args.cal_max_seqlen,
+        batch_size=args.cal_batch_size,
         nsamples=args.cal_nsamples,
         varied_seqlen=args.varied_seqlen,
         seed=args.seed,
@@ -162,10 +172,9 @@ def main() -> None:
     test_loader = data_utils.prepare_dataloader(
         dataset=test_dataset,
         tokenizer=tokenizer,
-        max_seqlen=2048,
-        batch_size=args.batch_size,
-        nsamples=args.cal_nsamples,
-        varied_seqlen=args.varied_seqlen,
+        max_seqlen=args.ppl_eval_seqlen,
+        batch_size=args.ppl_eval_batch_size,
+        nsamples=args.ppl_eval_nsamples,
         seed=args.seed,
     )
 
