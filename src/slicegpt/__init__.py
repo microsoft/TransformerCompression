@@ -4,6 +4,7 @@
 from .model_adapter import LayerAdapter, ModelAdapter
 from .adapters.llama_adapter import LlamaModelAdapter
 from .adapters.opt_adapter import OPTModelAdapter
+from .adapters.phi2_adapter import Phi2ModelAdapter
 from .data_utils import get_dataset, prepare_dataloader
 from .gpu_utils import benchmark, evaluate_ppl, distribute_model
 from .hf_utils import get_model_and_tokenizer, load_sliced_model
