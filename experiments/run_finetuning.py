@@ -10,6 +10,7 @@ import torch
 import transformers
 import wandb
 from peft import LoraConfig, TaskType, get_peft_model
+from syne_tune import Reporter
 from torch.utils.data import DataLoader
 from transformers import EarlyStoppingCallback, Trainer, TrainingArguments
 
@@ -366,10 +367,7 @@ def main() -> None:
     logging.info(f'PPL after finetuning: {dataset_ppl:.4f}')
     wandb.log({"post_finetune_ppl": dataset_ppl})
 
-    from syne_tune import Reporter
-
     Reporter()(ppl=dataset_ppl)
-
     syne_tune.Reporter()(ppl=dataset_ppl)
 
 
