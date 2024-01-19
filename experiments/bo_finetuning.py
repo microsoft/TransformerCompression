@@ -1,3 +1,5 @@
+import os
+os.environ["CUDA_VISIBLE_DEVICES"]="0"
 import logging
 from argparse import ArgumentParser
 from pathlib import Path
@@ -11,6 +13,13 @@ from syne_tune.optimizer.baselines import BayesianOptimization, RandomSearch
 config_space = {
     "model": "microsoft/phi-2",
     "sparsity": 0.25,
+    "learning-rate": loguniform(1e-4, 1e-2),
+    "weight-decay": loguniform(1e-5, 1e-1),
+    "adam-beta1": uniform(0.9, 0.99),
+    "adam-beta2": uniform(0.9, 0.999),
+    "adam-eps": loguniform(1e-9, 1e-6),
+    "num-warmup-steps": randint(0, 10000),
+    "lr-scheduler-type": choice(["linear", "cosine", "linear_with_warmup", "cosine_with_warmup"]),
     "load-model-path": "sliced_models_alpaca/phi-2_0.25.pt",
     "lora-target-modules": choice(["k_proj v_proj q_proj",
                                    "k_proj v_proj q_proj dense",
@@ -18,7 +27,7 @@ config_space = {
                                    "k_proj v_proj q_proj lm_head",
                                    "k_proj v_proj q_proj dense lm_head",
                                    "k_proj v_proj q_proj dense fc1 fc2 lm_head"]),
-    "lora-alpha": loguniform(1e-2, 1e3),
+    "lora-alpha": loguniform(4, 256),
     "lora-dropout": uniform(0, 0.5),
     "lora-r": randint(2, 64),
     "finetune-train-seqlen": randint(64, 1024),
