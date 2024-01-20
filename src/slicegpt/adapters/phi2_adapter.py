@@ -7,10 +7,11 @@
 #
 # License updated to MIT license since 7e10f3e in https://huggingface.co/microsoft/phi-2/blob/main/LICENSE
 
-from typing import Optional, Tuple, cast
+from typing import cast
 
 from torch import FloatTensor, LongTensor, Tensor, matmul
 from torch.nn import LayerNorm, Linear, Module
+from transformers import PretrainedConfig
 from transformers.models.phi.modeling_phi import PhiConfig, PhiDecoderLayer, PhiForCausalLM
 
 from slicegpt.model_adapter import LayerAdapter, ModelAdapter
@@ -26,12 +27,12 @@ class CompressiblePhiDecoderLayer(PhiDecoderLayer):
     def forward(
         self,
         hidden_states: Tensor,
-        attention_mask: Optional[Tensor] = None,
-        position_ids: Optional[LongTensor] = None,
-        output_attentions: Optional[bool] = False,
-        use_cache: Optional[bool] = False,
-        past_key_value: Optional[Tuple[Tensor]] = None,
-    ) -> Tuple[FloatTensor, Optional[Tuple[FloatTensor, FloatTensor]]]:
+        attention_mask: Tensor | None = None,
+        position_ids: LongTensor | None = None,
+        output_attentions: bool | None = False,
+        use_cache: bool | None = False,
+        past_key_value: tuple[Tensor] | None = None,
+    ) -> tuple:
         """
         Args:
             hidden_states (`torch.FloatTensor`):
@@ -90,7 +91,7 @@ class Phi2LayerAdapter(LayerAdapter):
         self._layer: PhiDecoderLayer = layer
 
     @property
-    def layer(self) -> PhiDecoderLayer:
+    def layer(self) -> Module:
         return self._layer
 
     @property
@@ -101,10 +102,10 @@ class Phi2LayerAdapter(LayerAdapter):
     def hidden_states_output_position(self) -> int:
         return 0
 
-    def get_first_layernorm(self) -> LayerNorm:
+    def get_first_layernorm(self) -> Module:
         return self._layer.input_layernorm
 
-    def get_second_layernorm(self) -> LayerNorm:
+    def get_second_layernorm(self) -> Module:
         return None
 
     def get_attention_inputs(self) -> list[Linear]:
@@ -121,17 +122,22 @@ class Phi2LayerAdapter(LayerAdapter):
 
 
 class Phi2ModelAdapter(ModelAdapter):
+    def __init__(self, model: PhiForCausalLM) -> None:
+        super().__init__()
+        self._model: PhiForCausalLM = model
+        self._config_type: 'type' = PhiConfig
+        self._layer_adapter_type: 'type' = Phi2LayerAdapter
+        self._layer_type: 'type' = PhiDecoderLayer
+        self._compressible_layer_type: 'type' = CompressiblePhiDecoderLayer
+        self._layer_norm_type: 'type' = LayerNorm
+
     @property
     def parallel_blocks(self) -> bool:
         return True
 
-    def __init__(self, model: PhiForCausalLM) -> None:
-        super().__init__()
-        self._model: PhiForCausalLM = model
-
     @property
-    def _config(self) -> PhiConfig:
-        return cast(PhiConfig, self._model.config)
+    def _config(self) -> PretrainedConfig:
+        return self._model.config
 
     @property
     def model(self) -> Module:
@@ -139,7 +145,7 @@ class Phi2ModelAdapter(ModelAdapter):
 
     @property
     def no_split_module_classes(self) -> list[str]:
-        return [PhiDecoderLayer.__name__, CompressiblePhiDecoderLayer.__name__]
+        return [self._layer_type.__name__, self._compressible_layer_type.__name__]
 
     @property
     def seqlen(self) -> int:
@@ -154,12 +160,12 @@ class Phi2ModelAdapter(ModelAdapter):
         return True
 
     @property
-    def original_layer_type(self) -> type[PhiDecoderLayer]:
-        return PhiDecoderLayer
+    def original_layer_type(self) -> 'type':
+        return self._layer_type
 
     @property
-    def original_layer_norm_type(self) -> type[LayerNorm]:
-        return LayerNorm
+    def original_layer_norm_type(self) -> 'type':
+        return self._layer_norm_type
 
     @property
     def use_cache(self) -> bool:
@@ -172,15 +178,15 @@ class Phi2ModelAdapter(ModelAdapter):
     def compute_output_logits(self, input_ids: Tensor) -> FloatTensor:
         return self._model(input_ids=input_ids).logits
 
-    def convert_layer_to_compressible(
-        self, layer: PhiDecoderLayer, layer_idx: int | None
-    ) -> CompressiblePhiDecoderLayer:
-        compressed_layer = CompressiblePhiDecoderLayer(self._config, layer_idx).to(self._config.torch_dtype)
+    def convert_layer_to_compressible(self, layer: Module, layer_idx: int | None) -> Module:
+        compressed_layer = self._compressible_layer_type(cast(self._config_type, self._config), layer_idx).to(
+            self._config.torch_dtype
+        )
         compressed_layer.load_state_dict(layer.state_dict(), strict=True)
         return compressed_layer
 
-    def get_layers(self) -> list[Phi2LayerAdapter]:
-        return [Phi2LayerAdapter(cast(PhiDecoderLayer, layer)) for layer in self._model.model.layers]
+    def get_layers(self) -> list[LayerAdapter]:
+        return [self._layer_adapter_type(layer) for layer in self._model.model.layers]
 
     def get_raw_layer_at(self, index: int) -> Module:
         return self._model.model.layers[index]
@@ -191,8 +197,10 @@ class Phi2ModelAdapter(ModelAdapter):
     def get_embeddings(self) -> list[Module]:
         return [self._model.model.embed_tokens]
 
-    def get_pre_head_layernorm(self) -> LayerNorm:
-        return self._model.model.final_layernorm
+    def get_pre_head_layernorm(self) -> 'type':
+        pre_head_layernorm = self._model.model.final_layernorm
+        assert pre_head_layernorm is not None
+        return pre_head_layernorm
 
     def get_lm_head(self) -> Linear:
         return self._model.lm_head
