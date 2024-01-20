@@ -58,7 +58,7 @@ def replace_modules(
     for name, module in root.named_children():
         new_module = None
         if isinstance(module, type_to_replace):
-            if replace_layers:  # layernorm_fusion.replace_layers case where ModuleList[Decooderlayer] is replaced
+            if replace_layers:  # layernorm_fusion.replace_layers case where transformer layers are replaced
                 new_module = new_module_factory(module, int(name))
             else:  # layernorm_fusion.fuse_modules case where layernorms are fused
                 new_module = new_module_factory(module)

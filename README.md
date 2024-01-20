@@ -3,18 +3,17 @@
 This repository contains the code for the paper [SliceGPT](link/to/be/made/available/upon/publication). 
 
 SliceGPT is a new post-training sparsification scheme that makes transformer networks (including LLMs) smaller by 
-first applying orthogonal transformations to each layer that leave the model unchanged, and then slicing off the 
+first applying orthogonal transformations to each transformer layer that leave the model unchanged, and then slicing off the 
 least-significant rows and columns (chosen by the eigenvalue decay) of the weight matrices. The model structure is 
 left unchanged, but each weight matrix is replaced by a smaller (dense) weight matrix, reducing the embedding dimension 
 of the model. This results in speedups (without any additional code optimization) and a reduced memory footprint.  
 
-The code is arranged as a package `slicegpt` in /src, and script to replicate experiments from the paper are in 
+The code is arranged as a package `slicegpt` in `/src`, and script to replicate experiments from the paper are in 
 `/experiments`. To install the sliceGPT package, we recommend
 
 `pip install -e .`
 
-
-### Running SliceGPT
+## Running SliceGPT
 
 To run sliceGPT on `microsoft/phi-2`, from the `experiments` folder, run 
 ```
@@ -37,8 +36,7 @@ The experiments folder also contains scripts for
 _Note:_ For models that require HuggingFace authentication, set the `--hf-token` argument 
 manually or using a key vault. Alternatively, set the environment variable `HF_TOKEN`.
 
-
-### Supported models
+## Supported models
 
 The following models from Huggingface hub are currently supported
 - [microsoft/phi-2](https://huggingface.co/microsoft/phi-2)
@@ -53,29 +51,39 @@ The following models from Huggingface hub are currently supported
 - [facebook/opt-30b](https://huggingface.co/facebook/opt-30b)
 - [facebook/opt-66b](https://huggingface.co/facebook/opt-66b)
 
-### Extending support to a new model type
+## Extending support to a new model type
 
-The model you wish to support must be available in HuggingFace. To add sliceGPT support for a new model, one needs to: 
+The model you wish to support must be available in HuggingFace. To add sliceGPT support for a new model, 
+one needs to implement a new model adapter before using it to slice a new model.
+
+### Implementing a new model adapter
 - Implement the [ModelAdapter](./src/slicegpt/model_adapter.py) interface for the new model. The ModelAdapter class tells sliceGPT 
-  how to interact with the model, an instance of which is stored at self.model. For example, 
+  how to interact with the model, an instance of which is stored at `self.model`. For example, 
   how to access each of the layers of the model.
-- Implement the [LayerAdapter](./src/slicegpt/model_adapter.py) interface for the layer. The LayerAdapter class tells sliceGPT how to interact 
-  with each layer of the model. For example, how to access the attention and MLP components of the layer, and 
-  how to update the arguments to the layer's forward method.
-- Implement a compressible layer class that subclasses the decoder layer and provides an adapted `forward()` method to work with 
-  the compressed model. The `forward()` method should specify how the skip connection orthogonal matrices are used, depending on 
+- Implement the [LayerAdapter](./src/slicegpt/model_adapter.py) interface for the transformer layers. 
+  The LayerAdapter class tells sliceGPT how to interact 
+  with each transformer layer of the model, an instance of which is stored at `self.layer`. 
+  For example, how to access the attention and MLP components of the transformer layer, and 
+  how to update the arguments to the transformer layer's forward method.
+- Implement a compressible transformer layer class that subclasses the transformer layer. 
+  This class should also  provide an adapted `forward()` method to work with the compressed model. 
+  This method should specify how the skip connection orthogonal matrices are used, depending on 
   whether MLP and attention blocks are sequential ([OPT](./src/slicegpt/adapters/opt_adapter.py), 
   [Llama-2](./src/slicegpt/adapters/llama_adapter.py)) or parallel 
   ([Phi-2](./src/slicegpt/adapters/phi2_adapter.py)). The `self.*_shortcut_Q` matrices are attached to the modules during
   slicing and are available in `forward()`. If the skip connection does not need modification, these matrices will be None, 
   and the `forward()` method can follow the original workflow. For more details on this, 
   please read [Section 3 in the paper](link/made/available/on/publication).
-- See [llama_adapter.py](./src/slicegpt/adapters/llama_adapter.py) for an example of how to implement these classes.
-- Once a model adapter is implemented, compressing the model involves three conceptual steps:
+
+Example: [llama_adapter.py](./src/slicegpt/adapters/llama_adapter.py)
+
+### Using a new model adapter to slice a model
+Once a model adapter is implemented, compressing the model involves three conceptual steps:
   - Replace modules with compressible equivalents (via `slicegpt.layernorm_fusion.replace_layers`)
-  - Fuse layernorms and add rotations to skip connections (via `slicegpt.layernorm_fusion.fuse_modules`)
+  - Fuse layer norms and add rotations to skip connections (via `slicegpt.layernorm_fusion.fuse_modules`)
   - Rotate the inputs and slice the layers (via `slicegpt.rotate.rotate_and_slice`)
-- See [run_slicegpt_perplexity.py](./experiments/run_slicegpt_perplexity.py) for an example of how to compress a model
+
+Example: [run_slicegpt_perplexity.py](./experiments/run_slicegpt_perplexity.py)
 
 _Note:_ If the model you wish to support is not available in HuggingFace, you will also need to implement 
 custom model loading and initialization functionality.
