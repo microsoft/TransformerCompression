@@ -142,7 +142,7 @@ class LlamaModelAdapter(ModelAdapter):
 
     @property
     def no_split_module_classes(self) -> list[str]:
-        return ["LlamaDecoderLayer", "CompressedLlamaDecoderLayer"]
+        return [LlamaDecoderLayer.__name__, CompressibleLlamaDecoderLayer.__name__]
 
     @property
     def seqlen(self) -> int:
