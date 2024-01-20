@@ -19,6 +19,16 @@ See src/slicegpt/adapters/llama_adapter.py for an example of how to implement th
 
 
 class LayerAdapter(ABC):
+    """
+    To implement a new layer adapter,
+        - Implement the interface defined in this class
+        - Define the following member variables
+            - self._layer:                          = Instance of the transformer layer to be wrapped. This contains the
+                                                      forward() method of the original model,
+                                                      e.g: LlamaDecoderLayer
+
+    """
+
     @property
     @abstractmethod
     def layer(self) -> Module:
@@ -98,6 +108,28 @@ class LayerAdapter(ABC):
 
 
 class ModelAdapter(ABC):
+    """
+    To implement a new model adapter,
+        - Implement the interface defined in this class
+        - Define the following member variables
+            - self._model:                          = Instance of the original model to be wrapped,
+                                                      e.g: LlamaForCausalLM
+            - self._config_type: 'type'             = Type of the config class,
+                                                      e.g: LlamaConfig
+            - self._layer_adapter_type: 'type'      = Type of the class implementing the sliceGPT.LayerAdapter interface,
+                                                      e.g: LlamaLayerAdapter
+            - self._layer_type: 'type'              = Type of the transformer layer containing forward() method of
+                                                      the original model,
+                                                      e.g: LlamaDecoderLayer
+            - self._compressible_layer_type: 'type' = Type of the compressible transformer layer defined by the user;
+                                                      subclasses the transformer layer class; contains the adapted
+                                                      forward() method for the compressed model
+                                                      e.g: CompressibleLlamaDecoderLayer
+            - self._layer_norm_type: 'type'         = Type of the layer norm class used,
+                                                      e.g: LlamaRMSNorm
+
+    """
+
     @property
     @abstractmethod
     def parallel_blocks(self) -> bool:
@@ -110,7 +142,7 @@ class ModelAdapter(ABC):
     @abstractmethod
     def model(self) -> Module:
         """
-        The base model that slicegpt interacts with.
+        The original model that slicegpt interacts with.
         """
         raise NotImplementedError
 
@@ -118,7 +150,7 @@ class ModelAdapter(ABC):
     @abstractmethod
     def no_split_module_classes(self) -> list[str] | None:
         """
-        A list of string specifying the names of modules that should not be split.
+        A list of strings specifying the class names of modules that should not be split.
         See https://huggingface.co/docs/accelerate/concept_guides/big_model_inference for more details.
         """
         raise NotImplementedError
@@ -238,7 +270,7 @@ class ModelAdapter(ABC):
     def convert_layer_to_compressible_and_register_buffers(self, layer: Module, layer_idx: int | None) -> Module:
         """
         Replace the given layer with a compressible version of the layer. Also register the shortcut_Q matrices
-        to be used in CompressibleDecoderlayer's forward() method to be updated during slicing.
+        to be used in Compressible transformer layer's forward() method to be updated during slicing.
         """
         compressed_layer = self.convert_layer_to_compressible(layer, layer_idx)
         compressed_layer.register_buffer('mlp_shortcut_Q', None)
