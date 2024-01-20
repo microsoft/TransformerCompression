@@ -13,7 +13,9 @@ authors = [
     {name = "James Hensman"},
     {name = "Max Croci"},
     {name = "Saleh Ashkboos"},
-    {name = "Marcelo Gennari do Nascimento"}
+    {name = "Marcelo Gennari do Nascimento"},
+    {name = "Dmitry Kats"},
+    {name = "Pashmina Cameron"}
 ]
 readme = "README.md"
 requires-python = ">=3.10"
