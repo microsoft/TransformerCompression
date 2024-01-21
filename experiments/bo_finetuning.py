@@ -1,4 +1,3 @@
-import os
 import logging
 from argparse import ArgumentParser
 from pathlib import Path
