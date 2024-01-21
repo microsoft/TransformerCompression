@@ -1,5 +1,4 @@
 import os
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
 import logging
 from argparse import ArgumentParser
 from pathlib import Path
