@@ -1,8 +1,8 @@
 #!/bin/bash
-RUN=false
+RUN=true
 
 PYTHON_SCRIPT="run_zero_shot_tasks.py"
-
+DATASET="wikitext"
 TASKS="piqa arc_easy arc_challenge winogrande hellaswag"
 
 LLA_MODEL_FAMILY="meta-llama"
@@ -24,9 +24,9 @@ for MODEL_NAME in "${LLA_MODEL_NAMES_SML[@]}"; do
 
     # Run the script on different GPUs in the background
     for ID in {0..3}; do
-        GPU_ID="${GPU_IDS[$ID]}"
+        GPU_ID=${GPU_IDS[$ID]}
         SPARSITY=${SPARSITIES[$ID]}
-        MODEL_CHKPT="finetuned_models_alpaca/${MODEL_NAME}_${SPARSITY}.pt"
+        MODEL_CHKPT="finetuned_models_${DATASET}/${MODEL_NAME}_${SPARSITY}.pt"
         ARGS="--model=$MODEL --sparsity=$SPARSITY --load-model-path $MODEL_CHKPT $LLA_BASE_ARGS $ARGS_SML"
         echo "$GPU_ID: $ARGS."
         if $RUN; then
@@ -43,9 +43,9 @@ for MODEL_NAME in "${LLA_MODEL_NAMES_MED[@]}"; do
 
     # Run the script on different GPUs in the background
     for ID in {0..3}; do
-        GPU_ID="${GPU_IDS[$ID]}"
+        GPU_ID=${GPU_IDS[$ID]}
         SPARSITY=${SPARSITIES[$ID]}
-        MODEL_CHKPT="finetuned_models_alpaca/${MODEL_NAME}_${SPARSITY}.pt"
+        MODEL_CHKPT="finetuned_models_${DATASET}/${MODEL_NAME}_${SPARSITY}.pt"
         ARGS="--model=$MODEL --sparsity=$SPARSITY --load-model-path $MODEL_CHKPT $LLA_BASE_ARGS $ARGS_MED"
         echo "$GPU_ID: $ARGS."
         if $RUN; then
@@ -63,8 +63,8 @@ for MODEL_NAME in "${LLA_MODEL_NAMES_LRG[@]}"; do
     # Run the script on different GPU pairs sequentially
     for ID in {0..3}; do
         GPU_ID="${GPU_PAIRS[$ID]}"
-        SPARSITY="${SPARSITIES[$ID]}"
-        MODEL_CHKPT="finetuned_models_alpaca/${MODEL_NAME}_${SPARSITY}.pt"
+        SPARSITY=${SPARSITIES[$ID]}
+        MODEL_CHKPT="finetuned_models_${DATASET}/${MODEL_NAME}_${SPARSITY}.pt"
         ARGS="--model=$MODEL --sparsity=$SPARSITY --load-model-path $MODEL_CHKPT $LLA_BASE_ARGS $ARGS_LRG"
         echo "$GPU_ID: $ARGS."
         if $RUN; then
