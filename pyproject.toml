@@ -43,7 +43,7 @@ dev = [
 ]
 
 finetune = [
-    "syne-tune==0.10.0",
+    "syne-tune[gpsearchers]==0.10.0",
     "peft==0.6.0"
 ]
 
