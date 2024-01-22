@@ -13,22 +13,25 @@ authors = [
     {name = "James Hensman"},
     {name = "Max Croci"},
     {name = "Saleh Ashkboos"},
-    {name = "Marcelo Gennari do Nascimento"}
+    {name = "Marcelo Gennari do Nascimento"},
+    {name = "Dmitry Kats"},
+    {name = "Pashmina Cameron"}
 ]
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "accelerate",
-    "datasets",
-    "huggingface-hub>=0.16.4,<0.18",
-    "lm-eval @ git+https://github.com/EleutherAI/lm-evaluation-harness.git",
+    "datasets==2.14.7",
+    "einops",
+    "huggingface-hub==0.20.2",
+    "lm-eval @ git+https://github.com/EleutherAI/lm-evaluation-harness.git@9b0b15b1ccace3534ffbd13298c569869ce8eaf3",
+    "ml-collections",
     "numpy",
     "sentencepiece",
     "torch",
     "tqdm",
-    "transformers",
+    "transformers @ git+https://github.com/huggingface/transformers.git@55090585619d7ab880d9a7d7c8b327a746f7cc40",
     "wandb",
-    "ml-collections",
 ]
 
 [project.optional-dependencies]
@@ -37,6 +40,11 @@ dev = [
     "pre-commit",
     "pylint>=3.0.0",
     "pytest>=7.4.2",
+]
+
+finetune = [
+    "syne-tune[gpsearchers]==0.10.0",
+    "peft==0.6.0"
 ]
 
 [tool.setuptools.packages.find]

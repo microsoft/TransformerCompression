@@ -35,6 +35,8 @@ def argparser() -> argparse.Namespace:
             'meta-llama/Llama-2-7b-hf',
             'meta-llama/Llama-2-13b-hf',
             'meta-llama/Llama-2-70b-hf',
+            # Phi-2 model
+            'microsoft/phi-2',
         ],
         default="facebook/opt-125m",
     )
@@ -42,8 +44,8 @@ def argparser() -> argparse.Namespace:
     parser.add_argument(
         "--cal-dataset",
         type=str,
-        help="Dataset to calibrate on.",
-        choices=["wikitext2", "ptb", "c4"],
+        help="Dataset to calibrate and calculate perplexity on.",
+        choices=["wikitext2", "ptb", "c4", "alpaca"],
         default="wikitext2",
     )
     parser.add_argument(
@@ -52,11 +54,27 @@ def argparser() -> argparse.Namespace:
         help="Number of samples of the calibration data to load.",
         default=128,
     )
-    parser.add_argument("--batch-size", type=int, default=1, help="Batch size for loading the calibration data.")
+    parser.add_argument("--cal-batch-size", type=int, default=1, help="Batch size for loading the calibration data.")
+    parser.add_argument(
+        "--cal-max-seqlen", type=int, default=2048, help="Maximum sequence length for the calibration data."
+    )
     parser.add_argument("--varied-seqlen", action="store_true", help="Varied sequence lengths in the calibration data.")
     parser.add_argument("--seed", type=int, default=42, help="Seed for sampling the calibration data.")
     parser.add_argument(
         "--sparsity", type=float, default=0.0, help="A measure of how much slicing is applied (in the range [0, 1))"
+    )
+    parser.add_argument(
+        "--round-interval",
+        type=int,
+        default=8,
+        help="Interval for rounding the weights (the best value may depend on your hardware)",
+    )
+    parser.add_argument(
+        "--ppl-eval-seqlen", type=int, default=2048, help="Sequence length for evaluating the perplexity."
+    )
+    parser.add_argument("--ppl-eval-batch-size", type=int, default=8, help="Batch size for evaluating the perplexity.")
+    parser.add_argument(
+        "--ppl-eval-nsamples", type=int, default=128, help="Number of samples to evaluate the perplexity on."
     )
     parser.add_argument("--eval-baseline", action="store_true", help="Evaluate the baseline model.")
     parser.add_argument("--eval-fused-model", action="store_true", help="Evaluate the fused model.")
@@ -70,7 +88,7 @@ def argparser() -> argparse.Namespace:
     parser.add_argument("--save-dir", type=str, default=None, help="Path to save the model.")
     parser.add_argument("--load-model-path", type=str, default=None, help="Path to load the sliced model from.")
 
-    parser.add_argument('--hf-token', type=str, default=None)
+    parser.add_argument('--hf-token', type=str, default=os.getenv('HF_TOKEN', None))
 
     parser.add_argument('--no-wandb', action="store_true", help="Disable wandb.")
     parser.add_argument(
@@ -98,9 +116,6 @@ def argparser() -> argparse.Namespace:
         config.dtype = torch.float32
     else:
         raise argparse.ArgumentTypeError(f"Data type should be one of 'fp16', 'fp32'")
-
-    if args.batch_size > args.cal_nsamples:
-        raise argparse.ArgumentTypeError(f"Batch size can not be greater than the number of calibration samples")
 
     return args
 
@@ -140,12 +155,13 @@ def main() -> None:
         else:
             model.to(config.device)
 
-    train_dataset, test_dataset = data_utils.get_dataset(args.cal_dataset)
+    dataset = data_utils.get_dataset(args.cal_dataset)
+    train_dataset, test_dataset = dataset["train"], dataset["validation"]
     train_loader = data_utils.prepare_dataloader(
         dataset=train_dataset,
         tokenizer=tokenizer,
-        max_seqlen=model.seqlen,
-        batch_size=args.batch_size,
+        max_seqlen=args.cal_max_seqlen,
+        batch_size=args.cal_batch_size,
         nsamples=args.cal_nsamples,
         varied_seqlen=args.varied_seqlen,
         seed=args.seed,
@@ -153,10 +169,9 @@ def main() -> None:
     test_loader = data_utils.prepare_dataloader(
         dataset=test_dataset,
         tokenizer=tokenizer,
-        nsamples=args.cal_nsamples,
-        max_seqlen=model_adapter.seqlen,
-        batch_size=args.batch_size,
-        varied_seqlen=args.varied_seqlen,
+        max_seqlen=args.ppl_eval_seqlen,
+        batch_size=args.ppl_eval_batch_size,
+        nsamples=args.ppl_eval_nsamples,
         seed=args.seed,
     )
 
@@ -201,7 +216,11 @@ def main() -> None:
 
     # compute new embedding dimension given the desired sparsity level
     new_embedding_dimension = int((1 - args.sparsity) * model_adapter.hidden_size)
-    logging.info(f"New embedding dimension: {new_embedding_dimension} (sparsity {args.sparsity})")
+    # round (down) to the nearest multiple of round_interval
+    new_embedding_dimension = new_embedding_dimension - (new_embedding_dimension % args.round_interval)
+    logging.info(
+        f"New embedding dimension: {new_embedding_dimension} (sparsity {100*(1 - new_embedding_dimension / model_adapter.hidden_size):.4f} %)"
+    )
 
     ignore_tokens = [tokenizer.pad_token_id]
     rotate.rotate_and_slice(model_adapter, train_loader, new_embedding_dimension, ignore_tokens=ignore_tokens)

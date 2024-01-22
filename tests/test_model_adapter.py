@@ -10,9 +10,11 @@ from torch import Tensor
 from torch.nn import Module, Parameter
 from transformers.models.llama.modeling_llama import LlamaConfig, LlamaForCausalLM
 from transformers.models.opt.modeling_opt import OPTConfig, OPTForCausalLM
+from transformers.models.phi.modeling_phi import PhiConfig, PhiForCausalLM
 
 from slicegpt.adapters.llama_adapter import LlamaModelAdapter
 from slicegpt.adapters.opt_adapter import OPTModelAdapter
+from slicegpt.adapters.phi2_adapter import Phi2ModelAdapter
 from slicegpt.model_adapter import ModelAdapter
 
 
@@ -53,9 +55,9 @@ class ModelAdapterTestBase(ABC):
 
     def test_convert_layer_to_compressible(self, model_adapter: ModelAdapter) -> None:
         for i, layer_adapter in enumerate(model_adapter.get_layers()):
-            compressed_layer = model_adapter.convert_layer_to_compressible(layer_adapter.layer)
+            compressed_layer = model_adapter.convert_layer_to_compressible(layer_adapter.layer, i)
             assert isinstance(compressed_layer, Module), f"Converted compressible layer {i} is not a torch module"
-            compressed_layer = model_adapter.convert_layer_to_compressible_and_register_buffers(layer_adapter.layer)
+            compressed_layer = model_adapter.convert_layer_to_compressible_and_register_buffers(layer_adapter.layer, i)
             _validate_protocol_attr(compressed_layer, HasShortcuts, f"Converted compressible layer {i} is invalid")
             # TODO: test actual forward pass dependency on Q
 
@@ -68,8 +70,9 @@ class ModelAdapterTestBase(ABC):
             assert isinstance(first_layernorm, Module), f"First layernorm of layer {i} is not a torch module"
             _validate_protocol_attr(first_layernorm, HasWeight, f"First layernorm of layer {i} is invalid")
             second_layernorm = layer_adapter.get_second_layernorm()
-            assert isinstance(second_layernorm, Module), f"Second layernorm of layer {i} is not a torch module"
-            _validate_protocol_attr(second_layernorm, HasWeight, f"Second layernorm of layer {i} is invalid")
+            if second_layernorm is not None:
+                assert isinstance(second_layernorm, Module), f"Second layernorm of layer {i} is not a torch module"
+                _validate_protocol_attr(second_layernorm, HasWeight, f"Second layernorm of layer {i} is invalid")
 
     def test_embeddings_have_weight(self, model_adapter: ModelAdapter) -> None:
         for i, emb in enumerate(model_adapter.get_embeddings()):
@@ -108,3 +111,11 @@ class TestLlamaAdapter(ModelAdapterTestBase):
         )
         model = LlamaForCausalLM(config)
         return LlamaModelAdapter(model)
+
+
+class TestPhi2Adapter(ModelAdapterTestBase):
+    def create_adapter(self) -> Phi2ModelAdapter:
+        # a tiny phi, just to test adapter.
+        config = PhiConfig(vocab_size=500, n_positions=20, n_embd=16, n_layer=2, n_head=1, rotary_dim=4)
+        model = PhiForCausalLM(config)
+        return Phi2ModelAdapter(model)

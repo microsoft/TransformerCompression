@@ -4,17 +4,21 @@
 import logging
 
 import torch
+from peft import LoraConfig, get_peft_model
 from transformers import (
     AutoTokenizer,
     LlamaConfig,
     LlamaForCausalLM,
     OPTConfig,
     OPTForCausalLM,
+    PhiConfig,
+    PhiForCausalLM,
     PreTrainedTokenizerBase,
 )
 
 from .adapters.llama_adapter import LlamaModelAdapter
 from .adapters.opt_adapter import OPTModelAdapter
+from .adapters.phi2_adapter import Phi2ModelAdapter
 from .layernorm_fusion import fuse_modules, replace_layers
 from .model_adapter import ModelAdapter
 from .rotate import slice_rotated_model
@@ -27,6 +31,12 @@ class UninitializedOPTForCausalLM(OPTForCausalLM):
 
 
 class UninitializedLlamaForCausalLM(LlamaForCausalLM):
+    def _init_weights(self, _) -> None:
+        # Prevent weight initialization
+        pass
+
+
+class UninitializedPhiForCausalLM(PhiForCausalLM):
     def _init_weights(self, _) -> None:
         # Prevent weight initialization
         pass
@@ -93,10 +103,24 @@ def get_model_and_tokenizer(
             model = LlamaForCausalLM.from_pretrained(model_path, torch_dtype=dtype, token=token)
             model.config.torch_dtype = dtype
 
+        # TODO: change to <eos>
         tokenizer.add_special_tokens({"pad_token": "<pad>"})  # Llama-2 models don't have a pad token by default
         model.config.pad_token_id = tokenizer.pad_token_id
         model.resize_token_embeddings(len(tokenizer), pad_to_multiple_of=8)
         model_adapter = LlamaModelAdapter(model)
+    elif "microsoft/phi-2" in model_path:
+        if uninitialized:
+            config = PhiConfig.from_pretrained(model_path, token=token)
+            model = UninitializedPhiForCausalLM(config)
+            model = model.to(dtype=dtype)
+        else:
+            model = PhiForCausalLM.from_pretrained(model_path, torch_dtype=dtype, token=token)
+            model.config.torch_dtype = dtype
+
+        tokenizer.add_special_tokens({"pad_token": "<pad>"})  # Phi-2 models don't have a pad token by default
+        model.config.pad_token_id = tokenizer.pad_token_id
+        model.resize_token_embeddings(len(tokenizer), pad_to_multiple_of=8)
+        model_adapter = Phi2ModelAdapter(model)
     else:
         raise NotImplementedError
 
@@ -111,23 +135,35 @@ def get_model_and_tokenizer(
 
 @do_not_initialize
 def load_sliced_model(
-    model_name: str, model_path: str, sparsity: float, token: str
+    model_name: str,
+    model_path: str,
+    sparsity: float,
+    token: str,
+    lora_config: LoraConfig = None,
+    round_interval: int = 1,
 ) -> tuple[ModelAdapter, PreTrainedTokenizerBase]:
-    """Loads the sliced model and the tokenizer from the given path."""
+    """Loads the sliced model and the tokenizer from the given path. If lora_config is supplied as an arg then this
+    function will return a PEFT model (post-slicing finetuned model)."""
     model_adapter, tokenizer = get_model_and_tokenizer(model_name, uninitialized=True, token=token)
     replace_layers(model_adapter)
     fuse_modules(model_adapter)
     new_embedding_dimension = int((1 - sparsity) * model_adapter.hidden_size)
+    new_embedding_dimension = new_embedding_dimension - (new_embedding_dimension % round_interval)
 
     for layer_adapter in model_adapter.get_layers():
-        layer_adapter.layer.mlp_shortcut_Q = torch.zeros(model_adapter.hidden_size, model_adapter.hidden_size).to(
-            dtype=torch.float16
-        )
+        if not model_adapter.parallel_blocks:
+            layer_adapter.layer.mlp_shortcut_Q = torch.zeros(model_adapter.hidden_size, model_adapter.hidden_size).to(
+                dtype=torch.float16
+            )
+
         layer_adapter.layer.attn_shortcut_Q = torch.zeros(model_adapter.hidden_size, model_adapter.hidden_size).to(
             dtype=torch.float16
         )
 
     slice_rotated_model(model_adapter, new_embedding_dimension)
+
+    if lora_config:
+        model_adapter.model = get_peft_model(model_adapter.model, lora_config)
 
     model_adapter.model.load_state_dict(torch.load(model_path, map_location="cpu"))
     model_adapter.model.eval()

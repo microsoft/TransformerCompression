@@ -147,6 +147,10 @@ class OPTLayerAdapter(LayerAdapter):
 
 
 class OPTModelAdapter(ModelAdapter):
+    @property
+    def parallel_blocks(self) -> bool:
+        return False
+
     def __init__(self, model: OPTForCausalLM) -> None:
         super().__init__()
         self._model: OPTForCausalLM = model
@@ -161,7 +165,7 @@ class OPTModelAdapter(ModelAdapter):
 
     @property
     def no_split_module_classes(self) -> list[str]:
-        return ["OPTDecoderLayer", "CompressedOPTDecoderLayer"]
+        return [OPTDecoderLayer.__name__, CompressibleOPTDecoderLayer.__name__]
 
     @property
     def seqlen(self) -> int:
@@ -194,7 +198,9 @@ class OPTModelAdapter(ModelAdapter):
     def compute_output_logits(self, input_ids: Tensor) -> FloatTensor:
         return self._model(input_ids=input_ids).logits
 
-    def convert_layer_to_compressible(self, layer: OPTDecoderLayer) -> CompressibleOPTDecoderLayer:
+    def convert_layer_to_compressible(
+        self, layer: OPTDecoderLayer, layer_idx: int | None
+    ) -> CompressibleOPTDecoderLayer:
         compressed_layer = CompressibleOPTDecoderLayer(self._config).to(self._config.torch_dtype)
         compressed_layer.load_state_dict(layer.state_dict(), strict=True)
         return compressed_layer

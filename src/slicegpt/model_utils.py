@@ -69,7 +69,7 @@ def get_layer0_inputs(model_adapter: ModelAdapter, batch: Tensor) -> tuple[Tenso
 
 
 def get_signals(
-    layer_adapter: LayerAdapter, seqlen: int, layer_args: list[tuple], layer_kwargs: list[dict[str, Any]]
+    layer_adapter: LayerAdapter, layer_args: list[tuple], layer_kwargs: list[dict[str, Any]]
 ) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
     """
     Take the input signals ("activations") for a layer, run the layer forward.
@@ -82,13 +82,12 @@ def get_signals(
 
     def hook_fn(_, args: tuple, _output: Any) -> None:
         inp = args[0]  # Position in RMSN.forward args
-        # The mlp operates on (batch_size * seqlen, hidden_size) tensors, so recover batch dimension.
-        mlp_ln_inputs.append(inp.cpu().reshape(-1, seqlen, inp.shape[-1]))
+        mlp_ln_inputs.append(inp.cpu())
 
     second_layernorm = layer_adapter.get_second_layernorm()
     assert isinstance(second_layernorm, RMSN)
     hook = second_layernorm.register_forward_hook(hook_fn)
-    for layer_args_batch, layer_kwargs_batch in zip(layer_args, layer_kwargs):
+    for i, (layer_args_batch, layer_kwargs_batch) in enumerate(zip(layer_args, layer_kwargs)):
         layer_args_batch, layer_kwargs_batch = utils.map_tensors(
             [layer_args_batch, layer_kwargs_batch], device=config.device
         )
@@ -97,6 +96,10 @@ def get_signals(
             out = out[layer_adapter.hidden_states_output_position]
         out = out.cpu()
         outputs.append(out)
+
+        if mlp_ln_inputs[i].ndim == 2:
+            batch_size, seqlen, _ = out.shape  # both batch_size and seqlen are can vary from batch to batch
+            mlp_ln_inputs[i] = mlp_ln_inputs[i].reshape(batch_size, seqlen, -1)
 
     hook.remove()
     return mlp_ln_inputs, outputs

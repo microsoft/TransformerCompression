@@ -65,7 +65,7 @@ def argparser() -> argparse.Namespace:
 
     parser.add_argument("--load-model-path", type=str, default=None, help="Path to load the sliced model from.")
 
-    parser.add_argument('--hf-token', type=str, default=None)
+    parser.add_argument('--hf-token', type=str, default=os.getenv('HF_TOKEN', None))
 
     parser.add_argument('--no-wandb', action="store_true", help="Disable wandb.")
     parser.add_argument(
