@@ -3,11 +3,11 @@ RUN=true
 
 PYTHON_SCRIPT="run_finetuning.py"
 LLA_MODEL_FAMILY="meta-llama"
-LLA_MODEL_NAMES_SML=("Llama-2-7b-hf")
-LLA_MODEL_NAMES_MED=("Llama-2-13b-hf")
+# LLA_MODEL_NAMES_SML=("Llama-2-7b-hf")
+# LLA_MODEL_NAMES_MED=("Llama-2-13b-hf")
 LLA_MODEL_NAMES_LRG=("Llama-2-70b-hf")
 
-ARGS_FIN="--save-dir finetuned_models_wikitext --finetune-dataset wikitext2 --ppl-eval-dataset wikitext2 --finetune-train-nsamples 8192 --finetune-train-seqlen 1024 --lora-alpha 10 --lora-dropout 0.05 --lora-r 32 --lora-target-modules k_proj v_proj q_proj o_proj gate_proj up_proj down_proj"
+ARGS_FIN="--hf-token <TOKEN> --save-dir finetuned_models_wikitext --finetune-dataset wikitext2 --ppl-eval-dataset wikitext2 --finetune-train-nsamples 8192 --finetune-train-seqlen 1024 --lora-alpha 10 --lora-dropout 0.05 --lora-r 32 --lora-target-modules k_proj v_proj q_proj o_proj gate_proj up_proj down_proj"
 ARGS_SML="--finetune-train-batch-size 3"
 ARGS_MED="--finetune-train-batch-size 3"
 ARGS_LRG=" --finetune-train-batch-size 1 --distribute-model"
@@ -59,7 +59,7 @@ done
 echo Waiting...
 wait
 
-GPU_PAIRS=("8,9,10" "11,12,13" "14,15,3" "0,1,2")
+GPU_PAIRS=("0,1,2" "3,4,5" "6,7,8" "9,10,11")
 for MODEL_NAME in "${LLA_MODEL_NAMES_LRG[@]}"; do
     echo "Running model size $MODEL_NAME"
     MODEL="${LLA_MODEL_FAMILY}/${MODEL_NAME}"
@@ -82,5 +82,5 @@ done
 echo Waiting...
 wait
 
-echo Running zeroshot
-./run_zeroshot_llama_amd.sh
+# echo Running zeroshot
+# ./run_zeroshot_llama_amd.sh
