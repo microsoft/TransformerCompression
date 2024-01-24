@@ -179,7 +179,7 @@ def argparser():
     parser.add_argument('--num-warmup-steps', type=int, default=400)
     parser.add_argument('--gradient-accumulation-steps', type=int, default=4)
     parser.add_argument('--early-stopping-patience', type=int, default=3)
-    parser.add_argument('--early-stopping-threshold', type=int, default=0.002)
+    parser.add_argument('--early-stopping-threshold', type=int, default=0.02)
 
     parser.add_argument('--epochs', type=int, default=1)
     parser.add_argument('--evaluation-strategy', type=str, default="steps")
