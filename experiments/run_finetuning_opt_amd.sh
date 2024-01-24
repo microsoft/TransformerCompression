@@ -1,5 +1,5 @@
 #!/bin/bash
-RUN=false
+RUN=true
 RUN_1_3=false
 RUN_2_7=false
 RUN_6_7=false
@@ -16,6 +16,7 @@ MODEL_FAMILY="facebook"
 HYPERPARAMS="--finetune-train-seqlen 2048 --lora-alpha 418 --lora-dropout 0.05 --lora-r 84 --lora-target-modules k_proj v_proj q_proj out_proj fc1 fc2"
 ARGS_FIN="--hf-token ***REMOVED*** --save-dir finetuned_models_${DATASET} --finetune-dataset $DATASET_ARG --ppl-eval-dataset $DATASET_ARG --finetune-train-nsamples 8192 $HYPERPARAMS"
 ARGS_SML="--eval-steps 64 --finetune-train-batch-size 3"
+ARGS_MED="--eval-steps 64 --finetune-train-batch-size 3 --distribute-model"
 ARGS_LRG="--eval-steps 128 --finetune-train-batch-size 1 --distribute-model"
 
 SPARSITIES=(0.2 0.25 0.3)
@@ -117,7 +118,7 @@ if $RUN_30; then
         SPARSITY=${SPARSITIES[$ID]}
         MODEL_CHKPT="sliced_models_${DATASET}/${MODEL_NAME}_${SPARSITY}.pt"
         OUT_DIR="finetuning_${MODEL_NAME}_${SPARSITY}"
-        ARGS="--model $MODEL --sparsity $SPARSITY --load-model-path $MODEL_CHKPT --st_checkpoint_dir $OUT_DIR $ARGS_FIN $ARGS_SML"
+        ARGS="--model $MODEL --sparsity $SPARSITY --load-model-path $MODEL_CHKPT --st_checkpoint_dir $OUT_DIR $ARGS_FIN $ARGS_MED"
         echo "$GPU_ID: $ARGS"
         if $RUN; then
             CUDA_VISIBLE_DEVICES=$GPU_ID python $PYTHON_SCRIPT $ARGS &
