@@ -50,10 +50,10 @@ config_space = {
     "sparsity": 0.25,
     "load-model-path": "sliced_models_alpaca/opt-1.3b_0.25.pt",
     "lora-target-modules": choice(["k_proj v_proj q_proj out_proj fc1 fc2", "k_proj v_proj q_proj out_proj"]),
-    "lora-alpha": loguniform(1e1, 1e3),
+    "lora-alpha": loguniform(1e1, 1e2),
     "lora-dropout": 0.05,
     "lora-r": randint(16, 256),
-    "finetune-train-seqlen": randint(32, 2048),
+    "finetune-train-seqlen": randint(256, 1024),
     "finetune-test-seqlen": 2048,
     "finetune-train-nsamples": 8192,
     "finetune-train-batch-size": randint(1, 8),
@@ -62,9 +62,9 @@ config_space = {
     "ppl-eval-dataset": "wikitext2",
     "hf-token": "***REMOVED***",
     "eval-steps": 64,
-    "save-steps": 64,
     "early-stopping-patience": 5
 }
+
 
 if __name__ == "__main__":
     logging.getLogger().setLevel(logging.INFO)
