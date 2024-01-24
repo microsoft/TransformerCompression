@@ -2,7 +2,8 @@ import logging
 from argparse import ArgumentParser
 from pathlib import Path
 
-from syne_tune import StoppingCriterion, Tuner
+import torch
+from syne_tune import StoppingCriterion, Tuner, num_gpu
 from syne_tune.backend import LocalBackend
 from syne_tune.config_space import choice, loguniform, randint, uniform
 from syne_tune.optimizer.baselines import BayesianOptimization, RandomSearch
@@ -67,6 +68,12 @@ config_space = {
 
 if __name__ == "__main__":
     logging.getLogger().setLevel(logging.INFO)
+
+    # Temporary fix to be able to use syne tune on AMD GPUs.
+    # Can be removed once syne tune supports ROCm.
+    num_gpu._num_gpus = torch.cuda.device_count()
+    logging.info(f"Number of available cuda devices for syne tune: {num_gpu._num_gpus}")
+
     # [1]
     parser = ArgumentParser()
     parser.add_argument(
