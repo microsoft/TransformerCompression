@@ -178,12 +178,12 @@ def argparser():
     parser.add_argument('--lr-scheduler-type', type=str, default="linear")
     parser.add_argument('--num-warmup-steps', type=int, default=400)
     parser.add_argument('--gradient-accumulation-steps', type=int, default=4)
-    parser.add_argument('--early-stopping-patience', type=int, default=5)
+    parser.add_argument('--early-stopping-patience', type=int, default=3)
+    parser.add_argument('--early-stopping-threshold', type=int, default=0.002)
 
     parser.add_argument('--epochs', type=int, default=1)
     parser.add_argument('--evaluation-strategy', type=str, default="steps")
-    parser.add_argument('--eval-steps', type=int, default=16)
-    parser.add_argument('--save-steps', type=int, default=16)
+    parser.add_argument('--eval-steps', type=int, default=128)
     parser.add_argument('--save-total-limit', type=int, default=1)
     parser.add_argument('--logging-steps', type=int, default=1)
 
@@ -290,6 +290,7 @@ def main() -> None:
         varied_seqlen=args.varied_seqlen,
         seed=args.seed,
     )
+    logging.info(f'Samples in finetuning dataset: {len(finetune_train_loader)}')
     finetune_test_loader = data_utils.prepare_dataloader(
         dataset=finetune_ds["test"],
         tokenizer=tokenizer,
@@ -321,7 +322,7 @@ def main() -> None:
         per_device_train_batch_size=args.finetune_train_batch_size,  # batch size per device during training
         per_device_eval_batch_size=args.finetune_test_batch_size,  # batch size for evaluation
         logging_steps=args.logging_steps,
-        save_steps=args.save_steps,
+        save_steps=args.eval_steps,
         save_total_limit=args.save_total_limit,
         disable_tqdm=False,
         load_best_model_at_end=True,
@@ -339,7 +340,7 @@ def main() -> None:
         test_loader=finetune_test_loader,
         args=training_args,
         optimizers=(optimizer, lr_scheduler),
-        callbacks=[EarlyStoppingCallback(early_stopping_patience=args.early_stopping_patience)],
+        callbacks=[EarlyStoppingCallback(early_stopping_patience=args.early_stopping_patience, early_stopping_threshold=args.early_stopping_threshold)],
     )
 
     # required to enable gradient_checkpointing
