@@ -6,10 +6,13 @@ from syne_tune import StoppingCriterion, Tuner
 from syne_tune.backend import LocalBackend
 from syne_tune.config_space import choice, loguniform, randint, uniform
 from syne_tune.optimizer.baselines import BayesianOptimization, RandomSearch
+from bo_options import lora_target_map
 
 # Configuration space (or search space)
+model = "microsoft/phi-2"
+
 config_space = {
-    "model": "microsoft/phi-2",
+    "model": model,
     "sparsity": 0.25,
     "learning-rate": loguniform(1e-4, 1e-2),
     "weight-decay": loguniform(1e-5, 1e-1),
@@ -19,12 +22,7 @@ config_space = {
     "num-warmup-steps": randint(0, 10000),
     "lr-scheduler-type": choice(["linear", "cosine", "linear_with_warmup", "cosine_with_warmup"]),
     "load-model-path": "sliced_models_alpaca/phi-2_0.25.pt",
-    "lora-target-modules": choice(["k_proj v_proj q_proj",
-                                   "k_proj v_proj q_proj dense",
-                                   "k_proj v_proj q_proj dense fc1 fc2",
-                                   "k_proj v_proj q_proj lm_head",
-                                   "k_proj v_proj q_proj dense lm_head",
-                                   "k_proj v_proj q_proj dense fc1 fc2 lm_head"]),
+    "lora-target-option": choice(list(lora_target_map(model).keys())),
     "lora-alpha": loguniform(4, 256),
     "lora-dropout": uniform(0, 0.5),
     "lora-r": randint(2, 64),
