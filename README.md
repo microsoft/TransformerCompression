@@ -8,14 +8,14 @@ least-significant rows and columns (chosen by the eigenvalue decay) of the weigh
 left unchanged, but each weight matrix is replaced by a smaller (dense) weight matrix, reducing the embedding dimension 
 of the model. This results in speedups (without any additional code optimization) and a reduced memory footprint.  
 
-The code is arranged as a package `slicegpt` in `/src`, and script to replicate experiments from the paper are in 
-`/experiments`. To install the sliceGPT package, we recommend
+The code is arranged as a package `slicegpt` in `/src`, and scripts to replicate experiments from the paper are in 
+`/experiments`. To install the `slicegpt` package, we recommend
 
 `pip install -e .`
 
 ## Running SliceGPT
 
-To run sliceGPT on `microsoft/phi-2`, from the `experiments` folder, run 
+To run SliceGPT on `microsoft/phi-2`, from the `experiments` folder, run 
 ```
     python run_slicegpt_perplexity.py \
            --model microsoft/phi-2 \
@@ -53,15 +53,15 @@ The following models from Huggingface hub are currently supported
 
 ## Extending support to a new model type
 
-The model you wish to support must be available in HuggingFace. To add sliceGPT support for a new model, 
+The model you wish to support must be available in HuggingFace. To add SliceGPT support for a new model, 
 one needs to implement a new model adapter before using it to slice a new model.
 
 ### Implementing a new model adapter
-- Implement the [ModelAdapter](./src/slicegpt/model_adapter.py) interface for the new model. The ModelAdapter class tells sliceGPT 
+- Implement the [ModelAdapter](./src/slicegpt/model_adapter.py) interface for the new model. The ModelAdapter class tells SliceGPT 
   how to interact with the model, an instance of which is stored at `self.model`. For example, 
   how to access each of the layers of the model.
 - Implement the [LayerAdapter](./src/slicegpt/model_adapter.py) interface for the transformer layers. 
-  The LayerAdapter class tells sliceGPT how to interact 
+  The LayerAdapter class tells SliceGPT how to interact 
   with each transformer layer of the model, an instance of which is stored at `self.layer`. 
   For example, how to access the attention and MLP components of the transformer layer, and 
   how to update the arguments to the transformer layer's forward method.
