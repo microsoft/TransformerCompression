@@ -31,7 +31,7 @@ class HasWeight(Protocol):
 
 def _validate_protocol_attr(instance: Any, protocol: type, err_message: str) -> None:
     errors: list[str] = [err_message]
-    for (a, t) in get_annotations(protocol).items():
+    for a, t in get_annotations(protocol).items():
         if not hasattr(instance, a):
             errors.append(f"Missing attribute '{a}")
         elif not isinstance(getattr(instance, a), t):
