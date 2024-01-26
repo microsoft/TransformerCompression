@@ -29,7 +29,7 @@ class CompressibleLlamaDecoderLayer(LlamaDecoderLayer):
         past_key_value: tuple[Tensor] | None = None,
         output_attentions: bool | None = False,
         use_cache: bool | None = False,
-        padding_mask: LongTensor | None = None,
+        **kwargs,
     ) -> tuple:
         """
         Args:
@@ -57,7 +57,7 @@ class CompressibleLlamaDecoderLayer(LlamaDecoderLayer):
             past_key_value=past_key_value,
             output_attentions=output_attentions,
             use_cache=use_cache,
-            padding_mask=padding_mask,
+            **kwargs,
         )
         if self.attn_shortcut_Q is not None:
             rotated_residual = matmul(residual, self.attn_shortcut_Q)
@@ -142,7 +142,7 @@ class LlamaModelAdapter(ModelAdapter):
 
     @property
     def no_split_module_classes(self) -> list[str]:
-        return ["LlamaDecoderLayer", "CompressedLlamaDecoderLayer"]
+        return [LlamaDecoderLayer.__name__, CompressibleLlamaDecoderLayer.__name__]
 
     @property
     def seqlen(self) -> int:
