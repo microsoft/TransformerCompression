@@ -2,11 +2,11 @@ import logging
 from argparse import ArgumentParser
 from pathlib import Path
 
+from bo_options import lora_target_map
 from syne_tune import StoppingCriterion, Tuner
 from syne_tune.backend import LocalBackend
 from syne_tune.config_space import choice, loguniform, randint, uniform
 from syne_tune.optimizer.baselines import BayesianOptimization, RandomSearch
-from bo_options import lora_target_map
 
 # Configuration space (or search space)
 model = "microsoft/phi-2"
