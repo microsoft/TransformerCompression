@@ -12,7 +12,6 @@ from syne_tune.optimizer.baselines import BayesianOptimization, RandomSearch
 # Model-agnostic configuration space (or search space)
 # May benefit from tweaking for specific model types including custom models
 config_space = {
-    "sparsity": 0.25,
     "learning-rate": loguniform(1e-4, 1e-2),
     "weight-decay": loguniform(1e-5, 1e-1),
     "adam-beta1": uniform(0.9, 0.99),
@@ -40,7 +39,6 @@ if __name__ == "__main__":
     num_gpu._num_gpus = torch.cuda.device_count()
     logging.info(f"Number of available cuda devices for syne tune: {num_gpu._num_gpus}")
 
-    # [1]
     parser = ArgumentParser()
     parser.add_argument(
         "--model",
@@ -66,6 +64,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--model-path", type=str, help="Path to the model to fine-tune (sliced or dense)", required=True
+    )
+    parser.add_argument(
+        "--sparsity", type=float, required=True, help="A measure of how much slicing is applied (in the range [0, 1))"
     )
     parser.add_argument(
         "--method",
@@ -118,6 +119,7 @@ if __name__ == "__main__":
     # Add model-specific config options such as model type, model path and layers to fine-tune
     config_space['model'] = args.model
     config_space['load-model-path'] = args.model_path
+    config_space['sparsity'] = args.sparsity
     config_space['lora-target-option'] = choice(list(lora_target_map(args.model).keys()))
 
     if args.method == "RS":
