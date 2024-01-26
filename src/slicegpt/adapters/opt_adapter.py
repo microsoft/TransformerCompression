@@ -165,7 +165,7 @@ class OPTModelAdapter(ModelAdapter):
 
     @property
     def no_split_module_classes(self) -> list[str]:
-        return ["OPTDecoderLayer", "CompressedOPTDecoderLayer"]
+        return [OPTDecoderLayer.__name__, CompressibleOPTDecoderLayer.__name__]
 
     @property
     def seqlen(self) -> int:

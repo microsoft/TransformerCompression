@@ -139,7 +139,7 @@ class Phi2ModelAdapter(ModelAdapter):
 
     @property
     def no_split_module_classes(self) -> list[str]:
-        return ["PhiDecoderLayer", "CompressiblePhiDecoderLayer"]
+        return [PhiDecoderLayer.__name__, CompressiblePhiDecoderLayer.__name__]
 
     @property
     def seqlen(self) -> int:
