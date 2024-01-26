@@ -8,12 +8,12 @@ import os
 import syne_tune
 import torch
 import transformers
-import wandb
 from peft import LoraConfig, TaskType, get_peft_model
 from syne_tune import Reporter
 from torch.utils.data import DataLoader
 from transformers import EarlyStoppingCallback, Trainer, TrainingArguments
 
+import wandb
 from slicegpt import data_utils, gpu_utils, hf_utils, utils
 from slicegpt.config import config
 
@@ -23,7 +23,6 @@ os.environ["WANDB__SERVICE_WAIT"] = "300"
 
 
 def get_optimizer_and_scheduler(model, train_dataset, config):
-
     optimizer = torch.optim.AdamW(
         params=model.parameters(),
         lr=config.learning_rate,
