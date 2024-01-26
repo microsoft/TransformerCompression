@@ -2,19 +2,16 @@ import logging
 from argparse import ArgumentParser
 from pathlib import Path
 
-from bo_options import lora_target_map
-
 import torch
+from bo_options import lora_target_map
 from syne_tune import StoppingCriterion, Tuner, num_gpu
 from syne_tune.backend import LocalBackend
 from syne_tune.config_space import choice, loguniform, randint, uniform
 from syne_tune.optimizer.baselines import BayesianOptimization, RandomSearch
 
-# Configuration space (or search space)
-model = "microsoft/phi-2"
-
+# Model-agnostic configuration space (or search space)
+# May benefit from tweaking for specific model types including custom models
 config_space = {
-    "model": model,
     "sparsity": 0.25,
     "learning-rate": loguniform(1e-4, 1e-2),
     "weight-decay": loguniform(1e-5, 1e-1),
@@ -23,8 +20,6 @@ config_space = {
     "adam-eps": loguniform(1e-9, 1e-6),
     "num-warmup-steps": randint(0, 10000),
     "lr-scheduler-type": choice(["linear", "cosine", "linear_with_warmup", "cosine_with_warmup"]),
-    "load-model-path": "sliced_models_alpaca/phi-2_0.25.pt",
-    "lora-target-option": choice(list(lora_target_map(model).keys())),
     "lora-alpha": loguniform(4, 256),
     "lora-dropout": uniform(0, 0.5),
     "lora-r": randint(2, 64),
@@ -47,6 +42,31 @@ if __name__ == "__main__":
 
     # [1]
     parser = ArgumentParser()
+    parser.add_argument(
+        "--model",
+        type=str,
+        help="Model to fine-tune",
+        choices=[
+            # OPT models
+            "facebook/opt-125m",
+            "facebook/opt-1.3b",
+            "facebook/opt-2.7b",
+            "facebook/opt-6.7b",
+            "facebook/opt-13b",
+            "facebook/opt-30b",
+            "facebook/opt-66b",
+            # LLAMA 2 Models
+            'meta-llama/Llama-2-7b-hf',
+            'meta-llama/Llama-2-13b-hf',
+            'meta-llama/Llama-2-70b-hf',
+            # Phi-2 model
+            'microsoft/phi-2',
+        ],
+        required=True,
+    )
+    parser.add_argument(
+        "--model-path", type=str, help="Path to the model to fine-tune (sliced or dense)", required=True
+    )
     parser.add_argument(
         "--method",
         type=str,
@@ -94,6 +114,11 @@ if __name__ == "__main__":
         random_seed=args.random_seed,
         search_options={"num_init_random": args.n_workers + 2},
     )
+
+    # Add model-specific config options such as model type, model path and layers to fine-tune
+    config_space['model'] = args.model
+    config_space['load-model-path'] = args.model_path
+    config_space['lora-target-option'] = choice(list(lora_target_map(args.model).keys()))
 
     if args.method == "RS":
         scheduler = RandomSearch(config_space, **method_kwargs)
