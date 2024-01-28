@@ -15,7 +15,7 @@ from transformers.models.llama.modeling_llama import LlamaConfig, LlamaDecoderLa
 from slicegpt.model_adapter import LayerAdapter, ModelAdapter
 
 
-class CompressibleLlamaDecoderLayer(LlamaDecoderLayer):
+class CompressedLlamaDecoderLayer(LlamaDecoderLayer):
     """
     This class simulates the LlamaDecoderLayer class from transformers
     (https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py#L376)
@@ -131,7 +131,7 @@ class LlamaModelAdapter(ModelAdapter):
         self._config_type: 'type' = LlamaConfig
         self._layer_adapter_type: 'type' = LlamaLayerAdapter
         self._layer_type: 'type' = LlamaDecoderLayer
-        self._compressible_layer_type: 'type' = CompressibleLlamaDecoderLayer
+        self._compressed_layer_type: 'type' = CompressedLlamaDecoderLayer
         self._layer_norm_type: 'type' = LlamaRMSNorm
 
     @property
@@ -148,7 +148,7 @@ class LlamaModelAdapter(ModelAdapter):
 
     @property
     def no_split_module_classes(self) -> list[str]:
-        return [self._layer_type.__name__, self._compressible_layer_type.__name__]
+        return [self._layer_type.__name__, self._compressed_layer_type.__name__]
 
     @property
     def seqlen(self) -> int:
@@ -181,8 +181,8 @@ class LlamaModelAdapter(ModelAdapter):
     def compute_output_logits(self, input_ids: Tensor) -> FloatTensor:
         return self._model(input_ids=input_ids).logits
 
-    def convert_layer_to_compressible(self, layer: Module, layer_idx: int | None) -> Module:
-        compressed_layer = self._compressible_layer_type(cast(self._config_type, self._config), layer_idx).to(
+    def convert_layer_to_compressed(self, layer: Module, layer_idx: int | None) -> Module:
+        compressed_layer = self._compressed_layer_type(cast(self._config_type, self._config), layer_idx).to(
             self._config.torch_dtype
         )
         compressed_layer.load_state_dict(layer.state_dict(), strict=True)
