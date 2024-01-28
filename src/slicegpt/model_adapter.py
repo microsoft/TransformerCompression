@@ -121,10 +121,10 @@ class ModelAdapter(ABC):
             - self._layer_type: 'type'              = Type of the transformer layer containing forward() method of
                                                       the original model,
                                                       e.g: LlamaDecoderLayer
-            - self._compressible_layer_type: 'type' = Type of the compressible transformer layer defined by the user;
+            - self._compressed_layer_type: 'type'   = Type of the compressed transformer layer defined by the user;
                                                       subclasses the transformer layer class; contains the adapted
                                                       forward() method for the compressed model
-                                                      e.g: CompressibleLlamaDecoderLayer
+                                                      e.g: CompressedLlamaDecoderLayer
             - self._layer_norm_type: 'type'         = Type of the layer norm class used,
                                                       e.g: LlamaRMSNorm
 
@@ -185,7 +185,7 @@ class ModelAdapter(ABC):
     @abstractmethod
     def original_layer_type(self) -> type:
         """
-        The class of the compressible layer (so that we can replace it with a compressed version)
+        The class of the original layer that we plan to replace with a compressed version
         """
         raise NotImplementedError
 
@@ -218,9 +218,9 @@ class ModelAdapter(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def convert_layer_to_compressible(self, layer: Module, layer_idx: int | None) -> Module:
+    def convert_layer_to_compressed(self, layer: Module, layer_idx: int | None) -> Module:
         """
-        Replace the given layer with a compressible version of the layer.
+        Replace the given layer with a compressed version of the layer.
         """
         raise NotImplementedError
 
@@ -267,12 +267,12 @@ class ModelAdapter(ABC):
         raise NotImplementedError
 
     @final
-    def convert_layer_to_compressible_and_register_buffers(self, layer: Module, layer_idx: int | None) -> Module:
+    def convert_layer_to_compressed_and_register_buffers(self, layer: Module, layer_idx: int | None) -> Module:
         """
-        Replace the given layer with a compressible version of the layer. Also register the shortcut_Q matrices
-        to be used in Compressible transformer layer's forward() method to be updated during slicing.
+        Replace the given layer with a compressed version of the layer. Also register the shortcut_Q matrices
+        to be used in Compressed transformer layer's forward() method to be updated during slicing.
         """
-        compressed_layer = self.convert_layer_to_compressible(layer, layer_idx)
+        compressed_layer = self.convert_layer_to_compressed(layer, layer_idx)
         compressed_layer.register_buffer('mlp_shortcut_Q', None)
         compressed_layer.register_buffer('attn_shortcut_Q', None)
         return compressed_layer

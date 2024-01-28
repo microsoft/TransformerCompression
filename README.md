@@ -65,7 +65,7 @@ one needs to implement a new model adapter before using it to slice a new model.
   with each transformer layer of the model, an instance of which is stored at `self.layer`. 
   For example, how to access the attention and MLP components of the transformer layer, and 
   how to update the arguments to the transformer layer's forward method.
-- Implement a compressible transformer layer class that subclasses the transformer layer. 
+- Implement a compressed transformer layer class that subclasses the transformer layer. 
   This class should also  provide an adapted `forward()` method to work with the compressed model. 
   This method should specify how the skip connection orthogonal matrices are used, depending on 
   whether MLP and attention blocks are sequential ([OPT](./src/slicegpt/adapters/opt_adapter.py), 
@@ -79,7 +79,7 @@ Example: [llama_adapter.py](./src/slicegpt/adapters/llama_adapter.py)
 
 ### Using a new model adapter to slice a model
 Once a model adapter is implemented, compressing the model involves three conceptual steps:
-  - Replace modules with compressible equivalents (via `slicegpt.layernorm_fusion.replace_layers`)
+  - Replace modules with compressed equivalents (via `slicegpt.layernorm_fusion.replace_layers`)
   - Fuse layer norms and add rotations to skip connections (via `slicegpt.layernorm_fusion.fuse_modules`)
   - Rotate the inputs and slice the layers (via `slicegpt.rotate.rotate_and_slice`)
 
