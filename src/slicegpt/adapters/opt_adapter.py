@@ -208,9 +208,7 @@ class OPTModelAdapter(ModelAdapter):
         return self.model(input_ids=input_ids).logits
 
     def convert_layer_to_compressed(self, layer: Module, layer_idx: int | None) -> Module:
-        compressed_layer = self.compressed_layer_type(cast(self.config_type, self.config)).to(
-            self.config.torch_dtype
-        )
+        compressed_layer = self.compressed_layer_type(cast(self.config_type, self.config)).to(self.config.torch_dtype)
         compressed_layer.load_state_dict(layer.state_dict(), strict=True)
         return compressed_layer
 

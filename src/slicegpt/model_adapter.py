@@ -105,6 +105,7 @@ class ModelAdapter(ABC):
     """
     To implement a new model adapter, implement the interface defined in this class
     """
+
     @property
     @abstractmethod
     def model(self) -> Module:
