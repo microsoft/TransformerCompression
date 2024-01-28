@@ -125,27 +125,22 @@ class Phi2ModelAdapter(ModelAdapter):
     def __init__(self, model: PhiForCausalLM) -> None:
         super().__init__()
         self._model: PhiForCausalLM = model
-        self._config_type: 'type' = PhiConfig
-        self._layer_adapter_type: 'type' = Phi2LayerAdapter
-        self._layer_type: 'type' = PhiDecoderLayer
-        self._compressed_layer_type: 'type' = CompressedPhiDecoderLayer
-        self._layer_norm_type: 'type' = LayerNorm
 
     @property
-    def parallel_blocks(self) -> bool:
-        return True
+    def model(self) -> Module:
+        return self._model
 
     @property
     def config(self) -> PretrainedConfig:
         return self._model.config
 
     @property
-    def config_type(self) -> 'type':
-        return self._config_type
+    def config_type(self) -> type:
+        return PhiConfig
 
     @property
-    def model(self) -> Module:
-        return self._model
+    def parallel_blocks(self) -> bool:
+        return True
 
     @property
     def seqlen(self) -> int:
@@ -160,20 +155,20 @@ class Phi2ModelAdapter(ModelAdapter):
         return True
 
     @property
-    def original_layer_type(self) -> 'type':
-        return self._layer_type
+    def original_layer_type(self) -> type:
+        return PhiDecoderLayer
 
     @property
-    def original_layer_norm_type(self) -> 'type':
-        return self._layer_norm_type
+    def original_layer_norm_type(self) -> type:
+        return LayerNorm
 
     @property
     def layer_adapter_type(self) -> type:
-        return self._layer_adapter_type
+        return Phi2LayerAdapter
 
     @property
     def compressed_layer_type(self) -> type:
-        return self._compressed_layer_type
+        return CompressedPhiDecoderLayer
 
     @property
     def use_cache(self) -> bool:
@@ -205,7 +200,7 @@ class Phi2ModelAdapter(ModelAdapter):
     def get_embeddings(self) -> list[Module]:
         return [self.model.model.embed_tokens]
 
-    def get_pre_head_layernorm(self) -> 'type':
+    def get_pre_head_layernorm(self) -> type:
         pre_head_layernorm = self.model.model.final_layernorm
         assert pre_head_layernorm is not None
         return pre_head_layernorm

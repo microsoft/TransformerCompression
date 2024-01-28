@@ -105,15 +105,6 @@ class ModelAdapter(ABC):
     """
     To implement a new model adapter, implement the interface defined in this class
     """
-
-    @property
-    @abstractmethod
-    def parallel_blocks(self) -> bool:
-        """
-        Whether the model has parallel attention and mlp blocks (True in phi2) or sequential (False in llama).
-        """
-        raise NotImplementedError
-
     @property
     @abstractmethod
     def model(self) -> Module:
@@ -124,19 +115,25 @@ class ModelAdapter(ABC):
 
     @property
     @abstractmethod
-    def layer_adapter_type(self) -> type:
+    def config(self) -> object:
         """
-        Type of the class implementing the sliceGPT.LayerAdapter interface
+        The model config
         """
         raise NotImplementedError
 
     @property
     @abstractmethod
-    def compressed_layer_type(self) -> type:
+    def config_type(self) -> type:
         """
-        Type of the compressed transformer layer defined by the user;
-        subclasses the transformer layer class;
-        contains the adapted forward() method for the compressed model
+        Type of the config class
+        """
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def parallel_blocks(self) -> bool:
+        """
+        Whether the model has parallel attention and mlp blocks (True in phi2) or sequential (False in llama).
         """
         raise NotImplementedError
 
@@ -168,22 +165,6 @@ class ModelAdapter(ABC):
 
     @property
     @abstractmethod
-    def config(self) -> object:
-        """
-        The model config
-        """
-        raise NotImplementedError
-
-    @property
-    @abstractmethod
-    def config_type(self) -> type:
-        """
-        Type of the config class
-        """
-        raise NotImplementedError
-
-    @property
-    @abstractmethod
     def original_layer_type(self) -> type:
         """
         Type of the transformer layer containing forward() method of the original model
@@ -196,6 +177,24 @@ class ModelAdapter(ABC):
         """
         The class of the LayerNorm (or equivalent) in the original model, so that we can replace it with RMSNorm
         (needed for computational invariance).
+        """
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def layer_adapter_type(self) -> type:
+        """
+        Type of the class implementing the sliceGPT.LayerAdapter interface
+        """
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def compressed_layer_type(self) -> type:
+        """
+        Type of the compressed transformer layer defined by the user;
+        subclasses the transformer layer class;
+        contains the adapted forward() method for the compressed model
         """
         raise NotImplementedError
 

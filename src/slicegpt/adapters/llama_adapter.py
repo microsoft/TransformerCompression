@@ -38,7 +38,7 @@ class CompressedLlamaDecoderLayer(LlamaDecoderLayer):
             attention_mask (`torch.FloatTensor`, *optional*): attention mask of size
                 `(batch, 1, tgt_len, src_len)` where padding elements are indicated by very large negative values.
             output_attentions (`bool`, *optional*):
-                Whether or not to return the attentions tensors of all attention layers. See `attentions` under
+                Whether to return the attentions tensors of all attention layers. See `attentions` under
                 returned tensors for more detail.
             use_cache (`bool`, *optional*):
                 If set to `True`, `past_key_values` key value states are returned and can be used to speed up decoding
@@ -128,27 +128,22 @@ class LlamaModelAdapter(ModelAdapter):
     def __init__(self, model: LlamaForCausalLM) -> None:
         super().__init__()
         self._model: LlamaForCausalLM = model
-        self._config_type: 'type' = LlamaConfig
-        self._layer_adapter_type: 'type' = LlamaLayerAdapter
-        self._layer_type: 'type' = LlamaDecoderLayer
-        self._compressed_layer_type: 'type' = CompressedLlamaDecoderLayer
-        self._layer_norm_type: 'type' = LlamaRMSNorm
-
-    @property
-    def parallel_blocks(self) -> bool:
-        return False
-
-    @property
-    def config(self) -> PretrainedConfig:
-        return self._model.config
 
     @property
     def model(self) -> Module:
         return self._model
 
     @property
-    def config_type(self) -> 'type':
-        return self._config_type
+    def config(self) -> PretrainedConfig:
+        return self._model.config
+
+    @property
+    def config_type(self) -> type:
+        return LlamaConfig
+
+    @property
+    def parallel_blocks(self) -> bool:
+        return False
 
     @property
     def seqlen(self) -> int:
@@ -163,20 +158,20 @@ class LlamaModelAdapter(ModelAdapter):
         return False
 
     @property
-    def original_layer_type(self) -> 'type':
-        return self._layer_type
+    def original_layer_type(self) -> type:
+        return LlamaDecoderLayer
 
     @property
-    def original_layer_norm_type(self) -> 'type':
-        return self._layer_norm_type
+    def original_layer_norm_type(self) -> type:
+        return LlamaRMSNorm
 
     @property
     def layer_adapter_type(self) -> type:
-        return self._layer_adapter_type
+        return LlamaLayerAdapter
 
     @property
     def compressed_layer_type(self) -> type:
-        return self._compressed_layer_type
+        return CompressedLlamaDecoderLayer
 
     @property
     def use_cache(self) -> bool:
@@ -208,7 +203,7 @@ class LlamaModelAdapter(ModelAdapter):
     def get_embeddings(self) -> list[Module]:
         return [self.model.model.embed_tokens]
 
-    def get_pre_head_layernorm(self) -> 'type':
+    def get_pre_head_layernorm(self) -> type:
         pre_head_layernorm = self.model.model.norm
         assert isinstance(pre_head_layernorm, self.original_layer_norm_type)
         return pre_head_layernorm

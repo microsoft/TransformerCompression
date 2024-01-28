@@ -39,7 +39,7 @@ class CompressedOPTDecoderLayer(OPTDecoderLayer):
             layer_head_mask (`torch.FloatTensor`, *optional*): mask for attention heads in a given layer of size
                 `(encoder_attention_heads,)`.
             output_attentions (`bool`, *optional*):
-                Whether or not to return the attentions tensors of all attention layers. See `attentions` under
+                Whether to return the attentions tensors of all attention layers. See `attentions` under
                 returned tensors for more detail.
             use_cache (`bool`, *optional*):
                 If set to `True`, `past_key_values` key value states are returned and can be used to speed up decoding
@@ -151,27 +151,22 @@ class OPTModelAdapter(ModelAdapter):
     def __init__(self, model: OPTForCausalLM) -> None:
         super().__init__()
         self._model: OPTForCausalLM = model
-        self._config_type: 'type' = OPTConfig
-        self._layer_adapter_type: 'type' = OPTLayerAdapter
-        self._layer_type: 'type' = OPTDecoderLayer
-        self._compressed_layer_type: 'type' = CompressedOPTDecoderLayer
-        self._layer_norm_type: 'type' = LayerNorm
-
-    @property
-    def parallel_blocks(self) -> bool:
-        return False
-
-    @property
-    def config(self) -> PretrainedConfig:
-        return self._model.config
 
     @property
     def model(self) -> Module:
         return self._model
 
     @property
-    def config_type(self) -> 'type':
-        return self._config_type
+    def config(self) -> PretrainedConfig:
+        return self._model.config
+
+    @property
+    def config_type(self) -> type:
+        return OPTConfig
+
+    @property
+    def parallel_blocks(self) -> bool:
+        return False
 
     @property
     def seqlen(self) -> int:
@@ -186,20 +181,20 @@ class OPTModelAdapter(ModelAdapter):
         return True
 
     @property
-    def original_layer_type(self) -> 'type':
-        return self._layer_type
+    def original_layer_type(self) -> type:
+        return OPTDecoderLayer
 
     @property
-    def original_layer_norm_type(self) -> 'type':
-        return self._layer_norm_type
+    def original_layer_norm_type(self) -> type:
+        return LayerNorm
 
     @property
     def layer_adapter_type(self) -> type:
-        return self._layer_adapter_type
+        return OPTLayerAdapter
 
     @property
     def compressed_layer_type(self) -> type:
-        return self._compressed_layer_type
+        return CompressedOPTDecoderLayer
 
     @property
     def use_cache(self) -> bool:
@@ -231,7 +226,7 @@ class OPTModelAdapter(ModelAdapter):
     def get_embeddings(self) -> list[Module]:
         return [self.model.model.decoder.embed_tokens, self.model.model.decoder.embed_positions]
 
-    def get_pre_head_layernorm(self) -> 'type':
+    def get_pre_head_layernorm(self) -> type:
         pre_head_layernorm = self.model.model.decoder.final_layer_norm
         assert pre_head_layernorm is not None
         return pre_head_layernorm
