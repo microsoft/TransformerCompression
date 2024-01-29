@@ -296,7 +296,7 @@ class ModelAdapter(ABC):
 
 @dataclass
 class SlicingConfig:
-    """Slicing configuration such as whether individual layer dimensions and whether to slice head."""
+    """Slicing configuration such as individual layer dimensions and whether to slice head."""
 
     # use dict[int, int] instead of list[int] to allow for arbitrary order updates and default dicts
     embedding_dimensions: dict[int, int] = field(default_factory=dict)
