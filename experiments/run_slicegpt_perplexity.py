@@ -140,7 +140,7 @@ def main() -> None:
         # load the model from load_model_path to compute perplexity and skip rotation and slicing
         logging.info(f"Loading sliced {args.model} model from {args.load_model_path} with sparsity {args.sparsity}")
         model_adapter, tokenizer = hf_utils.load_sliced_model(
-            args.model, args.load_model_path, args.sparsity, args.hf_token
+            args.model, args.load_model_path, args.sparsity, args.hf_token, round_interval=args.round_interval
         )
     else:
         # load one of the pre-trained models
