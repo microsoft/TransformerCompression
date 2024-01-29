@@ -15,7 +15,7 @@ from transformers.models.opt.modeling_opt import OPTConfig, OPTDecoderLayer, OPT
 from slicegpt.model_adapter import LayerAdapter, ModelAdapter
 
 
-class CompressibleOPTDecoderLayer(OPTDecoderLayer):
+class CompressedOPTDecoderLayer(OPTDecoderLayer):
     """
     This class simulates the OPTDecoderLayer class from transformers
     but with the addition of a shortcut_Q attributes.
@@ -154,7 +154,7 @@ class OPTModelAdapter(ModelAdapter):
         self._config_type: 'type' = OPTConfig
         self._layer_adapter_type: 'type' = OPTLayerAdapter
         self._layer_type: 'type' = OPTDecoderLayer
-        self._compressible_layer_type: 'type' = CompressibleOPTDecoderLayer
+        self._compressed_layer_type: 'type' = CompressedOPTDecoderLayer
         self._layer_norm_type: 'type' = LayerNorm
 
     @property
@@ -171,7 +171,7 @@ class OPTModelAdapter(ModelAdapter):
 
     @property
     def no_split_module_classes(self) -> list[str]:
-        return [self._layer_type.__name__, self._compressible_layer_type.__name__]
+        return [self._layer_type.__name__, self._compressed_layer_type.__name__]
 
     @property
     def seqlen(self) -> int:
@@ -204,9 +204,9 @@ class OPTModelAdapter(ModelAdapter):
     def compute_output_logits(self, input_ids: Tensor) -> FloatTensor:
         return self._model(input_ids=input_ids).logits
 
-    def convert_layer_to_compressible(self, layer: Module, layer_idx: int | None) -> Module:
-        compressed_layer = self._compressible_layer_type(cast(self._config_type, self.config)).to(
-            self.config.torch_dtype
+    def convert_layer_to_compressed(self, layer: Module, layer_idx: int | None) -> Module:
+        compressed_layer = self._compressed_layer_type(cast(self._config_type, self._config)).to(
+            self._config.torch_dtype
         )
         compressed_layer.load_state_dict(layer.state_dict(), strict=True)
         return compressed_layer

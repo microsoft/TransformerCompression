@@ -17,7 +17,7 @@ from transformers.models.phi.modeling_phi import PhiConfig, PhiDecoderLayer, Phi
 from slicegpt.model_adapter import LayerAdapter, ModelAdapter
 
 
-class CompressiblePhiDecoderLayer(PhiDecoderLayer):
+class CompressedPhiDecoderLayer(PhiDecoderLayer):
     """
     This class simulates the PhiDecoderlayer class from PhiModel (PhiForCausalLM)
     https://huggingface.co/microsoft/phi-2/blob/main/modeling_phi.py
@@ -128,7 +128,7 @@ class Phi2ModelAdapter(ModelAdapter):
         self._config_type: 'type' = PhiConfig
         self._layer_adapter_type: 'type' = Phi2LayerAdapter
         self._layer_type: 'type' = PhiDecoderLayer
-        self._compressible_layer_type: 'type' = CompressiblePhiDecoderLayer
+        self._compressed_layer_type: 'type' = CompressedPhiDecoderLayer
         self._layer_norm_type: 'type' = LayerNorm
 
     @property
@@ -145,7 +145,7 @@ class Phi2ModelAdapter(ModelAdapter):
 
     @property
     def no_split_module_classes(self) -> list[str]:
-        return [self._layer_type.__name__, self._compressible_layer_type.__name__]
+        return [self._layer_type.__name__, self._compressed_layer_type.__name__]
 
     @property
     def seqlen(self) -> int:
@@ -178,9 +178,9 @@ class Phi2ModelAdapter(ModelAdapter):
     def compute_output_logits(self, input_ids: Tensor) -> FloatTensor:
         return self._model(input_ids=input_ids).logits
 
-    def convert_layer_to_compressible(self, layer: Module, layer_idx: int | None) -> Module:
-        compressed_layer = self._compressible_layer_type(cast(self._config_type, self.config), layer_idx).to(
-            self.config.torch_dtype
+    def convert_layer_to_compressed(self, layer: Module, layer_idx: int | None) -> Module:
+        compressed_layer = self._compressed_layer_type(cast(self._config_type, self._config), layer_idx).to(
+            self._config.torch_dtype
         )
         compressed_layer.load_state_dict(layer.state_dict(), strict=True)
         return compressed_layer
