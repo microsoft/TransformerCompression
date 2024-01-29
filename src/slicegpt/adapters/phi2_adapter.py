@@ -136,7 +136,7 @@ class Phi2ModelAdapter(ModelAdapter):
         return True
 
     @property
-    def _config(self) -> PretrainedConfig:
+    def config(self) -> PretrainedConfig:
         return self._model.config
 
     @property
@@ -149,11 +149,11 @@ class Phi2ModelAdapter(ModelAdapter):
 
     @property
     def seqlen(self) -> int:
-        return self._config.max_position_embeddings
+        return self.config.max_position_embeddings
 
     @property
     def hidden_size(self) -> int:
-        return self._config.hidden_size
+        return self.config.hidden_size
 
     @property
     def should_bake_mean_into_linear(self) -> bool:
@@ -169,11 +169,11 @@ class Phi2ModelAdapter(ModelAdapter):
 
     @property
     def use_cache(self) -> bool:
-        return self._config.use_cache
+        return self.config.use_cache
 
     @use_cache.setter
     def use_cache(self, value: bool) -> None:
-        self._config.use_cache = value
+        self.config.use_cache = value
 
     def compute_output_logits(self, input_ids: Tensor) -> FloatTensor:
         return self._model(input_ids=input_ids).logits

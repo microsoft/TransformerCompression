@@ -148,6 +148,14 @@ class ModelAdapter(ABC):
 
     @property
     @abstractmethod
+    def config(self) -> object:
+        """
+        The model config
+        """
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
     def no_split_module_classes(self) -> list[str] | None:
         """
         A list of strings specifying the class names of modules that should not be split.
