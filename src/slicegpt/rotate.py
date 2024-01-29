@@ -412,7 +412,7 @@ def slice_rotated_model(model_adapter: ModelAdapter, new_embedding_dimension: in
         slice_mlp_input(layer_adapter, new_embedding_dimension)
 
         # slice mlp shortcut
-        if layer_adapter.layer.mlp_shortcut_Q is not None:
+        if not model_adapter.parallel_blocks:
             layer_adapter.layer.mlp_shortcut_Q = layer_adapter.layer.mlp_shortcut_Q[:new_embedding_dimension, :]
 
         # optionally slice the mlp/head connection in the last layer
@@ -422,7 +422,7 @@ def slice_rotated_model(model_adapter: ModelAdapter, new_embedding_dimension: in
                 dim = model_adapter.hidden_size
 
         slice_mlp_output(layer_adapter, dim)
-        if layer_adapter.layer.mlp_shortcut_Q is None:  # parallel case
+        if model_adapter.parallel_blocks:  # parallel case
             layer.attn_shortcut_Q = layer.attn_shortcut_Q[:new_embedding_dimension, :dim]
             slice_attention_output(layer_adapter, dim)
         else:  # sequential case
