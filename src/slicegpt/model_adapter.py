@@ -298,6 +298,11 @@ class ModelAdapter(ABC):
 class SlicingConfig:
     """Slicing configuration such as individual layer dimensions and whether to slice head."""
 
+    hidden_size: int = 0
+    layers_num: int = 0
+    do_slice_head: bool = False
+    parallel_blocks: bool = False
+
     # use dict[int, int] instead of list[int] to allow for arbitrary order updates and default dicts
     embedding_dimensions: dict[int, int] = field(default_factory=dict)
 
@@ -307,8 +312,7 @@ class SlicingConfig:
     mlp_input_dimensions: dict[int, int] = field(default_factory=dict)
     mlp_output_dimensions: dict[int, int] = field(default_factory=dict)
 
-    head_dimension: int = 0
-    do_slice_head: bool = False
+    head_dimension: int | None = None
 
     const_dimension: int | None = None  # to be able to load models without config, sliced with const sparsity
 

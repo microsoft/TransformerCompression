@@ -19,18 +19,32 @@ class SlicingScheduler(ABC):
     def __init__(self, *, do_slice_head: bool = False):
         self.slicing_conf: SlicingConfig = SlicingConfig()
         self.slicing_conf.do_slice_head = do_slice_head
-        self.hidden_size: int = -1
-        self.layers_num: int = -1
 
     @property
     def do_slice_head(self) -> bool:
         """Return whether to slice the head."""
         return self.slicing_conf.do_slice_head
 
-    def setup(self, *, hidden_size: int, layers_num: int) -> None:
+    @property
+    def hidden_size(self) -> int:
+        """Return the hidden size."""
+        return self.slicing_conf.hidden_size
+
+    @property
+    def layers_num(self) -> int:
+        """Return the number of layers."""
+        return self.slicing_conf.layers_num
+
+    @property
+    def parallel_blocks(self) -> bool:
+        """Return whether working with a parallel blocks models."""
+        return self.slicing_conf.parallel_blocks
+
+    def setup(self, *, hidden_size: int, layers_num: int, parallel_blocks: bool) -> None:
         """Set up the slicing scheduler with the given model parameters."""
-        self.hidden_size = hidden_size
-        self.layers_num = layers_num
+        self.slicing_conf.hidden_size = hidden_size
+        self.slicing_conf.layers_num = layers_num
+        self.slicing_conf.parallel_blocks = parallel_blocks
 
     @final
     def get_embedding_dimensions(self) -> dict[int, int]:
@@ -57,6 +71,9 @@ class SlicingScheduler(ABC):
     @final
     def get_attention_output_dimension(self, idx, match_head_dim: bool) -> int:
         """Return the attention output dimension for the specified layer index."""
+        if self.parallel_blocks:
+            return self.get_mlp_output_dimension(idx)
+
         use_head_dim = match_head_dim and idx == self.layers_num - 1
         val = self._get_attention_output_dimension(idx) if not use_head_dim else self.get_head_dimension()
         self.slicing_conf.attention_output_dimensions[idx] = val
@@ -69,6 +86,9 @@ class SlicingScheduler(ABC):
     @final
     def get_mlp_input_dimension(self, idx: int) -> int:
         """Return the mlp input dimension for the specified layer index."""
+        if self.parallel_blocks:
+            return self.get_attention_input_dimension(idx)
+
         val = self._get_mlp_input_dimension(idx)
         self.slicing_conf.mlp_input_dimensions[idx] = val
         return val

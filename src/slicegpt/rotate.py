@@ -160,7 +160,7 @@ def rotate_and_slice_sequential(
             )
 
     layers = model_adapter.get_layers()
-    slicing_scheduler.setup(hidden_size=model_adapter.hidden_size, layers_num=len(layers))
+    slicing_scheduler.setup(hidden_size=model_adapter.hidden_size, layers_num=len(layers), parallel_blocks=False)
 
     # rotate and slice embeddings
     eig_val, Q = pca_calc(inps, ignore_masks)
@@ -260,7 +260,7 @@ def rotate_and_slice_parallel(
             )
 
     layers = model_adapter.get_layers()
-    slicing_scheduler.setup(hidden_size=model_adapter.hidden_size, layers_num=len(layers))
+    slicing_scheduler.setup(hidden_size=model_adapter.hidden_size, layers_num=len(layers), parallel_blocks=True)
 
     # rotate and slice embeddings
     _, Q = pca_calc(inps, ignore_masks)
@@ -409,9 +409,13 @@ def slice_rotated_model(model_adapter: ModelAdapter, slicing_scheduler: SlicingS
         if model_adapter.slicing_conf.const_dimension is not None:
             # backward compatibility for when no config is available
             slicing_scheduler = ConstSlicingScheduler(model_adapter.slicing_conf.const_dimension)
+            slicing_scheduler.setup(
+                hidden_size=model_adapter.hidden_size,
+                layers_num=len(layers),
+                parallel_blocks=model_adapter.parallel_blocks,
+            )
         else:
             slicing_scheduler = ConfigSlicingScheduler(model_adapter.slicing_conf)
-    slicing_scheduler.setup(hidden_size=model_adapter.hidden_size, layers_num=len(layers))
 
     # slice embeddings
     slice_embeddings(model_adapter, slicing_scheduler.get_embedding_dimensions())
@@ -427,13 +431,13 @@ def slice_rotated_model(model_adapter: ModelAdapter, slicing_scheduler: SlicingS
 
         # slice mlp shortcut 1st dimension
         # slice mlp shortcut
-        if layer.mlp_shortcut_Q is not None:
+        if not model_adapter.parallel_blocks:
             layer.mlp_shortcut_Q = layer.mlp_shortcut_Q[: slicing_scheduler.get_mlp_input_dimension(i), :]
 
         # slice mlp weights 1st dimension
         slice_mlp_output(layer_adapter, slicing_scheduler.get_mlp_output_dimension(i))
 
-        if layer.mlp_shortcut_Q is None:  # parallel case
+        if model_adapter.parallel_blocks:  # parallel case
             layer.attn_shortcut_Q = layer.attn_shortcut_Q[
                 :, : slicing_scheduler.get_attention_output_dimension(i, match_head_dim=True)
             ]
