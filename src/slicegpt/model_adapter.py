@@ -20,20 +20,14 @@ See src/slicegpt/adapters/llama_adapter.py for an example of how to implement th
 
 class LayerAdapter(ABC):
     """
-    To implement a new layer adapter,
-        - Implement the interface defined in this class
-        - Define the following member variables
-            - self._layer:                          = Instance of the transformer layer to be wrapped. This contains the
-                                                      forward() method of the original model,
-                                                      e.g: LlamaDecoderLayer
-
+    To implement a new layer adapter, implement the interface defined in this class
     """
 
     @property
     @abstractmethod
     def layer(self) -> Module:
         """
-        Returns the layer that this adapter wraps.
+        Instance of the transformer layer to be wrapped. This contains the forward() method of the original model
         """
         raise NotImplementedError
 
@@ -109,34 +103,8 @@ class LayerAdapter(ABC):
 
 class ModelAdapter(ABC):
     """
-    To implement a new model adapter,
-        - Implement the interface defined in this class
-        - Define the following member variables
-            - self._model:                          = Instance of the original model to be wrapped,
-                                                      e.g: LlamaForCausalLM
-            - self._config_type: 'type'             = Type of the config class,
-                                                      e.g: LlamaConfig
-            - self._layer_adapter_type: 'type'      = Type of the class implementing the sliceGPT.LayerAdapter interface,
-                                                      e.g: LlamaLayerAdapter
-            - self._layer_type: 'type'              = Type of the transformer layer containing forward() method of
-                                                      the original model,
-                                                      e.g: LlamaDecoderLayer
-            - self._compressed_layer_type: 'type'   = Type of the compressed transformer layer defined by the user;
-                                                      subclasses the transformer layer class; contains the adapted
-                                                      forward() method for the compressed model
-                                                      e.g: CompressedLlamaDecoderLayer
-            - self._layer_norm_type: 'type'         = Type of the layer norm class used,
-                                                      e.g: LlamaRMSNorm
-
+    To implement a new model adapter, implement the interface defined in this class
     """
-
-    @property
-    @abstractmethod
-    def parallel_blocks(self) -> bool:
-        """
-        Whether the model has parallel attention and mlp blocks (True in phi2) or sequential (False in llama).
-        """
-        raise NotImplementedError
 
     @property
     @abstractmethod
@@ -156,10 +124,17 @@ class ModelAdapter(ABC):
 
     @property
     @abstractmethod
-    def no_split_module_classes(self) -> list[str] | None:
+    def config_type(self) -> type:
         """
-        A list of strings specifying the class names of modules that should not be split.
-        See https://huggingface.co/docs/accelerate/concept_guides/big_model_inference for more details.
+        Type of the config class
+        """
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def parallel_blocks(self) -> bool:
+        """
+        Whether the model has parallel attention and mlp blocks (True in phi2) or sequential (False in llama).
         """
         raise NotImplementedError
 
@@ -193,7 +168,7 @@ class ModelAdapter(ABC):
     @abstractmethod
     def original_layer_type(self) -> type:
         """
-        The class of the original layer that we plan to replace with a compressed version
+        Type of the transformer layer containing forward() method of the original model
         """
         raise NotImplementedError
 
@@ -203,6 +178,24 @@ class ModelAdapter(ABC):
         """
         The class of the LayerNorm (or equivalent) in the original model, so that we can replace it with RMSNorm
         (needed for computational invariance).
+        """
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def layer_adapter_type(self) -> type:
+        """
+        Type of the class implementing the sliceGPT.LayerAdapter interface
+        """
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def compressed_layer_type(self) -> type:
+        """
+        Type of the compressed transformer layer defined by the user;
+        subclasses the transformer layer class;
+        contains the adapted forward() method for the compressed model
         """
         raise NotImplementedError
 
@@ -274,6 +267,14 @@ class ModelAdapter(ABC):
         """
         raise NotImplementedError
 
+    @property
+    def no_split_module_classes(self) -> list[str] | None:
+        """
+        A list of strings specifying the class names of modules that should not be split.
+        See https://huggingface.co/docs/accelerate/concept_guides/big_model_inference for more details.
+        """
+        return [self.original_layer_type.__name__, self.compressed_layer_type.__name__]
+
     @final
     def convert_layer_to_compressed_and_register_buffers(self, layer: Module, layer_idx: int | None) -> Module:
         """
@@ -281,6 +282,7 @@ class ModelAdapter(ABC):
         to be used in Compressed transformer layer's forward() method to be updated during slicing.
         """
         compressed_layer = self.convert_layer_to_compressed(layer, layer_idx)
-        compressed_layer.register_buffer('mlp_shortcut_Q', None)
+        if not self.parallel_blocks:
+            compressed_layer.register_buffer('mlp_shortcut_Q', None)
         compressed_layer.register_buffer('attn_shortcut_Q', None)
         return compressed_layer

@@ -38,7 +38,7 @@ class CompressedLlamaDecoderLayer(LlamaDecoderLayer):
             attention_mask (`torch.FloatTensor`, *optional*): attention mask of size
                 `(batch, 1, tgt_len, src_len)` where padding elements are indicated by very large negative values.
             output_attentions (`bool`, *optional*):
-                Whether or not to return the attentions tensors of all attention layers. See `attentions` under
+                Whether to return the attentions tensors of all attention layers. See `attentions` under
                 returned tensors for more detail.
             use_cache (`bool`, *optional*):
                 If set to `True`, `past_key_values` key value states are returned and can be used to speed up decoding
@@ -106,49 +106,44 @@ class LlamaLayerAdapter(LayerAdapter):
         return 0
 
     def get_first_layernorm(self) -> Module:
-        return self._layer.input_layernorm
+        return self.layer.input_layernorm
 
     def get_second_layernorm(self) -> Module:
-        return self._layer.post_attention_layernorm
+        return self.layer.post_attention_layernorm
 
     def get_attention_inputs(self) -> list[Linear]:
-        return [self._layer.self_attn.q_proj, self._layer.self_attn.k_proj, self._layer.self_attn.v_proj]
+        return [self.layer.self_attn.q_proj, self.layer.self_attn.k_proj, self.layer.self_attn.v_proj]
 
     def get_attention_output(self) -> Linear:
-        return self._layer.self_attn.o_proj
+        return self.layer.self_attn.o_proj
 
     def get_mlp_inputs(self) -> list[Linear]:
-        return [self._layer.mlp.gate_proj, self._layer.mlp.up_proj]
+        return [self.layer.mlp.gate_proj, self.layer.mlp.up_proj]
 
     def get_mlp_output(self) -> Linear:
-        return self._layer.mlp.down_proj
+        return self.layer.mlp.down_proj
 
 
 class LlamaModelAdapter(ModelAdapter):
     def __init__(self, model: LlamaForCausalLM) -> None:
         super().__init__()
         self._model: LlamaForCausalLM = model
-        self._config_type: 'type' = LlamaConfig
-        self._layer_adapter_type: 'type' = LlamaLayerAdapter
-        self._layer_type: 'type' = LlamaDecoderLayer
-        self._compressed_layer_type: 'type' = CompressedLlamaDecoderLayer
-        self._layer_norm_type: 'type' = LlamaRMSNorm
-
-    @property
-    def parallel_blocks(self) -> bool:
-        return False
-
-    @property
-    def config(self) -> PretrainedConfig:
-        return self._model.config
 
     @property
     def model(self) -> Module:
         return self._model
 
     @property
-    def no_split_module_classes(self) -> list[str]:
-        return [self._layer_type.__name__, self._compressed_layer_type.__name__]
+    def config(self) -> PretrainedConfig:
+        return self._model.config
+
+    @property
+    def config_type(self) -> type:
+        return LlamaConfig
+
+    @property
+    def parallel_blocks(self) -> bool:
+        return False
 
     @property
     def seqlen(self) -> int:
@@ -163,12 +158,20 @@ class LlamaModelAdapter(ModelAdapter):
         return False
 
     @property
-    def original_layer_type(self) -> 'type':
-        return self._layer_type
+    def original_layer_type(self) -> type:
+        return LlamaDecoderLayer
 
     @property
-    def original_layer_norm_type(self) -> 'type':
-        return self._layer_norm_type
+    def original_layer_norm_type(self) -> type:
+        return LlamaRMSNorm
+
+    @property
+    def layer_adapter_type(self) -> type:
+        return LlamaLayerAdapter
+
+    @property
+    def compressed_layer_type(self) -> type:
+        return CompressedLlamaDecoderLayer
 
     @property
     def use_cache(self) -> bool:
@@ -179,31 +182,31 @@ class LlamaModelAdapter(ModelAdapter):
         self.config.use_cache = value
 
     def compute_output_logits(self, input_ids: Tensor) -> FloatTensor:
-        return self._model(input_ids=input_ids).logits
+        return self.model(input_ids=input_ids).logits
 
     def convert_layer_to_compressed(self, layer: Module, layer_idx: int | None) -> Module:
-        compressed_layer = self._compressed_layer_type(cast(self._config_type, self._config), layer_idx).to(
-            self._config.torch_dtype
+        compressed_layer = self.compressed_layer_type(cast(self.config_type, self.config), layer_idx).to(
+            self.config.torch_dtype
         )
         compressed_layer.load_state_dict(layer.state_dict(), strict=True)
         return compressed_layer
 
     def get_layers(self) -> list[LayerAdapter]:
-        return [self._layer_adapter_type(layer) for layer in self._model.model.layers]
+        return [self.layer_adapter_type(layer) for layer in self.model.model.layers]
 
     def get_raw_layer_at(self, index: int) -> Module:
-        return self._model.model.layers[index]
+        return self.model.model.layers[index]
 
     def set_raw_layer_at(self, index: int, new_layer: Module) -> None:
-        self._model.model.layers[index] = new_layer
+        self.model.model.layers[index] = new_layer
 
     def get_embeddings(self) -> list[Module]:
-        return [self._model.model.embed_tokens]
+        return [self.model.model.embed_tokens]
 
-    def get_pre_head_layernorm(self) -> 'type':
-        pre_head_layernorm = self._model.model.norm
-        assert isinstance(pre_head_layernorm, self._layer_norm_type)
+    def get_pre_head_layernorm(self) -> type:
+        pre_head_layernorm = self.model.model.norm
+        assert isinstance(pre_head_layernorm, self.original_layer_norm_type)
         return pre_head_layernorm
 
     def get_lm_head(self) -> Linear:
-        return self._model.lm_head
+        return self.model.lm_head

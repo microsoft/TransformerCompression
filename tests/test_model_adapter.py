@@ -19,8 +19,13 @@ from slicegpt.model_adapter import ModelAdapter
 
 
 @runtime_checkable
-class HasShortcuts(Protocol):
+class HasShortcutsSequential(Protocol):
     mlp_shortcut_Q: Tensor | None
+    attn_shortcut_Q: Tensor | None
+
+
+@runtime_checkable
+class HasShortcutsParallel(Protocol):
     attn_shortcut_Q: Tensor | None
 
 
@@ -58,7 +63,14 @@ class ModelAdapterTestBase(ABC):
             compressed_layer = model_adapter.convert_layer_to_compressed(layer_adapter.layer, i)
             assert isinstance(compressed_layer, Module), f"Converted compressed layer {i} is not a torch module"
             compressed_layer = model_adapter.convert_layer_to_compressed_and_register_buffers(layer_adapter.layer, i)
-            _validate_protocol_attr(compressed_layer, HasShortcuts, f"Converted compressed layer {i} is invalid")
+            if model_adapter.parallel_blocks:
+                _validate_protocol_attr(
+                    compressed_layer, HasShortcutsParallel, f"Converted compressed layer {i} is invalid"
+                )
+            else:
+                _validate_protocol_attr(
+                    compressed_layer, HasShortcutsSequential, f"Converted compressed layer {i} is invalid"
+                )
             # TODO: test actual forward pass dependency on Q
 
     def test_layernorms_have_weight(self, model_adapter: ModelAdapter) -> None:

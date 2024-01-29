@@ -103,49 +103,44 @@ class Phi2LayerAdapter(LayerAdapter):
         return 0
 
     def get_first_layernorm(self) -> Module:
-        return self._layer.input_layernorm
+        return self.layer.input_layernorm
 
     def get_second_layernorm(self) -> Module:
         return None
 
     def get_attention_inputs(self) -> list[Linear]:
-        return [self._layer.self_attn.q_proj, self._layer.self_attn.k_proj, self._layer.self_attn.v_proj]
+        return [self.layer.self_attn.q_proj, self.layer.self_attn.k_proj, self.layer.self_attn.v_proj]
 
     def get_attention_output(self) -> Linear:
-        return self._layer.self_attn.dense
+        return self.layer.self_attn.dense
 
     def get_mlp_inputs(self) -> list[Linear]:
-        return [self._layer.mlp.fc1]
+        return [self.layer.mlp.fc1]
 
     def get_mlp_output(self) -> Linear:
-        return self._layer.mlp.fc2
+        return self.layer.mlp.fc2
 
 
 class Phi2ModelAdapter(ModelAdapter):
     def __init__(self, model: PhiForCausalLM) -> None:
         super().__init__()
         self._model: PhiForCausalLM = model
-        self._config_type: 'type' = PhiConfig
-        self._layer_adapter_type: 'type' = Phi2LayerAdapter
-        self._layer_type: 'type' = PhiDecoderLayer
-        self._compressed_layer_type: 'type' = CompressedPhiDecoderLayer
-        self._layer_norm_type: 'type' = LayerNorm
-
-    @property
-    def parallel_blocks(self) -> bool:
-        return True
-
-    @property
-    def config(self) -> PretrainedConfig:
-        return self._model.config
 
     @property
     def model(self) -> Module:
         return self._model
 
     @property
-    def no_split_module_classes(self) -> list[str]:
-        return [self._layer_type.__name__, self._compressed_layer_type.__name__]
+    def config(self) -> PretrainedConfig:
+        return self._model.config
+
+    @property
+    def config_type(self) -> type:
+        return PhiConfig
+
+    @property
+    def parallel_blocks(self) -> bool:
+        return True
 
     @property
     def seqlen(self) -> int:
@@ -160,12 +155,20 @@ class Phi2ModelAdapter(ModelAdapter):
         return True
 
     @property
-    def original_layer_type(self) -> 'type':
-        return self._layer_type
+    def original_layer_type(self) -> type:
+        return PhiDecoderLayer
 
     @property
-    def original_layer_norm_type(self) -> 'type':
-        return self._layer_norm_type
+    def original_layer_norm_type(self) -> type:
+        return LayerNorm
+
+    @property
+    def layer_adapter_type(self) -> type:
+        return Phi2LayerAdapter
+
+    @property
+    def compressed_layer_type(self) -> type:
+        return CompressedPhiDecoderLayer
 
     @property
     def use_cache(self) -> bool:
@@ -176,31 +179,31 @@ class Phi2ModelAdapter(ModelAdapter):
         self.config.use_cache = value
 
     def compute_output_logits(self, input_ids: Tensor) -> FloatTensor:
-        return self._model(input_ids=input_ids).logits
+        return self.model(input_ids=input_ids).logits
 
     def convert_layer_to_compressed(self, layer: Module, layer_idx: int | None) -> Module:
-        compressed_layer = self._compressed_layer_type(cast(self._config_type, self._config), layer_idx).to(
-            self._config.torch_dtype
+        compressed_layer = self.compressed_layer_type(cast(self.config_type, self.config), layer_idx).to(
+            self.config.torch_dtype
         )
         compressed_layer.load_state_dict(layer.state_dict(), strict=True)
         return compressed_layer
 
     def get_layers(self) -> list[LayerAdapter]:
-        return [self._layer_adapter_type(layer) for layer in self._model.model.layers]
+        return [self.layer_adapter_type(layer) for layer in self.model.model.layers]
 
     def get_raw_layer_at(self, index: int) -> Module:
-        return self._model.model.layers[index]
+        return self.model.model.layers[index]
 
     def set_raw_layer_at(self, index: int, new_layer: Module) -> None:
-        self._model.model.layers[index] = new_layer
+        self.model.model.layers[index] = new_layer
 
     def get_embeddings(self) -> list[Module]:
-        return [self._model.model.embed_tokens]
+        return [self.model.model.embed_tokens]
 
-    def get_pre_head_layernorm(self) -> 'type':
-        pre_head_layernorm = self._model.model.final_layernorm
+    def get_pre_head_layernorm(self) -> type:
+        pre_head_layernorm = self.model.model.final_layernorm
         assert pre_head_layernorm is not None
         return pre_head_layernorm
 
     def get_lm_head(self) -> Linear:
-        return self._model.lm_head
+        return self.model.lm_head
