@@ -101,7 +101,11 @@ def main() -> None:
         # load the sliced model
         logging.info(f"Loading sliced {args.model} model from {args.load_model_path} with sparsity {args.sparsity}")
         model_adapter, tokenizer = hf_utils.load_sliced_model(
-            args.model, args.load_model_path, args.sparsity, token=args.hf_token, round_interval=args.round_interval
+            args.model,
+            args.load_model_path,
+            sparsity=args.sparsity,
+            token=args.hf_token,
+            round_interval=args.round_interval,
         )
     else:
         # load the original model

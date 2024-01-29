@@ -1,8 +1,11 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
+import copy
+import json
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
+from dataclasses import asdict, dataclass, field
 from typing import Any, final
 
 from torch import FloatTensor, Tensor
@@ -105,6 +108,9 @@ class ModelAdapter(ABC):
     """
     To implement a new model adapter, implement the interface defined in this class
     """
+
+    def __init__(self):
+        self.slicing_conf: SlicingConfig | None = None
 
     @property
     @abstractmethod
@@ -286,3 +292,60 @@ class ModelAdapter(ABC):
             compressed_layer.register_buffer('mlp_shortcut_Q', None)
         compressed_layer.register_buffer('attn_shortcut_Q', None)
         return compressed_layer
+
+
+@dataclass
+class SlicingConfig:
+    """Slicing configuration such as whether individual layer dimensions and whether to slice head."""
+
+    # use dict[int, int] instead of list[int] to allow for arbitrary order updates and default dicts
+    embedding_dimensions: dict[int, int] = field(default_factory=dict)
+
+    attention_input_dimensions: dict[int, int] = field(default_factory=dict)
+    attention_output_dimensions: dict[int, int] = field(default_factory=dict)
+
+    mlp_input_dimensions: dict[int, int] = field(default_factory=dict)
+    mlp_output_dimensions: dict[int, int] = field(default_factory=dict)
+
+    head_dimension: int = 0
+    do_slice_head: bool = False
+
+    const_dimension: int | None = None  # to be able to load models without config, sliced with const sparsity
+
+    @staticmethod
+    def from_dict(d: dict) -> 'SlicingConfig':
+        """Return a SliceConfig object constructed from the provided dictionary."""
+
+        def convert_dict_keys_to_int(d: Any) -> Any:
+            # recursively convert all numeric string keys to int
+            if not isinstance(d, dict):
+                return d
+
+            if all(isinstance(k, str) and k.isnumeric() for k in d.keys()):
+                d = {int(k): v for k, v in d.items()}
+            else:
+                d = {k: convert_dict_keys_to_int(v) for k, v in d.items()}
+
+            return d
+
+        return SlicingConfig(**convert_dict_keys_to_int(d))
+
+    @staticmethod
+    def from_json_string(json_str: str) -> 'SlicingConfig':
+        """Return a SliceConfig object constructed from the provided JSON string."""
+        return SlicingConfig.from_dict(json.loads(json_str))
+
+    def to_dict(self) -> dict:
+        """Return a dictionary representation of this object."""
+        # workaround until 'dataclasses.asdict support defaultdict fields #32056' is in the Python release used
+        self.embedding_dimensions = {k: v for k, v in self.embedding_dimensions.items()}
+
+        return asdict(self)
+
+    def to_json_string(self) -> str:
+        """Return a JSON representation of this object."""
+        return json.dumps(self.to_dict())
+
+    def clone(self) -> 'SlicingConfig':
+        """Return a clone of this object."""
+        return copy.deepcopy(self)
