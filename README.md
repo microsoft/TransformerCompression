@@ -1,6 +1,6 @@
 # Transformer Compression with SliceGPT
 
-This repository contains the code for the paper [SliceGPT](link/to/be/made/available/upon/publication). 
+This repository contains the code for the paper [SliceGPT](https://arxiv.org/abs/2401.15024) (ICLR'24). 
 
 SliceGPT is a new post-training sparsification scheme that makes transformer networks (including LLMs) smaller by 
 first applying orthogonal transformations to each transformer layer that leave the model unchanged, and then slicing off the 
@@ -38,7 +38,7 @@ manually or using a key vault. Alternatively, set the environment variable `HF_T
 
 ## Supported models
 
-The following models from Huggingface hub are currently supported
+The following models from HuggingFace hub are currently supported
 - [microsoft/phi-2](https://huggingface.co/microsoft/phi-2)
 - [meta-llama/Llama-2-7b-hf](https://huggingface.co/meta-llama/Llama-2-7b)
 - [meta-llama/Llama-2-13b-hf](https://huggingface.co/meta-llama/Llama-2-13b)
@@ -73,7 +73,7 @@ one needs to implement a new model adapter before using it to slice a new model.
   ([Phi-2](./src/slicegpt/adapters/phi2_adapter.py)). The `self.*_shortcut_Q` matrices are attached to the modules during
   slicing and are available in `forward()`. If the skip connection does not need modification, these matrices will be None, 
   and the `forward()` method can follow the original workflow. For more details on this, 
-  please read [Section 3 in the paper](link/made/available/on/publication).
+  please read Section 3 [the paper](https://arxiv.org/abs/2401.15024).
 
 Example: [llama_adapter.py](./src/slicegpt/adapters/llama_adapter.py)
 
