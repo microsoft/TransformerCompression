@@ -4,12 +4,14 @@
 import argparse
 import logging
 import os
+import pathlib
 
 import torch
 import wandb
 
 from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate, utils
 from slicegpt.config import config
+from slicegpt.slicing_scheduler import ConstSlicingScheduler
 
 utils.configure_logging()
 
@@ -138,9 +140,13 @@ def main() -> None:
 
     if args.load_model_path:
         # load the model from load_model_path to compute perplexity and skip rotation and slicing
-        logging.info(f"Loading sliced {args.model} model from {args.load_model_path} with sparsity {args.sparsity}")
+        logging.info(f"Loading sliced {args.model} model from {args.load_model_path}")
         model_adapter, tokenizer = hf_utils.load_sliced_model(
-            args.model, args.load_model_path, args.sparsity, args.hf_token, round_interval=args.round_interval
+            args.model,
+            args.load_model_path,
+            sparsity=args.sparsity,
+            round_interval=args.round_interval,
+            token=args.hf_token,
         )
     else:
         # load one of the pre-trained models
@@ -217,20 +223,25 @@ def main() -> None:
     # compute new embedding dimension given the desired sparsity level
     new_embedding_dimension = int((1 - args.sparsity) * model_adapter.hidden_size)
     # round (down) to the nearest multiple of round_interval
-    new_embedding_dimension = new_embedding_dimension - (new_embedding_dimension % args.round_interval)
+    new_embedding_dimension -= new_embedding_dimension % args.round_interval
     logging.info(
         f"New embedding dimension: {new_embedding_dimension} (sparsity {100*(1 - new_embedding_dimension / model_adapter.hidden_size):.4f} %)"
     )
 
     ignore_tokens = [tokenizer.pad_token_id]
-    rotate.rotate_and_slice(model_adapter, train_loader, new_embedding_dimension, ignore_tokens=ignore_tokens)
+    scheduler = ConstSlicingScheduler(new_embedding_dimension)
+    rotate.rotate_and_slice(model_adapter, train_loader, scheduler, ignore_tokens=ignore_tokens)
 
     if args.save_dir:
-        if not os.path.exists(args.save_dir):
-            os.makedirs(args.save_dir)
+        path = pathlib.Path(args.save_dir)
+        path.mkdir(parents=True, exist_ok=True)
 
-        model_file = os.path.join(args.save_dir, os.path.basename(args.model) + "_" + str(args.sparsity) + ".pt")
-        torch.save(model.state_dict(), model_file)
+        model_path = path / f'{pathlib.Path(args.model).name}_{args.sparsity}.pt'
+
+        config_path = model_path.with_suffix('.json')
+        config_path.write_text(model_adapter.slicing_conf.to_json_string())
+
+        torch.save(model.state_dict(), model_path)
         logging.info(f"Saved sliced model to {args.save_dir}")
 
     reset_model_device()
