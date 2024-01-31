@@ -33,12 +33,12 @@ The experiments folder also contains scripts for
 - [finetuning](./experiments/run_finetuning.py) the compressed model to recover most of the quality lost during compression
 - [zero-shot task evaluation](./experiments/run_zero_shot_tasks.py) of a dense, compressed or fine-tuned model
 
-_Note:_ For models that require HuggingFace authentication, set the `--hf-token` argument 
+_Note:_ For models that require Hugging Face authentication, set the `--hf-token` argument 
 manually or using a key vault. Alternatively, set the environment variable `HF_TOKEN`.
 
 ## Supported models
 
-The following models from HuggingFace hub are currently supported
+The following models from Hugging Face hub are currently supported
 - [microsoft/phi-2](https://huggingface.co/microsoft/phi-2)
 - [meta-llama/Llama-2-7b-hf](https://huggingface.co/meta-llama/Llama-2-7b)
 - [meta-llama/Llama-2-13b-hf](https://huggingface.co/meta-llama/Llama-2-13b)
@@ -53,7 +53,7 @@ The following models from HuggingFace hub are currently supported
 
 ## Extending support to a new model type
 
-The model you wish to support must be available in HuggingFace. To add SliceGPT support for a new model, 
+The model you wish to support must be available in Hugging Face. To add SliceGPT support for a new model, 
 one needs to implement a new model adapter before using it to slice a new model.
 
 ### Implementing a new model adapter
@@ -85,7 +85,7 @@ Once a model adapter is implemented, compressing the model involves three concep
 
 Example: [run_slicegpt_perplexity.py](./experiments/run_slicegpt_perplexity.py)
 
-_Note:_ If the model you wish to support is not available in HuggingFace, you will also need to implement 
+_Note:_ If the model you wish to support is not available in Hugging Face, you will also need to implement 
 custom model loading and initialization functionality.
 
 ## Contributing
