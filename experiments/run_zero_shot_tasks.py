@@ -70,6 +70,7 @@ def parse_args() -> argparse.Namespace:
         help="Use accelerate to put the model on multiple GPUs for evaluation. It is recommended to use it for models with 30B parameters and above.",
     )
     parser.add_argument('--no-wandb', action="store_true", help="Disable wandb.")
+    parser.add_argument('--wandb-project', type=str, default="slicegpt-zeroshot")
     parser.add_argument(
         '--tasks',
         nargs='+',
@@ -90,12 +91,12 @@ def main() -> None:
     logging.info(f"Number of available cuda devices: {torch.cuda.device_count()}")
 
     try:
-        wandb.init(project="slicegpt-lm-eval", config=args, mode='disabled' if args.no_wandb else None)
+        wandb.init(project=args.wandb_project, config=args, mode='disabled' if args.no_wandb else None)
     except wandb.UsageError as e:
         # wandb.init will throw an error if the user is not logged in and the process is running in a non-shell
         # environment, e.g. notebook, IDE, no-shell process, etc. In this case, we want to continue without wandb.
         logging.info(f'Failed to initialize wandb: {e}, continuing without wandb.')
-        wandb.init(project="slicegpt-lm-eval", mode='disabled')
+        wandb.init(project=args.wandb_project, mode='disabled')
 
     if args.load_model_path:
         # load the sliced model
