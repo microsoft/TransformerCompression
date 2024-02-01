@@ -71,6 +71,7 @@ def argparser() -> argparse.Namespace:
         default=8,
         help="Interval for rounding the weights (the best value may depend on your hardware)",
     )
+    parser.add_argument("--final-orientation", type=str, default="random", choices=["random", "pca"], help="Final orientation of the sliced weights.")
     parser.add_argument(
         "--ppl-eval-seqlen", type=int, default=2048, help="Sequence length for evaluating the perplexity."
     )
@@ -230,7 +231,7 @@ def main() -> None:
 
     ignore_tokens = [tokenizer.pad_token_id]
     scheduler = ConstSlicingScheduler(new_embedding_dimension)
-    rotate.rotate_and_slice(model_adapter, train_loader, scheduler, ignore_tokens=ignore_tokens)
+    rotate.rotate_and_slice(model_adapter, train_loader, scheduler, ignore_tokens=ignore_tokens, final_orientation=args.final_orientation)
 
     if args.save_dir:
         path = pathlib.Path(args.save_dir)
