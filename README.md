@@ -1,6 +1,6 @@
 # Transformer Compression with SliceGPT
 
-This repository contains the code for the paper [SliceGPT](https://arxiv.org/abs/2401.15024) (ICLR'24). 
+This repository contains the code for the paper [SliceGPT](https://arxiv.org/abs/2401.15024) (ICLR'24). Also discussed on [Hugging Face](https://huggingface.co/papers/2401.15024). 
 
 SliceGPT is a new post-training sparsification scheme that makes transformer networks (including LLMs) smaller by 
 first applying orthogonal transformations to each transformer layer that leave the model unchanged, and then slicing off the 
