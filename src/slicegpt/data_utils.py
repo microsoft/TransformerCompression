@@ -5,7 +5,7 @@ import logging
 
 import datasets
 import torch
-from torch.utils.data import DataLoader, SubsetRandomSampler, Dataset
+from torch.utils.data import DataLoader, Dataset, SubsetRandomSampler
 from transformers import PreTrainedTokenizerBase
 
 
@@ -58,11 +58,10 @@ def get_dataset(name: str) -> datasets.DatasetDict:
     logging.info("Loading dataset done")
     return ds
 
+
 def prepare_test_dataloader(
-    dataset: datasets.Dataset,
-    tokenizer: PreTrainedTokenizerBase,
-    seqlen: int = 2048,
-    batch_size: int = 1) -> DataLoader[dict[str, torch.Tensor]]:
+    dataset: datasets.Dataset, tokenizer: PreTrainedTokenizerBase, seqlen: int = 2048, batch_size: int = 1
+) -> DataLoader[dict[str, torch.Tensor]]:
     """
     Get a DataLoader from a test dataset. This dataloader is used for evaluation on the entirety of the given dataset.
 
@@ -77,16 +76,17 @@ def prepare_test_dataloader(
     """
 
     logging.info(f"Preparing test dataloader")
+
     class TestDataset(Dataset):
         def __init__(self, ds, tokenizer, seqlen=2048):
+            """Tokenize the entire dataset and reshape it into sequences of length seqlen."""
 
             tokenized_ds = tokenizer("\n\n".join(ds['text']), return_tensors='pt')
-
             nsamples = tokenized_ds.input_ids.numel() // seqlen
 
-            input_ids = tokenized_ds.input_ids[0,:nsamples * seqlen]
+            input_ids = tokenized_ds.input_ids[0, : nsamples * seqlen]
             input_ids = input_ids.reshape(nsamples, seqlen)
-            attn_mask = tokenized_ds.attention_mask[0,:nsamples * seqlen]
+            attn_mask = tokenized_ds.attention_mask[0, : nsamples * seqlen]
             attn_mask = attn_mask.reshape(nsamples, seqlen)
 
             self.input_ids = input_ids

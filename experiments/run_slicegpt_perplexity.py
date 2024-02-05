@@ -173,9 +173,7 @@ def main() -> None:
         seed=args.seed,
     )
     test_loader = data_utils.prepare_test_dataloader(
-        dataset=test_dataset,
-        tokenizer=tokenizer,
-        batch_size=args.ppl_eval_batch_size
+        dataset=test_dataset, tokenizer=tokenizer, batch_size=args.ppl_eval_batch_size
     )
 
     # evaluate perplexity and exit if sliced model is loaded or if ppl_only is set
