@@ -162,7 +162,7 @@ def main() -> None:
             model.to(config.device)
 
     dataset = data_utils.get_dataset(args.cal_dataset)
-    train_dataset, test_dataset = dataset["train"], dataset["validation"]
+    train_dataset, test_dataset = dataset["train"], dataset["test"]
     train_loader = data_utils.prepare_dataloader(
         dataset=train_dataset,
         tokenizer=tokenizer,
@@ -172,13 +172,10 @@ def main() -> None:
         varied_seqlen=args.varied_seqlen,
         seed=args.seed,
     )
-    test_loader = data_utils.prepare_dataloader(
+    test_loader = data_utils.prepare_test_dataloader(
         dataset=test_dataset,
         tokenizer=tokenizer,
-        max_seqlen=args.ppl_eval_seqlen,
-        batch_size=args.ppl_eval_batch_size,
-        nsamples=args.ppl_eval_nsamples,
-        seed=args.seed,
+        batch_size=args.ppl_eval_batch_size
     )
 
     # evaluate perplexity and exit if sliced model is loaded or if ppl_only is set

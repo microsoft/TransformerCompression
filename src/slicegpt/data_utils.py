@@ -5,7 +5,7 @@ import logging
 
 import datasets
 import torch
-from torch.utils.data import DataLoader, SubsetRandomSampler
+from torch.utils.data import DataLoader, SubsetRandomSampler, Dataset
 from transformers import PreTrainedTokenizerBase
 
 
@@ -57,6 +57,51 @@ def get_dataset(name: str) -> datasets.DatasetDict:
 
     logging.info("Loading dataset done")
     return ds
+
+def prepare_test_dataloader(
+    dataset: datasets.Dataset,
+    tokenizer: PreTrainedTokenizerBase,
+    seqlen: int = 2048,
+    batch_size: int = 1) -> DataLoader[dict[str, torch.Tensor]]:
+    """
+    Get a DataLoader from a test dataset. This dataloader is used for evaluation on the entirety of the given dataset.
+
+    Args:
+        dataset: The dataset to create a dataloader from load.
+        tokenizer: The tokenizer to use.
+        seqlen: The sequence length of sequences in the dataset.
+        batch_size: The batch size.
+
+    Returns:
+        A DataLoader.
+    """
+
+    logging.info(f"Preparing test dataloader")
+    class TestDataset(Dataset):
+        def __init__(self, ds, tokenizer, seqlen=2048):
+
+            tokenized_ds = tokenizer("\n\n".join(ds['text']), return_tensors='pt')
+
+            nsamples = tokenized_ds.input_ids.numel() // seqlen
+
+            input_ids = tokenized_ds.input_ids[0,:nsamples * seqlen]
+            input_ids = input_ids.reshape(nsamples, seqlen)
+            attn_mask = tokenized_ds.attention_mask[0,:nsamples * seqlen]
+            attn_mask = attn_mask.reshape(nsamples, seqlen)
+
+            self.input_ids = input_ids
+            self.attn_mask = attn_mask
+
+        def __getitem__(self, idx):
+            return {"input_ids": self.input_ids[idx], "attention_mask": self.attn_mask[idx]}
+
+        def __len__(self):
+            return len(self.input_ids)
+
+    test_ds = TestDataset(dataset, tokenizer, seqlen)
+    loader = DataLoader(test_ds, batch_size=batch_size)
+    logging.info(f"Preparing test dataloader done")
+    return loader
 
 
 def prepare_dataloader(
