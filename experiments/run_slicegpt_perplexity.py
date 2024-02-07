@@ -228,9 +228,8 @@ def main() -> None:
         f"New embedding dimension: {new_embedding_dimension} (sparsity {100*(1 - new_embedding_dimension / model_adapter.hidden_size):.4f} %)"
     )
 
-    ignore_tokens = [tokenizer.pad_token_id]
     scheduler = ConstSlicingScheduler(new_embedding_dimension)
-    rotate.rotate_and_slice(model_adapter, train_loader, scheduler, ignore_tokens=ignore_tokens)
+    rotate.rotate_and_slice(model_adapter, train_loader, scheduler)
 
     if args.save_dir:
         path = pathlib.Path(args.save_dir)
