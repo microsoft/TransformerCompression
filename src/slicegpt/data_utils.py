@@ -63,10 +63,10 @@ def prepare_test_dataloader(
     dataset: datasets.Dataset, tokenizer: PreTrainedTokenizerBase, seqlen: int = 2048, batch_size: int = 1
 ) -> DataLoader[dict[str, torch.Tensor]]:
     """
-    Get a DataLoader from a test dataset. This dataloader is used for evaluation on the entirety of the given dataset.
+    Get a DataLoader from a test dataset. This dataloader should be used when comparing WikiText2 perplexities with other papers, e.g. SparseGPT (arxiv.org/abs/2301.00774).
 
     Args:
-        dataset: The dataset to create a dataloader from load.
+        dataset: The dataset to create a dataloader from.
         tokenizer: The tokenizer to use.
         seqlen: The sequence length of sequences in the dataset.
         batch_size: The batch size.
@@ -117,7 +117,7 @@ def prepare_dataloader(
     Get a DataLoader from a dataset.
 
     Args:
-        dataset: The dataset to create a dataloader from load.
+        dataset: The dataset to create a dataloader from.
         tokenizer: The tokenizer to use.
         max_seqlen: The maximum sequence length, used for truncation of sequences in the dataset.
         batch_size: The batch size.
