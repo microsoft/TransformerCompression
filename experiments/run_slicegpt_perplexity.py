@@ -92,6 +92,7 @@ def argparser() -> argparse.Namespace:
 
     parser.add_argument('--hf-token', type=str, default=os.getenv('HF_TOKEN', None))
 
+    parser.add_argument('--wandb-project', type=str, default="slicegpt", help="wandb project name.")
     parser.add_argument('--no-wandb', action="store_true", help="Disable wandb.")
     parser.add_argument(
         '--device',
@@ -131,12 +132,12 @@ def main() -> None:
     logging.info(f"Number of available cuda devices: {torch.cuda.device_count()}")
 
     try:
-        wandb.init(project="slicegpt", config=args, mode='disabled' if args.no_wandb else None)
+        wandb.init(project=args.wandb_project, config=args, mode='disabled' if args.no_wandb else None)
     except wandb.UsageError as e:
         # wandb.init will throw an error if the user is not logged in and the process is running in a non-shell
         # environment, e.g. notebook, IDE, no-shell process, etc. In this case, we want to continue without wandb.
         logging.info(f'Failed to initialize wandb: {e}, continuing without wandb')
-        wandb.init(project="slicegpt", mode='disabled')
+        wandb.init(project=args.wandb_project, mode='disabled')
 
     if args.load_model_path:
         # load the model from load_model_path to compute perplexity and skip rotation and slicing
@@ -162,7 +163,7 @@ def main() -> None:
             model.to(config.device)
 
     dataset = data_utils.get_dataset(args.cal_dataset)
-    train_dataset, test_dataset = dataset["train"], dataset["validation"]
+    train_dataset, test_dataset = dataset["train"], dataset["test"]
     train_loader = data_utils.prepare_dataloader(
         dataset=train_dataset,
         tokenizer=tokenizer,
@@ -172,13 +173,8 @@ def main() -> None:
         varied_seqlen=args.varied_seqlen,
         seed=args.seed,
     )
-    test_loader = data_utils.prepare_dataloader(
-        dataset=test_dataset,
-        tokenizer=tokenizer,
-        max_seqlen=args.ppl_eval_seqlen,
-        batch_size=args.ppl_eval_batch_size,
-        nsamples=args.ppl_eval_nsamples,
-        seed=args.seed,
+    test_loader = data_utils.prepare_test_dataloader(
+        dataset=test_dataset, tokenizer=tokenizer, batch_size=args.ppl_eval_batch_size
     )
 
     # evaluate perplexity and exit if sliced model is loaded or if ppl_only is set
