@@ -129,9 +129,9 @@ def main() -> None:
     else:
         model_adapter.model.to(config.device)
 
-    train_dataset, _ = data_utils.get_dataset(args.eval_dataset)
+    train_dataset = data_utils.get_dataset(args.eval_dataset)
     train_loader = data_utils.prepare_dataloader(
-        dataset=train_dataset,
+        dataset=train_dataset["train"],
         tokenizer=tokenizer,
         max_seqlen=model_adapter.seqlen,
         batch_size=args.batch_size,
