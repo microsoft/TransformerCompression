@@ -88,7 +88,7 @@ def get_model_and_tokenizer(
 
     if "facebook/opt" in model_path:
         if uninitialized:
-            config = OPTConfig.from_pretrained(model_path)
+            config = OPTConfig.from_pretrained(model_path, torch_dtype=dtype)
             model = UninitializedOPTForCausalLM(config)
             model = model.to(dtype=dtype)
         else:
@@ -97,7 +97,7 @@ def get_model_and_tokenizer(
         model_adapter = OPTModelAdapter(model)
     elif "meta-llama" in model_path:
         if uninitialized:
-            config = LlamaConfig.from_pretrained(model_path, token=token)
+            config = LlamaConfig.from_pretrained(model_path, , torch_dtype=dtype, token=token)
             model = UninitializedLlamaForCausalLM(config)
             model = model.to(dtype=dtype)
         else:
@@ -109,7 +109,7 @@ def get_model_and_tokenizer(
         model_adapter = LlamaModelAdapter(model)
     elif "microsoft/phi-2" in model_path:
         if uninitialized:
-            config = PhiConfig.from_pretrained(model_path, token=token)
+            config = PhiConfig.from_pretrained(model_path, , torch_dtype=dtype, token=token)
             model = UninitializedPhiForCausalLM(config)
             model = model.to(dtype=dtype)
         else:
