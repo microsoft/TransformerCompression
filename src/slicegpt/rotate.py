@@ -135,7 +135,6 @@ def rotate_and_slice(
         rotate_and_slice_sequential(model_adapter, dataloader, slicing_scheduler, ignore_tokens, final_orientation)
 
 
-
 @torch.no_grad()
 def rotate_and_slice_sequential(
     model_adapter: ModelAdapter,
@@ -197,7 +196,9 @@ def rotate_and_slice_sequential(
         eig_val, Q = pca_calc(mlp_ln_inputs, ignore_masks)
         Q = Q.to(device=config.device, dtype=torch.float64)
         if final_orientation == 'random':
-            R = random_orthogonal_upper_left(Q.shape[0], slicing_scheduler.get_attention_output_dimension(idx, match_head_dim=False))
+            R = random_orthogonal_upper_left(
+                Q.shape[0], slicing_scheduler.get_attention_output_dimension(idx, match_head_dim=False)
+            )
             Q = Q @ R.to(Q.device)
 
         layer.attn_shortcut_Q = torch.matmul(
@@ -321,7 +322,7 @@ def rotate_and_slice_parallel(
 
         inps = outputs
         _, Q = pca_calc(inps, ignore_masks)
-        
+
         if final_orientation == 'random':
             R = random_orthogonal_upper_left(Q.shape[0], slicing_scheduler.get_mlp_output_dimension(idx))
             Q = Q @ R.to(Q.device)
