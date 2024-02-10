@@ -6,8 +6,8 @@ import logging
 import os
 
 import torch
-
 import wandb
+
 from slicegpt import data_utils, gpu_utils, hf_utils, utils
 from slicegpt.config import config
 

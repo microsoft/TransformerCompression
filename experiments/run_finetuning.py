@@ -7,6 +7,7 @@ import os
 
 import syne_tune
 import torch
+import wandb
 import transformers
 from bo_options import lora_target_map
 from peft import LoraConfig, TaskType, get_peft_model
@@ -14,7 +15,6 @@ from syne_tune import Reporter
 from torch.utils.data import DataLoader
 from transformers import EarlyStoppingCallback, Trainer, TrainingArguments
 
-import wandb
 from slicegpt import data_utils, gpu_utils, hf_utils, utils
 from slicegpt.config import config
 
