@@ -106,7 +106,7 @@ def argparser():
     parser.add_argument("--save-dir", type=str, default=None, help="Path to save the model.")
     parser.add_argument('--hf-token', type=str, default=os.getenv('HF_TOKEN', None))
 
-    parser.add_argument('--wandb-project', type=str, default="slicegpt-finetuning")
+    parser.add_argument('--wandb-project', type=str, default="slicegpt-finetuning", help="wandb project name.")
     parser.add_argument('--no-wandb', action="store_true", help="Disable wandb.")
     parser.add_argument(
         '--device',
