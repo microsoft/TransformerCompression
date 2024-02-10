@@ -82,8 +82,6 @@ def get_model_and_tokenizer(
     else:
         model_type = "pretrained"
 
-    tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True, token=token)
-
     logging.info(f"Loading {model_type} {model_path} model")
 
     if "facebook/opt" in model_path:
@@ -94,6 +92,7 @@ def get_model_and_tokenizer(
         else:
             model = OPTForCausalLM.from_pretrained(model_path, torch_dtype=dtype)
             model.config.torch_dtype = dtype
+        tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True, token=token)
         model_adapter = OPTModelAdapter(model)
     elif "meta-llama" in model_path:
         if uninitialized:
@@ -103,7 +102,7 @@ def get_model_and_tokenizer(
         else:
             model = LlamaForCausalLM.from_pretrained(model_path, torch_dtype=dtype, token=token)
             model.config.torch_dtype = dtype
-
+        tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True, token=token)
         tokenizer.pad_token = tokenizer.eos_token  # Llama-2 models don't have a pad token by default
         model.config.pad_token_id = tokenizer.pad_token_id
         model_adapter = LlamaModelAdapter(model)
@@ -115,7 +114,7 @@ def get_model_and_tokenizer(
         else:
             model = PhiForCausalLM.from_pretrained(model_path, torch_dtype=dtype, token=token)
             model.config.torch_dtype = dtype
-
+        tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True, token=token)
         tokenizer.pad_token = tokenizer.eos_token  # Phi-2 models don't have a pad token by default
         model.config.pad_token_id = tokenizer.pad_token_id
         model_adapter = Phi2ModelAdapter(model)
