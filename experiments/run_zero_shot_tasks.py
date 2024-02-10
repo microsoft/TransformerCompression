@@ -31,17 +31,18 @@ def parse_args() -> argparse.Namespace:
         required=True,
         help="Model to load",
     )
-    parser.add_argument(
+    path_group = parser.add_mutually_exclusive_group()
+    path_group.add_argument(
         "--model-path",
         type=str,
         default=None,
         help="Path to load the model and tokenizer from (required for local models, not required for HF models)",
     )
-    parser.add_argument(
+    path_group.add_argument(
         "--sliced-model-path",
         type=str,
+        help="Path to load the model to fine-tune (sliced) and tokenizer from",
         default=None,
-        help="Path to load the sliced model from.",
     )
     parser.add_argument(
         "--sparsity", type=float, default=0.0, help="A measure of how much slicing is applied (in the range [0, 1))"

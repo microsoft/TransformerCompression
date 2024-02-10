@@ -46,13 +46,14 @@ if __name__ == "__main__":
         required=True,
         help="Model to fine-tune",
     )
-    parser.add_argument(
+    path_group = parser.add_mutually_exclusive_group()
+    path_group.add_argument(
         "--model-path",
         type=str,
         default=None,
         help="Path to load the model and tokenizer from (required for local models, not required for HF models)",
     )
-    parser.add_argument(
+    path_group.add_argument(
         "--sliced-model-path",
         type=str,
         help="Path to load the model to fine-tune (sliced) and tokenizer from",

@@ -26,11 +26,18 @@ def argparser() -> argparse.Namespace:
         required=True,
         help="Model to load",
     )
-    parser.add_argument(
+    path_group = parser.add_mutually_exclusive_group()
+    path_group.add_argument(
         "--model-path",
         type=str,
         default=None,
         help="Path to load the model and tokenizer from (required for local models, not required for HF models)",
+    )
+    path_group.add_argument(
+        "--sliced-model-path",
+        type=str,
+        help="Path to load the model to fine-tune (sliced) and tokenizer from",
+        default=None,
     )
     parser.add_argument("--dtype", type=str, help="Data type to use.", choices=["fp32", "fp16"], default="fp16")
     parser.add_argument(
@@ -78,7 +85,6 @@ def argparser() -> argparse.Namespace:
     )
 
     parser.add_argument("--save-dir", type=str, default=None, help="Path to save the model.")
-    parser.add_argument("--sliced-model-path", type=str, default=None, help="Path to load the sliced model from.")
 
     parser.add_argument('--hf-token', type=str, default=os.getenv('HF_TOKEN', None))
 
