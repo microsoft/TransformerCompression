@@ -67,6 +67,7 @@ def argparser() -> argparse.Namespace:
 
     parser.add_argument('--hf-token', type=str, default=os.getenv('HF_TOKEN', None))
 
+    parser.add_argument('--wandb-project', type=str, default="slicegpt-bench", help="wandb project name.")
     parser.add_argument('--no-wandb', action="store_true", help="Disable wandb.")
     parser.add_argument(
         '--device',
@@ -106,12 +107,12 @@ def main() -> None:
     logging.info(f"Number of available cuda devices: {torch.cuda.device_count()}")
 
     try:
-        wandb.init(project="slicegpt-bench", config=args)
+        wandb.init(project=args.wandb_project, config=args, mode='disabled' if args.no_wandb else None)
     except wandb.UsageError as e:
         # wandb.init will throw an error if the user is not logged in and the process is running in a non-shell
         # environment, e.g. notebook, IDE, no-shell process, etc. In this case, we want to continue without wandb.
-        logging.info(f'Failed to initialize wandb: {e}, continuing without wandb.')
-        wandb.init(project="slicegpt", mode='disabled')
+        logging.info(f'Failed to initialize wandb: {e}, continuing without wandb')
+        wandb.init(project=args.wandb_project, mode='disabled')
 
     if args.load_model_path:
         # load the model from load_model_path to compute perplexity and skip rotation and slicing
@@ -129,9 +130,9 @@ def main() -> None:
     else:
         model_adapter.model.to(config.device)
 
-    train_dataset, _ = data_utils.get_dataset(args.eval_dataset)
+    dataset = data_utils.get_dataset(args.eval_dataset)
     train_loader = data_utils.prepare_dataloader(
-        dataset=train_dataset,
+        dataset=dataset["train"],
         tokenizer=tokenizer,
         max_seqlen=model_adapter.seqlen,
         batch_size=args.batch_size,

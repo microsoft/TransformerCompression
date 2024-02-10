@@ -99,6 +99,7 @@ def argparser() -> argparse.Namespace:
 
     parser.add_argument('--hf-token', type=str, default=os.getenv('HF_TOKEN', None))
 
+    parser.add_argument('--wandb-project', type=str, default="slicegpt", help="wandb project name.")
     parser.add_argument('--no-wandb', action="store_true", help="Disable wandb.")
     parser.add_argument('--wandb-project', type=str, default="slicegpt")
     parser.add_argument(
@@ -180,13 +181,8 @@ def main() -> None:
         varied_seqlen=args.varied_seqlen,
         seed=args.seed,
     )
-    test_loader = data_utils.prepare_dataloader(
-        dataset=test_dataset,
-        tokenizer=tokenizer,
-        max_seqlen=args.ppl_eval_seqlen,
-        batch_size=args.ppl_eval_batch_size,
-        nsamples=args.ppl_eval_nsamples,
-        seed=args.seed,
+    test_loader = data_utils.prepare_test_dataloader(
+        dataset=test_dataset, tokenizer=tokenizer, batch_size=args.ppl_eval_batch_size
     )
 
     # evaluate perplexity and exit if sliced model is loaded or if ppl_only is set
@@ -236,11 +232,8 @@ def main() -> None:
         f"New embedding dimension: {new_embedding_dimension} (sparsity {100*(1 - new_embedding_dimension / model_adapter.hidden_size):.4f} %)"
     )
 
-    ignore_tokens = [tokenizer.pad_token_id]
     scheduler = ConstSlicingScheduler(new_embedding_dimension)
-    rotate.rotate_and_slice(
-        model_adapter, train_loader, scheduler, ignore_tokens=ignore_tokens, final_orientation=args.final_orientation
-    )
+    rotate.rotate_and_slice(model_adapter, train_loader, scheduler, final_orientation=args.final_orientation)
 
     if args.save_dir:
         path = pathlib.Path(args.save_dir)

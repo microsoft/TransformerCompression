@@ -123,16 +123,16 @@ def rotate_and_slice(
     model_adapter: ModelAdapter,
     dataloader: torch.utils.data.DataLoader[torch.Tensor],
     slicing_scheduler: SlicingScheduler,
-    ignore_tokens: list[int] | None = None,
+    apply_mask: bool = True,
     final_orientation: str = 'pca',
 ) -> None:
     """
     Rotate and slice a model, with interleaved slicing and PCA calculations
     """
     if model_adapter.parallel_blocks:
-        rotate_and_slice_parallel(model_adapter, dataloader, slicing_scheduler, ignore_tokens, final_orientation)
+        rotate_and_slice_parallel(model_adapter, dataloader, slicing_scheduler, apply_mask, final_orientation)
     else:
-        rotate_and_slice_sequential(model_adapter, dataloader, slicing_scheduler, ignore_tokens, final_orientation)
+        rotate_and_slice_sequential(model_adapter, dataloader, slicing_scheduler, apply_mask, final_orientation)
 
 
 @torch.no_grad()
@@ -140,7 +140,7 @@ def rotate_and_slice_sequential(
     model_adapter: ModelAdapter,
     dataloader: torch.utils.data.DataLoader[torch.Tensor],
     slicing_scheduler: SlicingScheduler,
-    ignore_tokens: list[int] | None = None,
+    apply_mask: bool = True,
     final_orientation: str = 'pca',
 ) -> None:
     """
@@ -157,10 +157,8 @@ def rotate_and_slice_sequential(
         inps.append(inp_batch)
         args.append(args_batch)
         kwargs.append(kwargs_batch)
-        if ignore_tokens:
-            ignore_masks.append(
-                torch.stack([batch["input_ids"] == ignore_token for ignore_token in ignore_tokens]).any(dim=0)
-            )
+        if apply_mask:
+            ignore_masks.append(batch["attention_mask"])
 
     layers = model_adapter.get_layers()
     slicing_scheduler.setup(hidden_size=model_adapter.hidden_size, layers_num=len(layers), parallel_blocks=False)
@@ -252,7 +250,7 @@ def rotate_and_slice_parallel(
     model_adapter: ModelAdapter,
     dataloader: torch.utils.data.DataLoader[torch.Tensor],
     slicing_scheduler: SlicingScheduler,
-    ignore_tokens: list[int] | None = None,
+    apply_mask: bool = True,
     final_orientation: str = 'pca',
 ) -> None:
     """
@@ -269,10 +267,8 @@ def rotate_and_slice_parallel(
         inps.append(inp_batch)
         args.append(args_batch)
         kwargs.append(kwargs_batch)
-        if ignore_tokens:
-            ignore_masks.append(
-                torch.stack([batch["input_ids"] == ignore_token for ignore_token in ignore_tokens]).any(dim=0)
-            )
+        if apply_mask:
+            ignore_masks.append(batch["attention_mask"])
 
     layers = model_adapter.get_layers()
     slicing_scheduler.setup(hidden_size=model_adapter.hidden_size, layers_num=len(layers), parallel_blocks=True)
@@ -505,7 +501,7 @@ def pca_calc(
     H = None
     for idx, X_batch in enumerate(X):
         if ignore_masks:
-            X_batch[ignore_masks[idx]] = 0
+            X_batch[ignore_masks[idx] == 0] = 0
 
         X_batch = X_batch.double().to(device=config.device)
         H_batch = torch.sum(X_batch.mT @ X_batch, dim=0)  # sum over the batch dimension.

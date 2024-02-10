@@ -104,10 +104,8 @@ def get_model_and_tokenizer(
             model = LlamaForCausalLM.from_pretrained(model_path, torch_dtype=dtype, token=token)
             model.config.torch_dtype = dtype
 
-        # TODO: change to <eos>
-        tokenizer.add_special_tokens({"pad_token": "<pad>"})  # Llama-2 models don't have a pad token by default
+        tokenizer.pad_token = tokenizer.eos_token  # Llama-2 models don't have a pad token by default
         model.config.pad_token_id = tokenizer.pad_token_id
-        model.resize_token_embeddings(len(tokenizer), pad_to_multiple_of=8)
         model_adapter = LlamaModelAdapter(model)
     elif "microsoft/phi-2" in model_path:
         if uninitialized:
@@ -118,9 +116,8 @@ def get_model_and_tokenizer(
             model = PhiForCausalLM.from_pretrained(model_path, torch_dtype=dtype, token=token)
             model.config.torch_dtype = dtype
 
-        tokenizer.add_special_tokens({"pad_token": "<pad>"})  # Phi-2 models don't have a pad token by default
+        tokenizer.pad_token = tokenizer.eos_token  # Phi-2 models don't have a pad token by default
         model.config.pad_token_id = tokenizer.pad_token_id
-        model.resize_token_embeddings(len(tokenizer), pad_to_multiple_of=8)
         model_adapter = Phi2ModelAdapter(model)
     else:
         raise NotImplementedError
@@ -139,7 +136,7 @@ def load_sliced_model(
     model_name: str,
     model_path: str,
     *,
-    token: str,
+    token: str | None = None,
     lora_config: LoraConfig = None,
     sparsity: float | None = None,
     round_interval: int | None = 1,
