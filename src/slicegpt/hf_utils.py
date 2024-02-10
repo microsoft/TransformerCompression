@@ -74,7 +74,11 @@ def do_not_initialize(func):
 
 @do_not_initialize
 def get_model_and_tokenizer(
-    model_path: str, uninitialized: bool = False, dtype: torch.dtype = torch.float16, token: str | bool | None = None
+    model_name: str,
+    model_path: str | None = None,
+    uninitialized: bool = False,
+    dtype: torch.dtype = torch.float16,
+    token: str | bool | None = None,
 ) -> tuple[ModelAdapter, PreTrainedTokenizerBase]:
     """Loads the model and the tokenizer from the given path."""
     if uninitialized:
@@ -82,9 +86,13 @@ def get_model_and_tokenizer(
     else:
         model_type = "pretrained"
 
-    logging.info(f"Loading {model_type} {model_path} model")
+    if not model_path:
+        # HF models can be downloaded using the name only, local models need to specify a path
+        model_path = model_name
 
-    if "facebook/opt" in model_path:
+    logging.info(f"Loading {model_type} {model_name} model from {model_path}")
+
+    if model_name.startswith("facebook/opt"):
         if uninitialized:
             config = OPTConfig.from_pretrained(model_path, torch_dtype=dtype)
             model = UninitializedOPTForCausalLM(config)
@@ -94,9 +102,9 @@ def get_model_and_tokenizer(
             model.config.torch_dtype = dtype
         tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True, token=token)
         model_adapter = OPTModelAdapter(model)
-    elif "meta-llama" in model_path:
+    elif model_name.startswith("meta-llama/Llama-2"):
         if uninitialized:
-            config = LlamaConfig.from_pretrained(model_path, , torch_dtype=dtype, token=token)
+            config = LlamaConfig.from_pretrained(model_path, torch_dtype=dtype, token=token)
             model = UninitializedLlamaForCausalLM(config)
             model = model.to(dtype=dtype)
         else:
@@ -106,9 +114,9 @@ def get_model_and_tokenizer(
         tokenizer.pad_token = tokenizer.eos_token  # Llama-2 models don't have a pad token by default
         model.config.pad_token_id = tokenizer.pad_token_id
         model_adapter = LlamaModelAdapter(model)
-    elif "microsoft/phi-2" in model_path:
+    elif model_name == "microsoft/phi-2":
         if uninitialized:
-            config = PhiConfig.from_pretrained(model_path, , torch_dtype=dtype, token=token)
+            config = PhiConfig.from_pretrained(model_path, torch_dtype=dtype, token=token)
             model = UninitializedPhiForCausalLM(config)
             model = model.to(dtype=dtype)
         else:
@@ -142,7 +150,7 @@ def load_sliced_model(
 ) -> tuple[ModelAdapter, PreTrainedTokenizerBase]:
     """Loads the sliced model and the tokenizer from the given path. If lora_config is supplied as an arg then this
     function will return a PEFT model (post-slicing finetuned model)."""
-    model_adapter, tokenizer = get_model_and_tokenizer(model_name, uninitialized=True, token=token)
+    model_adapter, tokenizer = get_model_and_tokenizer(model_name, model_path, uninitialized=True, token=token)
     replace_layers(model_adapter)
     fuse_modules(model_adapter)
 

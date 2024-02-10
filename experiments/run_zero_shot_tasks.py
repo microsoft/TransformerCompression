@@ -8,13 +8,13 @@ import os
 
 import lm_eval
 import torch
-import wandb
 from lm_eval import tasks
 from lm_eval import utils as lm_eval_utils
 from lm_eval.api.registry import ALL_TASKS
 from lm_eval.models.huggingface import HFLM
 from lm_eval.tasks import initialize_tasks
 
+import wandb
 from slicegpt import gpu_utils, hf_utils, utils
 from slicegpt.config import config
 
@@ -28,27 +28,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--model",
         type=str,
-        help="OPT model to load; pass `facebook/opt-125m`.",
-        choices=[
-            # OPT models
-            "facebook/opt-125m",
-            "facebook/opt-1.3b",
-            "facebook/opt-2.7b",
-            "facebook/opt-6.7b",
-            "facebook/opt-13b",
-            "facebook/opt-30b",
-            "facebook/opt-66b",
-            # LLAMA 2 Models
-            'meta-llama/Llama-2-7b-hf',
-            'meta-llama/Llama-2-13b-hf',
-            'meta-llama/Llama-2-70b-hf',
-            # Phi-2 model
-            'microsoft/phi-2',
-        ],
-        default="facebook/opt-125m",
+        required=True,
+        help="Model to load",
     )
     parser.add_argument(
-        "--load-model-path",
+        "--model-path",
+        type=str,
+        default=None,
+        help="Path to load the model and tokenizer from (required for local models, not required for HF models)",
+    )
+    parser.add_argument(
+        "--sliced-model-path",
         type=str,
         default=None,
         help="Path to load the sliced model from.",
@@ -97,12 +87,12 @@ def main() -> None:
         logging.info(f'Failed to initialize wandb: {e}, continuing without wandb.')
         wandb.init(project="slicegpt-lm-eval", mode='disabled')
 
-    if args.load_model_path:
+    if args.sliced_model_path:
         # load the sliced model
-        logging.info(f"Loading sliced {args.model} model from {args.load_model_path} with sparsity {args.sparsity}")
+        logging.info(f"Loading sliced {args.model} model from {args.sliced_model_path} with sparsity {args.sparsity}")
         model_adapter, tokenizer = hf_utils.load_sliced_model(
             args.model,
-            args.load_model_path,
+            args.sliced_model_path,
             sparsity=args.sparsity,
             token=args.hf_token,
             round_interval=args.round_interval,
@@ -110,7 +100,7 @@ def main() -> None:
     else:
         # load the original model
         logging.info(f"Loading {args.model} model")
-        model_adapter, tokenizer = hf_utils.get_model_and_tokenizer(args.model, token=args.hf_token)
+        model_adapter, tokenizer = hf_utils.get_model_and_tokenizer(args.model, args.model_path, token=args.hf_token)
 
     # the lm eval harness ties the weights, but this should not be done for sliced models unless the lm_head was sliced
     model_adapter.model.tie_weights = lambda: None
