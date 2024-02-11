@@ -9,6 +9,7 @@ import syne_tune
 import torch
 import transformers
 import wandb
+from bo_options import lora_target_map
 from peft import LoraConfig, TaskType, get_peft_model
 from syne_tune import Reporter
 from torch.utils.data import DataLoader
@@ -23,7 +24,6 @@ os.environ["WANDB__SERVICE_WAIT"] = "300"
 
 
 def get_optimizer_and_scheduler(model, train_dataset, config):
-
     optimizer = torch.optim.AdamW(
         params=model.parameters(),
         lr=config.learning_rate,
@@ -112,7 +112,7 @@ def argparser():
     )
     parser.add_argument('--hf-token', type=str, default=os.getenv('HF_TOKEN', None))
 
-    parser.add_argument('--wandb-project', type=str, default="slicegpt-finetuning")
+    parser.add_argument('--wandb-project', type=str, default="slicegpt-finetuning", help="wandb project name.")
     parser.add_argument('--no-wandb', action="store_true", help="Disable wandb.")
     parser.add_argument(
         '--device',
@@ -195,15 +195,10 @@ def argparser():
     parser.add_argument(
         '--st_checkpoint_dir', type=str, default=".", help="Path for syne-tune to save finetuning checkpoints."
     )
-
-    # For LLAMA 2 models, possible modules: k_proj v_proj q_proj o_proj gate_proj up_proj down_proj
-    # For OPT models, possible modules: k_proj v_proj q_proj out_proj fc1 fc2
-    # For phi models, possible modules: k_proj v_proj q_proj dense fc1 fc2
     parser.add_argument(
-        '--lora-target-modules',
-        nargs='+',
+        '--lora-target-option',
         required=True,
-        help="target modules to apply lora to (names of attn i/p, attn o/p and mlp in LayerAdapter)",
+        help="target module option to apply lora to (names of attn i/p, attn o/p and mlp in LayerAdapter)",
     )
 
     args = parser.parse_args()
@@ -248,7 +243,11 @@ def main() -> None:
         # load the sliced model
         logging.info(f"Loading sliced {args.model} model from {args.load_model_path} with sparsity {args.sparsity}")
         model_adapter, tokenizer = hf_utils.load_sliced_model(
-            args.model, args.load_model_path, args.sparsity, token=args.hf_token, round_interval=args.round_interval
+            args.model,
+            args.load_model_path,
+            sparsity=args.sparsity,
+            token=args.hf_token,
+            round_interval=args.round_interval,
         )
     else:
         # load the original model
@@ -305,7 +304,7 @@ def main() -> None:
         lora_alpha=args.lora_alpha,
         lora_dropout=args.lora_dropout,
         task_type=TaskType.CAUSAL_LM,
-        target_modules=args.lora_target_modules,
+        target_modules=lora_target_map(args.model)[args.lora_target_option],
     )
 
     model = model_adapter.model

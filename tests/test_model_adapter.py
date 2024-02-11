@@ -19,8 +19,13 @@ from slicegpt.model_adapter import ModelAdapter
 
 
 @runtime_checkable
-class HasShortcuts(Protocol):
+class HasShortcutsSequential(Protocol):
     mlp_shortcut_Q: Tensor | None
+    attn_shortcut_Q: Tensor | None
+
+
+@runtime_checkable
+class HasShortcutsParallel(Protocol):
     attn_shortcut_Q: Tensor | None
 
 
@@ -31,7 +36,7 @@ class HasWeight(Protocol):
 
 def _validate_protocol_attr(instance: Any, protocol: type, err_message: str) -> None:
     errors: list[str] = [err_message]
-    for (a, t) in get_annotations(protocol).items():
+    for a, t in get_annotations(protocol).items():
         if not hasattr(instance, a):
             errors.append(f"Missing attribute '{a}")
         elif not isinstance(getattr(instance, a), t):
@@ -53,12 +58,19 @@ class ModelAdapterTestBase(ABC):
     def model_adapter(self) -> ModelAdapter:
         return self.create_adapter()
 
-    def test_convert_layer_to_compressible(self, model_adapter: ModelAdapter) -> None:
+    def test_convert_layer_to_compressed(self, model_adapter: ModelAdapter) -> None:
         for i, layer_adapter in enumerate(model_adapter.get_layers()):
-            compressed_layer = model_adapter.convert_layer_to_compressible(layer_adapter.layer, i)
-            assert isinstance(compressed_layer, Module), f"Converted compressible layer {i} is not a torch module"
-            compressed_layer = model_adapter.convert_layer_to_compressible_and_register_buffers(layer_adapter.layer, i)
-            _validate_protocol_attr(compressed_layer, HasShortcuts, f"Converted compressible layer {i} is invalid")
+            compressed_layer = model_adapter.convert_layer_to_compressed(layer_adapter.layer, i)
+            assert isinstance(compressed_layer, Module), f"Converted compressed layer {i} is not a torch module"
+            compressed_layer = model_adapter.convert_layer_to_compressed_and_register_buffers(layer_adapter.layer, i)
+            if model_adapter.parallel_blocks:
+                _validate_protocol_attr(
+                    compressed_layer, HasShortcutsParallel, f"Converted compressed layer {i} is invalid"
+                )
+            else:
+                _validate_protocol_attr(
+                    compressed_layer, HasShortcutsSequential, f"Converted compressed layer {i} is invalid"
+                )
             # TODO: test actual forward pass dependency on Q
 
     def test_layernorms_have_weight(self, model_adapter: ModelAdapter) -> None:

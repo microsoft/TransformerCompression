@@ -9,12 +9,13 @@ from typing import cast
 from torch import FloatTensor, Tensor, matmul
 from torch.nn import LayerNorm, Linear, Module
 from torch.nn.functional import dropout
+from transformers import PretrainedConfig
 from transformers.models.opt.modeling_opt import OPTConfig, OPTDecoderLayer, OPTForCausalLM
 
 from slicegpt.model_adapter import LayerAdapter, ModelAdapter
 
 
-class CompressibleOPTDecoderLayer(OPTDecoderLayer):
+class CompressedOPTDecoderLayer(OPTDecoderLayer):
     """
     This class simulates the OPTDecoderLayer class from transformers
     but with the addition of a shortcut_Q attributes.
@@ -38,7 +39,7 @@ class CompressibleOPTDecoderLayer(OPTDecoderLayer):
             layer_head_mask (`torch.FloatTensor`, *optional*): mask for attention heads in a given layer of size
                 `(encoder_attention_heads,)`.
             output_attentions (`bool`, *optional*):
-                Whether or not to return the attentions tensors of all attention layers. See `attentions` under
+                Whether to return the attentions tensors of all attention layers. See `attentions` under
                 returned tensors for more detail.
             use_cache (`bool`, *optional*):
                 If set to `True`, `past_key_values` key value states are returned and can be used to speed up decoding
@@ -116,7 +117,7 @@ class OPTLayerAdapter(LayerAdapter):
         self._layer: OPTDecoderLayer = layer
 
     @property
-    def layer(self) -> OPTDecoderLayer:
+    def layer(self) -> Module:
         return self._layer
 
     @property
@@ -127,100 +128,106 @@ class OPTLayerAdapter(LayerAdapter):
     def hidden_states_output_position(self) -> int:
         return 0
 
-    def get_first_layernorm(self) -> LayerNorm:
-        return self._layer.self_attn_layer_norm
+    def get_first_layernorm(self) -> Module:
+        return self.layer.self_attn_layer_norm
 
-    def get_second_layernorm(self) -> LayerNorm:
-        return self._layer.final_layer_norm
+    def get_second_layernorm(self) -> Module:
+        return self.layer.final_layer_norm
 
     def get_attention_inputs(self) -> list[Linear]:
-        return [self._layer.self_attn.q_proj, self._layer.self_attn.k_proj, self._layer.self_attn.v_proj]
+        return [self.layer.self_attn.q_proj, self.layer.self_attn.k_proj, self.layer.self_attn.v_proj]
 
     def get_attention_output(self) -> Linear:
-        return self._layer.self_attn.out_proj
+        return self.layer.self_attn.out_proj
 
     def get_mlp_inputs(self) -> list[Linear]:
-        return [self._layer.fc1]
+        return [self.layer.fc1]
 
     def get_mlp_output(self) -> Linear:
-        return self._layer.fc2
+        return self.layer.fc2
 
 
 class OPTModelAdapter(ModelAdapter):
-    @property
-    def parallel_blocks(self) -> bool:
-        return False
-
     def __init__(self, model: OPTForCausalLM) -> None:
         super().__init__()
         self._model: OPTForCausalLM = model
-
-    @property
-    def _config(self) -> OPTConfig:
-        return cast(OPTConfig, self._model.config)
 
     @property
     def model(self) -> Module:
         return self._model
 
     @property
-    def no_split_module_classes(self) -> list[str]:
-        return ["OPTDecoderLayer", "CompressedOPTDecoderLayer"]
+    def config(self) -> PretrainedConfig:
+        return self._model.config
+
+    @property
+    def config_type(self) -> type:
+        return OPTConfig
+
+    @property
+    def parallel_blocks(self) -> bool:
+        return False
 
     @property
     def seqlen(self) -> int:
-        return self._config.max_position_embeddings
+        return self.config.max_position_embeddings
 
     @property
     def hidden_size(self) -> int:
-        return self._config.hidden_size
+        return self.config.hidden_size
 
     @property
     def should_bake_mean_into_linear(self) -> bool:
         return True
 
     @property
-    def original_layer_type(self) -> type[OPTDecoderLayer]:
+    def original_layer_type(self) -> type:
         return OPTDecoderLayer
 
     @property
-    def original_layer_norm_type(self) -> type[LayerNorm]:
+    def original_layer_norm_type(self) -> type:
         return LayerNorm
 
     @property
+    def layer_adapter_type(self) -> type:
+        return OPTLayerAdapter
+
+    @property
+    def compressed_layer_type(self) -> type:
+        return CompressedOPTDecoderLayer
+
+    @property
     def use_cache(self) -> bool:
-        return self._config.use_cache
+        return self.config.use_cache
 
     @use_cache.setter
     def use_cache(self, value: bool) -> None:
-        self._config.use_cache = value
+        self.config.use_cache = value
 
     def compute_output_logits(self, input_ids: Tensor) -> FloatTensor:
-        return self._model(input_ids=input_ids).logits
+        return self.model(input_ids=input_ids).logits
 
-    def convert_layer_to_compressible(
-        self, layer: OPTDecoderLayer, layer_idx: int | None
-    ) -> CompressibleOPTDecoderLayer:
-        compressed_layer = CompressibleOPTDecoderLayer(self._config).to(self._config.torch_dtype)
+    def convert_layer_to_compressed(self, layer: Module, layer_idx: int | None) -> Module:
+        compressed_layer = self.compressed_layer_type(cast(self.config_type, self.config)).to(self.config.torch_dtype)
         compressed_layer.load_state_dict(layer.state_dict(), strict=True)
         return compressed_layer
 
-    def get_layers(self) -> list[OPTLayerAdapter]:
-        return [OPTLayerAdapter(cast(OPTDecoderLayer, layer)) for layer in self._model.model.decoder.layers]
+    def get_layers(self) -> list[LayerAdapter]:
+        return [self.layer_adapter_type(layer) for layer in self.model.model.decoder.layers]
 
     def get_raw_layer_at(self, index: int) -> Module:
-        return self._model.model.decoder.layers[index]
+        return self.model.model.decoder.layers[index]
 
     def set_raw_layer_at(self, index: int, new_layer: Module) -> None:
-        self._model.model.decoder.layers[index] = new_layer
+        self.model.model.decoder.layers[index] = new_layer
 
     def get_embeddings(self) -> list[Module]:
-        return [self._model.model.decoder.embed_tokens, self._model.model.decoder.embed_positions]
+        return [self.model.model.decoder.embed_tokens, self.model.model.decoder.embed_positions]
 
-    def get_pre_head_layernorm(self) -> LayerNorm:
-        pre_head_layernorm = self._model.model.decoder.final_layer_norm
+    def get_pre_head_layernorm(self) -> type:
+        pre_head_layernorm = self.model.model.decoder.final_layer_norm
         assert pre_head_layernorm is not None
         return pre_head_layernorm
 
     def get_lm_head(self) -> Linear:
-        return self._model.lm_head
+        return self.model.lm_head

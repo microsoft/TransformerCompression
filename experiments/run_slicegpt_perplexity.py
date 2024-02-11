@@ -4,12 +4,14 @@
 import argparse
 import logging
 import os
+import pathlib
 
 import torch
 import wandb
 
 from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate, utils
 from slicegpt.config import config
+from slicegpt.slicing_scheduler import ConstSlicingScheduler
 
 utils.configure_logging()
 
@@ -90,6 +92,7 @@ def argparser() -> argparse.Namespace:
 
     parser.add_argument('--hf-token', type=str, default=os.getenv('HF_TOKEN', None))
 
+    parser.add_argument('--wandb-project', type=str, default="slicegpt", help="wandb project name.")
     parser.add_argument('--no-wandb', action="store_true", help="Disable wandb.")
     parser.add_argument(
         '--device',
@@ -129,18 +132,22 @@ def main() -> None:
     logging.info(f"Number of available cuda devices: {torch.cuda.device_count()}")
 
     try:
-        wandb.init(project="slicegpt", config=args, mode='disabled' if args.no_wandb else None)
+        wandb.init(project=args.wandb_project, config=args, mode='disabled' if args.no_wandb else None)
     except wandb.UsageError as e:
         # wandb.init will throw an error if the user is not logged in and the process is running in a non-shell
         # environment, e.g. notebook, IDE, no-shell process, etc. In this case, we want to continue without wandb.
         logging.info(f'Failed to initialize wandb: {e}, continuing without wandb')
-        wandb.init(project="slicegpt", mode='disabled')
+        wandb.init(project=args.wandb_project, mode='disabled')
 
     if args.load_model_path:
         # load the model from load_model_path to compute perplexity and skip rotation and slicing
-        logging.info(f"Loading sliced {args.model} model from {args.load_model_path} with sparsity {args.sparsity}")
+        logging.info(f"Loading sliced {args.model} model from {args.load_model_path}")
         model_adapter, tokenizer = hf_utils.load_sliced_model(
-            args.model, args.load_model_path, args.sparsity, args.hf_token
+            args.model,
+            args.load_model_path,
+            sparsity=args.sparsity,
+            round_interval=args.round_interval,
+            token=args.hf_token,
         )
     else:
         # load one of the pre-trained models
@@ -156,7 +163,7 @@ def main() -> None:
             model.to(config.device)
 
     dataset = data_utils.get_dataset(args.cal_dataset)
-    train_dataset, test_dataset = dataset["train"], dataset["validation"]
+    train_dataset, test_dataset = dataset["train"], dataset["test"]
     train_loader = data_utils.prepare_dataloader(
         dataset=train_dataset,
         tokenizer=tokenizer,
@@ -166,13 +173,8 @@ def main() -> None:
         varied_seqlen=args.varied_seqlen,
         seed=args.seed,
     )
-    test_loader = data_utils.prepare_dataloader(
-        dataset=test_dataset,
-        tokenizer=tokenizer,
-        max_seqlen=args.ppl_eval_seqlen,
-        batch_size=args.ppl_eval_batch_size,
-        nsamples=args.ppl_eval_nsamples,
-        seed=args.seed,
+    test_loader = data_utils.prepare_test_dataloader(
+        dataset=test_dataset, tokenizer=tokenizer, batch_size=args.ppl_eval_batch_size
     )
 
     # evaluate perplexity and exit if sliced model is loaded or if ppl_only is set
@@ -217,20 +219,24 @@ def main() -> None:
     # compute new embedding dimension given the desired sparsity level
     new_embedding_dimension = int((1 - args.sparsity) * model_adapter.hidden_size)
     # round (down) to the nearest multiple of round_interval
-    new_embedding_dimension = new_embedding_dimension - (new_embedding_dimension % args.round_interval)
+    new_embedding_dimension -= new_embedding_dimension % args.round_interval
     logging.info(
         f"New embedding dimension: {new_embedding_dimension} (sparsity {100*(1 - new_embedding_dimension / model_adapter.hidden_size):.4f} %)"
     )
 
-    ignore_tokens = [tokenizer.pad_token_id]
-    rotate.rotate_and_slice(model_adapter, train_loader, new_embedding_dimension, ignore_tokens=ignore_tokens)
+    scheduler = ConstSlicingScheduler(new_embedding_dimension)
+    rotate.rotate_and_slice(model_adapter, train_loader, scheduler)
 
     if args.save_dir:
-        if not os.path.exists(args.save_dir):
-            os.makedirs(args.save_dir)
+        path = pathlib.Path(args.save_dir)
+        path.mkdir(parents=True, exist_ok=True)
 
-        model_file = os.path.join(args.save_dir, os.path.basename(args.model) + "_" + str(args.sparsity) + ".pt")
-        torch.save(model.state_dict(), model_file)
+        model_path = path / f'{pathlib.Path(args.model).name}_{args.sparsity}.pt'
+
+        config_path = model_path.with_suffix('.json')
+        config_path.write_text(model_adapter.slicing_conf.to_json_string())
+
+        torch.save(model.state_dict(), model_path)
         logging.info(f"Saved sliced model to {args.save_dir}")
 
     reset_model_device()

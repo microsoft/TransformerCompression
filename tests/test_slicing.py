@@ -6,7 +6,7 @@ from slicegpt.adapters.opt_adapter import OPTModelAdapter
 
 
 def test_layernorm_fusion_replaces_modules() -> None:
-    """Checks that module parameters are changes after applying layernorm fusion"""
+    """Checks that module parameters are changed after applying layernorm fusion"""
     model_name = "facebook/opt-125m"
     model_adapter, _ = hf_utils.get_model_and_tokenizer(model_name)
     assert isinstance(model_adapter, OPTModelAdapter)

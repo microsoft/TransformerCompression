@@ -12,7 +12,7 @@ from .modules import RMSN
 
 
 def replace_layers(model_adapter: ModelAdapter, verbose: bool = True) -> None:
-    """Replace layers with compressible versions.
+    """Replace layers with compressed versions.
 
     This adds a 'shortcut operation' to each block.
     This function should be called before fusing the modules!
@@ -23,7 +23,7 @@ def replace_layers(model_adapter: ModelAdapter, verbose: bool = True) -> None:
     replace_modules(
         model_adapter.model,
         model_adapter.original_layer_type,
-        model_adapter.convert_layer_to_compressible_and_register_buffers,
+        model_adapter.convert_layer_to_compressed_and_register_buffers,
         replace_layers=True,
     )
 
@@ -58,7 +58,7 @@ def replace_modules(
     for name, module in root.named_children():
         new_module = None
         if isinstance(module, type_to_replace):
-            if replace_layers:  # layernorm_fusion.replace_layers case where ModuleList[Decooderlayer] is replaced
+            if replace_layers:  # layernorm_fusion.replace_layers case where transformer layers are replaced
                 new_module = new_module_factory(module, int(name))
             else:  # layernorm_fusion.fuse_modules case where layernorms are fused
                 new_module = new_module_factory(module)

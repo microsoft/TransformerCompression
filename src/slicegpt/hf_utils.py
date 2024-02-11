@@ -2,6 +2,7 @@
 # Licensed under the MIT license.
 
 import logging
+import pathlib
 
 import torch
 from peft import LoraConfig, get_peft_model
@@ -20,7 +21,7 @@ from .adapters.llama_adapter import LlamaModelAdapter
 from .adapters.opt_adapter import OPTModelAdapter
 from .adapters.phi2_adapter import Phi2ModelAdapter
 from .layernorm_fusion import fuse_modules, replace_layers
-from .model_adapter import ModelAdapter
+from .model_adapter import ModelAdapter, SlicingConfig
 from .rotate import slice_rotated_model
 
 
@@ -103,10 +104,8 @@ def get_model_and_tokenizer(
             model = LlamaForCausalLM.from_pretrained(model_path, torch_dtype=dtype, token=token)
             model.config.torch_dtype = dtype
 
-        # TODO: change to <eos>
-        tokenizer.add_special_tokens({"pad_token": "<pad>"})  # Llama-2 models don't have a pad token by default
+        tokenizer.pad_token = tokenizer.eos_token  # Llama-2 models don't have a pad token by default
         model.config.pad_token_id = tokenizer.pad_token_id
-        model.resize_token_embeddings(len(tokenizer), pad_to_multiple_of=8)
         model_adapter = LlamaModelAdapter(model)
     elif "microsoft/phi-2" in model_path:
         if uninitialized:
@@ -117,9 +116,8 @@ def get_model_and_tokenizer(
             model = PhiForCausalLM.from_pretrained(model_path, torch_dtype=dtype, token=token)
             model.config.torch_dtype = dtype
 
-        tokenizer.add_special_tokens({"pad_token": "<pad>"})  # Phi-2 models don't have a pad token by default
+        tokenizer.pad_token = tokenizer.eos_token  # Phi-2 models don't have a pad token by default
         model.config.pad_token_id = tokenizer.pad_token_id
-        model.resize_token_embeddings(len(tokenizer), pad_to_multiple_of=8)
         model_adapter = Phi2ModelAdapter(model)
     else:
         raise NotImplementedError
@@ -137,18 +135,17 @@ def get_model_and_tokenizer(
 def load_sliced_model(
     model_name: str,
     model_path: str,
-    sparsity: float,
-    token: str,
+    *,
+    token: str | None = None,
     lora_config: LoraConfig = None,
-    round_interval: int = 1,
+    sparsity: float | None = None,
+    round_interval: int | None = 1,
 ) -> tuple[ModelAdapter, PreTrainedTokenizerBase]:
     """Loads the sliced model and the tokenizer from the given path. If lora_config is supplied as an arg then this
     function will return a PEFT model (post-slicing finetuned model)."""
     model_adapter, tokenizer = get_model_and_tokenizer(model_name, uninitialized=True, token=token)
     replace_layers(model_adapter)
     fuse_modules(model_adapter)
-    new_embedding_dimension = int((1 - sparsity) * model_adapter.hidden_size)
-    new_embedding_dimension = new_embedding_dimension - (new_embedding_dimension % round_interval)
 
     for layer_adapter in model_adapter.get_layers():
         if not model_adapter.parallel_blocks:
@@ -160,7 +157,21 @@ def load_sliced_model(
             dtype=torch.float16
         )
 
-    slice_rotated_model(model_adapter, new_embedding_dimension)
+    model_path = pathlib.Path(model_path)
+    config_path = model_path.with_suffix(".json")
+
+    if config_path.exists():
+        model_adapter.slicing_conf = SlicingConfig.from_json_string(config_path.read_text())
+
+    if model_adapter.slicing_conf is None:
+        # assume the model was sliced with the const sparsity specified in the arguments to this method
+        new_embedding_dimension = int((1 - sparsity) * model_adapter.hidden_size)
+        new_embedding_dimension -= new_embedding_dimension % round_interval
+        config = SlicingConfig()
+        config.const_dimension = new_embedding_dimension
+        model_adapter.slicing_conf = config
+
+    slice_rotated_model(model_adapter)
 
     if lora_config:
         model_adapter.model = get_peft_model(model_adapter.model, lora_config)
