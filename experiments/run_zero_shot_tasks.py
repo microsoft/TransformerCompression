@@ -15,7 +15,6 @@ from lm_eval.api.registry import ALL_TASKS
 from lm_eval.models.huggingface import HFLM
 from lm_eval.tasks import initialize_tasks
 
-
 from slicegpt import gpu_utils, hf_utils, utils
 from slicegpt.config import config
 
