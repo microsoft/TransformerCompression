@@ -3,6 +3,7 @@
 
 import logging
 
+import numpy as np
 import torch
 from tqdm import tqdm
 
@@ -123,14 +124,15 @@ def rotate_and_slice(
     dataloader: torch.utils.data.DataLoader[torch.Tensor],
     slicing_scheduler: SlicingScheduler,
     apply_mask: bool = True,
+    final_orientation: str = 'pca',
 ) -> None:
     """
     Rotate and slice a model, with interleaved slicing and PCA calculations
     """
     if model_adapter.parallel_blocks:
-        rotate_and_slice_parallel(model_adapter, dataloader, slicing_scheduler, apply_mask)
+        rotate_and_slice_parallel(model_adapter, dataloader, slicing_scheduler, apply_mask, final_orientation)
     else:
-        rotate_and_slice_sequential(model_adapter, dataloader, slicing_scheduler, apply_mask)
+        rotate_and_slice_sequential(model_adapter, dataloader, slicing_scheduler, apply_mask, final_orientation)
 
 
 @torch.no_grad()
@@ -139,6 +141,7 @@ def rotate_and_slice_sequential(
     dataloader: torch.utils.data.DataLoader[torch.Tensor],
     slicing_scheduler: SlicingScheduler,
     apply_mask: bool = True,
+    final_orientation: str = 'pca',
 ) -> None:
     """
     Rotate and slice the provided model, with interleaved slicing and PCA calculations.
@@ -163,6 +166,9 @@ def rotate_and_slice_sequential(
     # rotate and slice embeddings
     eig_val, Q = pca_calc(inps, ignore_masks)
     Q = Q.to(device=config.device)
+    if final_orientation == 'random':
+        R = random_orthogonal_upper_left(Q.shape[0], slicing_scheduler.get_embedding_dimensions()[0])
+        Q = Q @ R.to(Q.device)
     rotate_embeddings(model_adapter, Q)
     slice_embeddings(model_adapter, slicing_scheduler.get_embedding_dimensions())
 
@@ -187,6 +193,11 @@ def rotate_and_slice_sequential(
         mlp_ln_inputs, _ = get_signals(layer_adapter, args, kwargs)
         eig_val, Q = pca_calc(mlp_ln_inputs, ignore_masks)
         Q = Q.to(device=config.device, dtype=torch.float64)
+        if final_orientation == 'random':
+            R = random_orthogonal_upper_left(
+                Q.shape[0], slicing_scheduler.get_attention_output_dimension(idx, match_head_dim=False)
+            )
+            Q = Q @ R.to(Q.device)
 
         layer.attn_shortcut_Q = torch.matmul(
             layer.attn_shortcut_Q,
@@ -208,6 +219,9 @@ def rotate_and_slice_sequential(
         # with slicing between Attention and mlp.
         _, inps = get_signals(layer_adapter, args, kwargs)
         eig_val, Q = pca_calc(inps, ignore_masks)
+        if final_orientation == 'random':
+            R = random_orthogonal_upper_left(Q.shape[0], slicing_scheduler.get_mlp_output_dimension(idx))
+            Q = Q @ R.to(Q.device)
 
         layer.mlp_shortcut_Q = torch.matmul(layer.mlp_shortcut_Q, Q.to(dtype=dtype))
 
@@ -237,6 +251,7 @@ def rotate_and_slice_parallel(
     dataloader: torch.utils.data.DataLoader[torch.Tensor],
     slicing_scheduler: SlicingScheduler,
     apply_mask: bool = True,
+    final_orientation: str = 'pca',
 ) -> None:
     """
     Rotate and slice a model, with interleaved slicing and PCA calculations
@@ -261,6 +276,9 @@ def rotate_and_slice_parallel(
     # rotate and slice embeddings
     _, Q = pca_calc(inps, ignore_masks)
     Q = Q.to(device=config.device)
+    if final_orientation == 'random':
+        R = random_orthogonal_upper_left(Q.shape[0], slicing_scheduler.get_embedding_dimensions()[0])
+        Q = Q @ R.to(Q.device)
     rotate_embeddings(model_adapter, Q)
     slice_embeddings(model_adapter, slicing_scheduler.get_embedding_dimensions())
 
@@ -300,6 +318,10 @@ def rotate_and_slice_parallel(
 
         inps = outputs
         _, Q = pca_calc(inps, ignore_masks)
+
+        if final_orientation == 'random':
+            R = random_orthogonal_upper_left(Q.shape[0], slicing_scheduler.get_mlp_output_dimension(idx))
+            Q = Q @ R.to(Q.device)
 
         # update shortcut matrix
         layer.attn_shortcut_Q = torch.matmul(layer.attn_shortcut_Q, Q.to(dtype=dtype))
@@ -453,6 +475,17 @@ def slice_rotated_model(model_adapter: ModelAdapter, slicing_scheduler: SlicingS
 
     if slicing_scheduler.do_slice_head:
         slice_head(model_adapter, slicing_scheduler.get_head_dimension())
+
+
+def random_orthogonal_upper_left(total_dim, upper_block_dim):
+    """
+    Create a square matrix where the upper left block is a random orthogonal matrix, and the remainder is the identity.
+    """
+    A = np.random.rand(upper_block_dim, upper_block_dim)
+    Q, _ = np.linalg.qr(A)
+    R = np.eye(total_dim)
+    R[:upper_block_dim, :upper_block_dim] = Q
+    return torch.from_numpy(R)
 
 
 @torch.no_grad()
