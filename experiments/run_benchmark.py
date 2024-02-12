@@ -21,7 +21,7 @@ def argparser() -> argparse.Namespace:
     parser.add_argument(
         "--model",
         type=str,
-        required=True,
+        default="facebook/opt-125m",
         help="Model to load",
     )
     path_group = parser.add_mutually_exclusive_group()

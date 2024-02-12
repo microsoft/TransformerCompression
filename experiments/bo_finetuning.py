@@ -43,7 +43,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model",
         type=str,
-        required=True,
+        default="facebook/opt-125m",
         help="Model to fine-tune",
     )
     path_group = parser.add_mutually_exclusive_group()
