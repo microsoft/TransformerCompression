@@ -72,6 +72,13 @@ def argparser() -> argparse.Namespace:
         help="Interval for rounding the weights (the best value may depend on your hardware)",
     )
     parser.add_argument(
+        "--final-orientation",
+        type=str,
+        default="random",
+        choices=["random", "pca"],
+        help="Final orientation of the sliced weights.",
+    )
+    parser.add_argument(
         "--ppl-eval-seqlen", type=int, default=2048, help="Sequence length for evaluating the perplexity."
     )
     parser.add_argument("--ppl-eval-batch-size", type=int, default=8, help="Batch size for evaluating the perplexity.")
@@ -225,7 +232,7 @@ def main() -> None:
     )
 
     scheduler = ConstSlicingScheduler(new_embedding_dimension)
-    rotate.rotate_and_slice(model_adapter, train_loader, scheduler)
+    rotate.rotate_and_slice(model_adapter, train_loader, scheduler, final_orientation=args.final_orientation)
 
     if args.save_dir:
         path = pathlib.Path(args.save_dir)
