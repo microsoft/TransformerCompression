@@ -141,7 +141,7 @@ def get_model_and_tokenizer(
 @do_not_initialize
 def load_sliced_model(
     model_name: str,
-    model_path: str,
+    sliced_model_path: str,
     *,
     token: str | None = None,
     lora_config: LoraConfig = None,
@@ -150,7 +150,9 @@ def load_sliced_model(
 ) -> tuple[ModelAdapter, PreTrainedTokenizerBase]:
     """Loads the sliced model and the tokenizer from the given path. If lora_config is supplied as an arg then this
     function will return a PEFT model (post-slicing finetuned model)."""
-    model_adapter, tokenizer = get_model_and_tokenizer(model_name, model_path, uninitialized=True, token=token)
+    model_adapter, tokenizer = get_model_and_tokenizer(
+        model_name, pathlib.Path(sliced_model_path).parents[0], uninitialized=True, token=token
+    )
     replace_layers(model_adapter)
     fuse_modules(model_adapter)
 
@@ -164,8 +166,7 @@ def load_sliced_model(
             dtype=torch.float16
         )
 
-    model_path = pathlib.Path(model_path)
-    config_path = model_path.with_suffix(".json")
+    config_path = pathlib.Path(sliced_model_path).with_suffix(".json")
 
     if config_path.exists():
         model_adapter.slicing_conf = SlicingConfig.from_json_string(config_path.read_text())
@@ -183,7 +184,7 @@ def load_sliced_model(
     if lora_config:
         model_adapter.model = get_peft_model(model_adapter.model, lora_config)
 
-    model_adapter.model.load_state_dict(torch.load(model_path, map_location="cpu"))
+    model_adapter.model.load_state_dict(torch.load(sliced_model_path, map_location="cpu"))
     model_adapter.model.eval()
 
     return model_adapter, tokenizer
