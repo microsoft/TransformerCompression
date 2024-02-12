@@ -87,7 +87,10 @@ def get_model_and_tokenizer(
         model_type = "pretrained"
 
     # sliced model is always a local model
-	local_model = False if model_path is None else True
+    if model_path is None:
+        local_model = False
+    else:
+        local_model = True
 
     if local_model:
         logging.info(f"Loading {model_type} {model_name} model from {model_path}")
@@ -111,7 +114,9 @@ def get_model_and_tokenizer(
             model = UninitializedLlamaForCausalLM(config)
             model = model.to(dtype=dtype)
         else:
-            model = LlamaForCausalLM.from_pretrained(model_path, torch_dtype=dtype, token=token, local_files_only=local_model)
+            model = LlamaForCausalLM.from_pretrained(
+                model_path, torch_dtype=dtype, token=token, local_files_only=local_model
+            )
             model.config.torch_dtype = dtype
         model_adapter = LlamaModelAdapter(model)
     elif model_name == "microsoft/phi-2":
@@ -120,7 +125,9 @@ def get_model_and_tokenizer(
             model = UninitializedPhiForCausalLM(config)
             model = model.to(dtype=dtype)
         else:
-            model = PhiForCausalLM.from_pretrained(model_path, torch_dtype=dtype, token=token, local_files_only=local_model)
+            model = PhiForCausalLM.from_pretrained(
+                model_path, torch_dtype=dtype, token=token, local_files_only=local_model
+            )
             model.config.torch_dtype = dtype
         model_adapter = Phi2ModelAdapter(model)
     else:

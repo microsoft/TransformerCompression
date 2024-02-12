@@ -1,8 +1,9 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
-from slicegpt import hf_utils
 import os
+
+from slicegpt import hf_utils
 
 
 def test_download_model() -> None:
@@ -24,7 +25,7 @@ def test_local_model() -> None:
     print("Loading model from local HF cache.")
     home_dir = os.getenv('USERPROFILE') or os.getenv('HOME')
     model_path = home_dir + "/.cache/huggingface/hub//models--facebook--opt-125m/snapshots/"
-    dirs = [model_path+"/"+d for d in os.listdir(model_path) if os.path.isdir(model_path+"/"+d)]
+    dirs = [model_path + "/" + d for d in os.listdir(model_path) if os.path.isdir(model_path + "/" + d)]
     snapshot_dir = sorted(dirs, key=lambda x: os.path.getctime(x), reverse=True)[0]
 
     local_model_adapter, local_tokenizer = hf_utils.get_model_and_tokenizer(model_name, model_path=snapshot_dir)
