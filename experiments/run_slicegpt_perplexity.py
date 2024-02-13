@@ -7,7 +7,6 @@ import os
 import pathlib
 
 import torch
-import wandb
 
 from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate, utils
 from slicegpt.config import config
@@ -15,7 +14,6 @@ from slicegpt.slicing_scheduler import ConstSlicingScheduler
 
 utils.configure_logging()
 
-os.environ["WANDB__SERVICE_WAIT"] = "300"
 
 
 def argparser() -> argparse.Namespace:
@@ -95,9 +93,6 @@ def argparser() -> argparse.Namespace:
 
     parser.add_argument('--hf-token', type=str, default=os.getenv('HF_TOKEN', None))
 
-    parser.add_argument('--wandb-project', type=str, default="slicegpt", help="wandb project name.")
-    parser.add_argument('--no-wandb', action="store_true", help="Disable wandb.")
-    parser.add_argument('--wandb-project', type=str, default="slicegpt")
     parser.add_argument(
         '--device',
         type=str,
@@ -134,14 +129,6 @@ def main() -> None:
 
     logging.info(f"PyTorch device: {config.device}")
     logging.info(f"Number of available cuda devices: {torch.cuda.device_count()}")
-
-    try:
-        wandb.init(project=args.wandb_project, config=args, mode='disabled' if args.no_wandb else None)
-    except wandb.UsageError as e:
-        # wandb.init will throw an error if the user is not logged in and the process is running in a non-shell
-        # environment, e.g. notebook, IDE, no-shell process, etc. In this case, we want to continue without wandb.
-        logging.info(f'Failed to initialize wandb: {e}, continuing without wandb')
-        wandb.init(project=args.wandb_project, mode='disabled')
 
     if args.sliced_model_path:
         # load the model from sliced_model_path to compute perplexity and skip rotation and slicing
