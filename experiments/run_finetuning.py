@@ -356,7 +356,7 @@ def main() -> None:
     utils.cleanup_memory()
 
     # compute perplexity after finetuning
-    dataset_ppl = gpu_utils.evaluate_ppl(lora_model, model.config.pad__token_id, ppl_eval_loader)
+    dataset_ppl = gpu_utils.evaluate_ppl(lora_model, model.config.pad_token_id, ppl_eval_loader)
     logging.info(f'PPL after finetuning: {dataset_ppl:.4f}')
     wandb.log({"post_finetune_ppl": dataset_ppl})
 
