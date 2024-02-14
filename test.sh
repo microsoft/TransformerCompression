@@ -8,4 +8,4 @@ set -e
 pre-commit run --all-files --hook-stage manual --verbose
 
 # Run tests
-python3 -m pytest
+python3 -m pytest -m "not (gpu or experiment)"

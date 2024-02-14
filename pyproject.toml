@@ -85,3 +85,9 @@ disable = [
 
 [tool.pylint.basic]
 docstring-min-length = 10
+
+[tool.pytest.ini_options]
+markers = [
+    "gpu: tests that require GPU to run",
+    "experiment: end to end experiments, slow to run",
+]
