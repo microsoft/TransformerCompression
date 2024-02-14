@@ -81,7 +81,11 @@ def prepare_test_dataloader(
         def __init__(self, ds, tokenizer, seqlen=2048):
             """Tokenize the entire dataset and reshape it into sequences of length seqlen."""
 
-            tokenized_ds = tokenizer("\n\n".join(ds['text']), return_tensors='pt')
+            tokenized_ds = tokenizer("\n\n".join(ds['text']),
+                                     padding="longest",
+                                     max_length=seqlen,
+                                     truncation=True,
+                                     return_tensors="pt")
             nsamples = tokenized_ds.input_ids.numel() // seqlen
 
             input_ids = tokenized_ds.input_ids[0, : nsamples * seqlen]
