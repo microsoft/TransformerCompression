@@ -97,7 +97,6 @@ def argparser() -> argparse.Namespace:
 
     parser.add_argument('--wandb-project', type=str, default="slicegpt", help="wandb project name.")
     parser.add_argument('--no-wandb', action="store_true", help="Disable wandb.")
-    parser.add_argument('--wandb-project', type=str, default="slicegpt")
     parser.add_argument(
         '--device',
         type=str,
