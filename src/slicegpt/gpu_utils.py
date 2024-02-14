@@ -7,7 +7,6 @@ import numpy as np
 import torch
 from accelerate import dispatch_model, infer_auto_device_map
 from accelerate.utils import get_balanced_memory
-from torch import Tensor
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -17,7 +16,7 @@ from .model_adapter import ModelAdapter
 
 
 @torch.no_grad()
-def evaluate_ppl(model_adapter: ModelAdapter, testloader: DataLoader[Tensor]) -> float:
+def evaluate_ppl(model_adapter: ModelAdapter, testloader: DataLoader[dict[str, torch.Tensor]]) -> float:
     """
     Evaluate the model's perplexity on the test set using batch processing.
     It is expected that model is already on the correct device.
