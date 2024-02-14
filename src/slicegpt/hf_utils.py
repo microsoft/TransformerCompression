@@ -86,11 +86,14 @@ def get_model_and_tokenizer(
     else:
         model_type = "pretrained"
 
-    # sliced model is always a local model
     if model_path is None:
         local_model = False
     else:
         local_model = True
+
+    if uninitialized:
+        # Sliced models always have a model_path. Check if config.json exists, then it's a local sliced model
+        local_model = pathlib.Path(f"{model_path}/config.json").exists()
 
     if local_model:
         logging.info(f"Loading {model_type} {model_name} model from {model_path}")
