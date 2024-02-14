@@ -129,7 +129,8 @@ def main() -> None:
     ]
 
     wandb.log(results)
-    logging.info(json.dumps(results, indent=2))
+    metric_vals = {task: round(result.get('acc_norm,none', result['acc,none']), 4) for task, result in results.items()}
+    logging.info(json.dumps(metric_vals, indent=4))
 
     def calculate_avg_accuracy(task_names, results):
         n_tasks = len(task_names)
