@@ -1,5 +1,5 @@
 """
-Tests that run and validate some the scripts in the experiments directory, not to be used on the build machine.
+Tests that run and validate some of the scripts in the experiments directory, not to be used on the build machine.
 Run with `pytest -m experiment` on a GPU VM.
 """
 import os
