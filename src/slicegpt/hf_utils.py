@@ -98,9 +98,14 @@ def get_model_and_tokenizer(
     if local_model:
         logging.info(f"Loading {model_type} {model_name} model from {model_path}")
     else:
-        # HF models can be downloaded using the name only, local models need to specify a path
-        model_path = model_name
-        logging.info(f"Loading {model_type} {model_name} from Hugging Face (cache)")
+        if uninitialized:
+            # HF sliced models can be loaded from local path, but config is used from HF
+            logging.info(f"Loading {model_type} {model_name} config from Hugging Face and weights from {model_path}")
+            model_path = model_name
+        else:
+            # HF models can be downloaded using the name only, local models need to specify a path
+            model_path = model_name
+            logging.info(f"Loading {model_type} {model_name} from Hugging Face (cache)")
 
     if model_name.startswith("facebook/opt"):
         if uninitialized:

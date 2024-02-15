@@ -2,9 +2,11 @@
 # Licensed under the MIT license.
 
 import argparse
+import glob
 import logging
 import os
 import pathlib
+import shutil
 
 import torch
 import wandb
@@ -144,7 +146,6 @@ def main() -> None:
 
     if args.sliced_model_path:
         # load the model from sliced_model_path to compute perplexity and skip rotation and slicing
-        logging.info(f"Loading sliced {args.model} model from {args.sliced_model_path}")
         model_adapter, tokenizer = hf_utils.load_sliced_model(
             args.model,
             args.sliced_model_path,
@@ -233,15 +234,24 @@ def main() -> None:
     rotate.rotate_and_slice(model_adapter, train_loader, scheduler, final_orientation=args.final_orientation)
 
     if args.save_dir:
-        path = pathlib.Path(args.save_dir)
-        path.mkdir(parents=True, exist_ok=True)
+        sliced_model_dir = pathlib.Path(args.save_dir)
+        sliced_model_dir.mkdir(parents=True, exist_ok=True)
 
-        model_path = path / f'{pathlib.Path(args.model).name}_{args.sparsity}.pt'
+        sliced_model_name = sliced_model_dir / f'{pathlib.Path(args.model).name}_{args.sparsity}.pt'
 
-        config_path = model_path.with_suffix('.json')
+        config_path = sliced_model_name.with_suffix('.json')
         config_path.write_text(model_adapter.slicing_conf.to_json_string())
 
-        torch.save(model.state_dict(), model_path)
+        # If slicing a local model, also save HF config files in sliced model dir
+        if args.model_path:
+            # copy all config files
+            for file in glob.glob(f"{args.model_path}/*config*.json"):
+                shutil.copy(file, sliced_model_dir)
+            # copy all tokenizer files
+            for file in glob.glob(f"{args.model_path}/*token*.json"):
+                shutil.copy(file, sliced_model_dir)
+
+        torch.save(model.state_dict(), sliced_model_name)
         logging.info(f"Saved sliced model to {args.save_dir}")
 
     reset_model_device()
