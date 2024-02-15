@@ -239,19 +239,25 @@ def main() -> None:
 
         sliced_model_name = sliced_model_dir / f'{pathlib.Path(args.model).name}_{args.sparsity}.pt'
 
+        # Save the sliced model
+        torch.save(model.state_dict(), sliced_model_name)
+
+        # Save the slicing config
         config_path = sliced_model_name.with_suffix('.json')
         config_path.write_text(model_adapter.slicing_conf.to_json_string())
 
         # If slicing a local model, also save HF config files in sliced model dir
         if args.model_path:
-            # copy all config files
-            for file in glob.glob(f"{args.model_path}/*config*.json"):
-                shutil.copy(file, sliced_model_dir)
-            # copy all tokenizer files
-            for file in glob.glob(f"{args.model_path}/*token*.json"):
-                shutil.copy(file, sliced_model_dir)
+            try:
+                # copy all config files
+                for file in glob.glob(f"{args.model_path}/*config*.json"):
+                    shutil.copy(file, sliced_model_dir)
+                # copy all tokenizer files
+                for file in glob.glob(f"{args.model_path}/*token*.json"):
+                    shutil.copy(file, sliced_model_dir)
+            except OSError as e:
+                logging.info(f'Failed to copy configs and tokenizer files: {e}')
 
-        torch.save(model.state_dict(), sliced_model_name)
         logging.info(f"Saved sliced model to {args.save_dir}")
 
     reset_model_device()
