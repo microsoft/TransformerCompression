@@ -2,7 +2,6 @@
 # Licensed under the MIT license.
 
 import argparse
-import glob
 import logging
 import os
 import pathlib
@@ -250,11 +249,11 @@ def main() -> None:
         if args.model_path:
             try:
                 # copy all config files
-                for file in glob.glob(f"{args.model_path}/*config*.json"):
-                    shutil.copy(file, sliced_model_dir)
+                for file in pathlib.Path(args.model_path).glob("*config*.json"):
+                    shutil.copy(str(file), sliced_model_dir)
                 # copy all tokenizer files
-                for file in glob.glob(f"{args.model_path}/*token*.json"):
-                    shutil.copy(file, sliced_model_dir)
+                for file in pathlib.Path(args.model_path).glob("*token*.json"):
+                    shutil.copy(str(file), sliced_model_dir)
             except OSError as e:
                 logging.info(f'Failed to copy configs and tokenizer files: {e}')
 
