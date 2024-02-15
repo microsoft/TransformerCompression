@@ -96,11 +96,14 @@ def get_model_and_tokenizer(
         local_model = pathlib.Path(f"{model_path}/config.json").exists()
 
     if local_model:
-        logging.info(f"Loading {model_type} {model_name} model from {model_path}")
+        if uninitialized:
+            logging.info(f"Loading {model_name} config and sliced model weights from {model_path}")
+        else:
+            logging.info(f"Loading {model_type} {model_name} model from {model_path}")
     else:
         if uninitialized:
             # HF sliced models can be loaded from local path, but config is used from HF
-            logging.info(f"Loading {model_type} {model_name} config from Hugging Face and weights from {model_path}")
+            logging.info(f"Loading {model_name} config from Hugging Face and sliced model weights from {model_path}")
             model_path = model_name
         else:
             # HF models can be downloaded using the name only, local models need to specify a path
