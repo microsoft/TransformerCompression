@@ -2,14 +2,17 @@
 # Licensed under the MIT license.
 
 import copy
+import inspect
 import json
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
-from typing import Any, final
+from typing import Any, ForwardRef, final
 
+import torch
 from torch import FloatTensor, Tensor
 from torch.nn import Linear, Module
+from transformers import PreTrainedTokenizerBase
 
 """
 To add support for a new model, you need to create a new adapter class that inherits from ModelAdapter, and a new 
@@ -102,6 +105,9 @@ class LayerAdapter(ABC):
         return (
             args[: self.hidden_states_args_position] + (hidden_states,) + args[self.hidden_states_args_position + 1 :]
         )
+
+
+ModelAdapter = ForwardRef('ModelAdapter')
 
 
 class ModelAdapter(ABC):
@@ -292,6 +298,75 @@ class ModelAdapter(ABC):
             compressed_layer.register_parameter('mlp_shortcut_Q', None)
         compressed_layer.register_parameter('attn_shortcut_Q', None)
         return compressed_layer
+
+    def post_init(self, tokenizer: PreTrainedTokenizerBase) -> None:
+        """
+        This method is called after the model is initialized and all the properties are set.
+        Override in subclasses to perform any additional setup.
+        """
+        pass
+
+    @classmethod
+    def from_pretrained(
+        cls,
+        model_name: str,
+        model_path: str,
+        *,
+        model_type: str = 'pretrained',
+        dtype: torch.dtype = torch.float16,
+        local_files_only: bool = False,
+        token: str | bool | None = None,
+    ) -> ModelAdapter:
+        """
+        Load the model from the given path and return the corresponding ModelAdapter instance.
+        `model_type` can be 'pretrained' or 'uninitialized'.
+        """
+
+        def find_recursively(adapter_cls: type[ModelAdapter]) -> ModelAdapter | None:
+            """
+            Recursively search for a subclass that can handle the model.
+            """
+            # depth first search to find the most specific subclass that can handle the model
+            for subclass in adapter_cls.__subclasses__():
+                candidate = find_recursively(subclass)
+                if candidate is not None:
+                    return candidate
+
+            if inspect.isabstract(adapter_cls):
+                return None
+
+            return adapter_cls._from_pretrained(
+                model_name,
+                model_path=model_path,
+                model_type=model_type,
+                dtype=dtype,
+                local_files_only=local_files_only,
+                token=token,
+            )
+
+        adapter = find_recursively(cls)
+        if adapter is not None:
+            return adapter
+
+        raise NotImplementedError(f"{model_path} is neither a Hugging Face model nor a supported local model.")
+
+    @classmethod
+    @abstractmethod
+    def _from_pretrained(
+        cls,
+        model_name: str,
+        model_path: str,
+        *,
+        model_type: str = 'pretrained',
+        dtype: torch.dtype = torch.float16,
+        local_files_only: bool = False,
+        token: str | bool | None = None,
+    ) -> ModelAdapter | None:
+        """
+        Load the model from the given path and return a ModelAdapter instance.
+        Return None if the model_path is not supported.
+        """
+        raise NotImplementedError
 
 
 @dataclass
