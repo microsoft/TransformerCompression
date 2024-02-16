@@ -74,7 +74,11 @@ def do_not_initialize(func):
 
 @do_not_initialize
 def get_model_and_tokenizer(
-    model_path: str, uninitialized: bool = False, dtype: torch.dtype = torch.float16, token: str | bool | None = None
+    model_name: str,
+    model_path: str | None = None,
+    uninitialized: bool = False,
+    dtype: torch.dtype = torch.float16,
+    token: str | bool | None = None,
 ) -> tuple[ModelAdapter, PreTrainedTokenizerBase]:
     """Loads the model and the tokenizer from the given path."""
     if uninitialized:
@@ -82,45 +86,58 @@ def get_model_and_tokenizer(
     else:
         model_type = "pretrained"
 
-    tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True, token=token)
+    # sliced model is always a local model
+    if model_path is None:
+        local_model = False
+    else:
+        local_model = True
 
-    logging.info(f"Loading {model_type} {model_path} model")
+    if local_model:
+        logging.info(f"Loading {model_type} {model_name} model from {model_path}")
+    else:
+        # HF models can be downloaded using the name only, local models need to specify a path
+        model_path = model_name
+        logging.info(f"Loading {model_type} {model_name} from Hugging Face (cache)")
 
-    if "facebook/opt" in model_path:
+    if model_name.startswith("facebook/opt"):
         if uninitialized:
-            config = OPTConfig.from_pretrained(model_path)
+            config = OPTConfig.from_pretrained(model_path, torch_dtype=dtype)
             model = UninitializedOPTForCausalLM(config)
             model = model.to(dtype=dtype)
         else:
-            model = OPTForCausalLM.from_pretrained(model_path, torch_dtype=dtype)
+            model = OPTForCausalLM.from_pretrained(model_path, torch_dtype=dtype, local_files_only=local_model)
             model.config.torch_dtype = dtype
         model_adapter = OPTModelAdapter(model)
-    elif "meta-llama" in model_path:
+    elif model_name.startswith("meta-llama/Llama-2"):
         if uninitialized:
-            config = LlamaConfig.from_pretrained(model_path, token=token)
+            config = LlamaConfig.from_pretrained(model_path, torch_dtype=dtype, token=token)
             model = UninitializedLlamaForCausalLM(config)
             model = model.to(dtype=dtype)
         else:
-            model = LlamaForCausalLM.from_pretrained(model_path, torch_dtype=dtype, token=token)
+            model = LlamaForCausalLM.from_pretrained(
+                model_path, torch_dtype=dtype, token=token, local_files_only=local_model
+            )
             model.config.torch_dtype = dtype
-
-        tokenizer.pad_token = tokenizer.eos_token  # Llama-2 models don't have a pad token by default
-        model.config.pad_token_id = tokenizer.pad_token_id
         model_adapter = LlamaModelAdapter(model)
-    elif "microsoft/phi-2" in model_path:
+    elif model_name == "microsoft/phi-2":
         if uninitialized:
-            config = PhiConfig.from_pretrained(model_path, token=token)
+            config = PhiConfig.from_pretrained(model_path, torch_dtype=dtype, token=token)
             model = UninitializedPhiForCausalLM(config)
             model = model.to(dtype=dtype)
         else:
-            model = PhiForCausalLM.from_pretrained(model_path, torch_dtype=dtype, token=token)
+            model = PhiForCausalLM.from_pretrained(
+                model_path, torch_dtype=dtype, token=token, local_files_only=local_model
+            )
             model.config.torch_dtype = dtype
-
-        tokenizer.pad_token = tokenizer.eos_token  # Phi-2 models don't have a pad token by default
-        model.config.pad_token_id = tokenizer.pad_token_id
         model_adapter = Phi2ModelAdapter(model)
     else:
-        raise NotImplementedError
+        raise NotImplementedError(f"{model_name} is neither a Hugging Face model nor a supported local model")
+
+    tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True, token=token)
+    # Phi-2 and Llama-2 models don't have a pad token by default
+    if model_name.startswith("meta-llama/Llama-2") or model_name.startswith("microsoft/phi"):
+        tokenizer.pad_token = tokenizer.eos_token
+        model.config.pad_token_id = tokenizer.pad_token_id
 
     model.seqlen = model.config.max_position_embeddings
     model.eval()  # This switches off dropout.
@@ -134,7 +151,7 @@ def get_model_and_tokenizer(
 @do_not_initialize
 def load_sliced_model(
     model_name: str,
-    model_path: str,
+    sliced_model_path: str,
     *,
     token: str | None = None,
     lora_config: LoraConfig = None,
@@ -143,7 +160,9 @@ def load_sliced_model(
 ) -> tuple[ModelAdapter, PreTrainedTokenizerBase]:
     """Loads the sliced model and the tokenizer from the given path. If lora_config is supplied as an arg then this
     function will return a PEFT model (post-slicing finetuned model)."""
-    model_adapter, tokenizer = get_model_and_tokenizer(model_name, uninitialized=True, token=token)
+    model_adapter, tokenizer = get_model_and_tokenizer(
+        model_name, pathlib.Path(sliced_model_path).parents[0], uninitialized=True, token=token
+    )
     replace_layers(model_adapter)
     fuse_modules(model_adapter)
 
@@ -157,8 +176,7 @@ def load_sliced_model(
             dtype=torch.float16
         )
 
-    model_path = pathlib.Path(model_path)
-    config_path = model_path.with_suffix(".json")
+    config_path = pathlib.Path(sliced_model_path).with_suffix(".json")
 
     if config_path.exists():
         model_adapter.slicing_conf = SlicingConfig.from_json_string(config_path.read_text())
@@ -176,7 +194,7 @@ def load_sliced_model(
     if lora_config:
         model_adapter.model = get_peft_model(model_adapter.model, lora_config)
 
-    model_adapter.model.load_state_dict(torch.load(model_path, map_location="cpu"))
+    model_adapter.model.load_state_dict(torch.load(sliced_model_path, map_location="cpu"))
     model_adapter.model.eval()
 
     return model_adapter, tokenizer

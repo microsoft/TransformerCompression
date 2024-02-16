@@ -53,8 +53,10 @@ The following models from Hugging Face hub are currently supported
 
 ## Extending support to a new model type
 
-The model you wish to support must be available in Hugging Face. To add SliceGPT support for a new model, 
-one needs to implement a new model adapter before using it to slice a new model.
+The model you wish to support must be in Hugging Face Hub format. The model files can be downloaded from 
+Hugging Face Hub by supplying `--model` argument, or accessed from local storage by using the `--model` and 
+`--model-path` argument. To add SliceGPT support for a new model, one needs to implement a new model adapter 
+and update `hf_utils.get_model_and_tokenizer` before slicing the new model.
 
 ### Implementing a new model adapter
 - Implement the [ModelAdapter](./src/slicegpt/model_adapter.py) interface for the new model. The ModelAdapter class tells SliceGPT 
