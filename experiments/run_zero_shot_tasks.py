@@ -28,30 +28,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--model",
         type=str,
-        help="OPT model to load; pass `facebook/opt-125m`.",
-        choices=[
-            # OPT models
-            "facebook/opt-125m",
-            "facebook/opt-1.3b",
-            "facebook/opt-2.7b",
-            "facebook/opt-6.7b",
-            "facebook/opt-13b",
-            "facebook/opt-30b",
-            "facebook/opt-66b",
-            # LLAMA 2 Models
-            'meta-llama/Llama-2-7b-hf',
-            'meta-llama/Llama-2-13b-hf',
-            'meta-llama/Llama-2-70b-hf',
-            # Phi-2 model
-            'microsoft/phi-2',
-        ],
         default="facebook/opt-125m",
+        help="Model to load",
     )
-    parser.add_argument(
-        "--load-model-path",
+    path_group = parser.add_mutually_exclusive_group()
+    path_group.add_argument(
+        "--model-path",
         type=str,
         default=None,
-        help="Path to load the sliced model from.",
+        help="Path to load the model and tokenizer from (required for local models, not required for HF models)",
+    )
+    path_group.add_argument(
+        "--sliced-model-path",
+        type=str,
+        help="Path to load the model to fine-tune (sliced) and tokenizer from",
+        default=None,
     )
     parser.add_argument(
         "--sparsity", type=float, default=0.0, help="A measure of how much slicing is applied (in the range [0, 1))"
@@ -71,6 +62,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument('--wandb-project', type=str, default="slicegpt-lm-eval", help="wandb project name.")
     parser.add_argument('--no-wandb', action="store_true", help="Disable wandb.")
+    parser.add_argument('--wandb-project', type=str, default="slicegpt-zeroshot")
     parser.add_argument(
         '--tasks',
         nargs='+',
@@ -98,12 +90,12 @@ def main() -> None:
         logging.info(f'Failed to initialize wandb: {e}, continuing without wandb')
         wandb.init(project=args.wandb_project, mode='disabled')
 
-    if args.load_model_path:
+    if args.sliced_model_path:
         # load the sliced model
-        logging.info(f"Loading sliced {args.model} model from {args.load_model_path} with sparsity {args.sparsity}")
+        logging.info(f"Loading sliced {args.model} model from {args.sliced_model_path} with sparsity {args.sparsity}")
         model_adapter, tokenizer = hf_utils.load_sliced_model(
             args.model,
-            args.load_model_path,
+            args.sliced_model_path,
             sparsity=args.sparsity,
             token=args.hf_token,
             round_interval=args.round_interval,
@@ -111,7 +103,7 @@ def main() -> None:
     else:
         # load the original model
         logging.info(f"Loading {args.model} model")
-        model_adapter, tokenizer = hf_utils.get_model_and_tokenizer(args.model, token=args.hf_token)
+        model_adapter, tokenizer = hf_utils.get_model_and_tokenizer(args.model, args.model_path, token=args.hf_token)
 
     # the lm eval harness ties the weights, but this should not be done for sliced models unless the lm_head was sliced
     model_adapter.model.tie_weights = lambda: None
@@ -137,7 +129,8 @@ def main() -> None:
     ]
 
     wandb.log(results)
-    logging.info(json.dumps(results, indent=2))
+    metric_vals = {task: round(result.get('acc_norm,none', result['acc,none']), 4) for task, result in results.items()}
+    logging.info(json.dumps(metric_vals, indent=4))
 
     def calculate_avg_accuracy(task_names, results):
         n_tasks = len(task_names)

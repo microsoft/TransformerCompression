@@ -43,27 +43,21 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model",
         type=str,
+        default="facebook/opt-125m",
         help="Model to fine-tune",
-        choices=[
-            # OPT models
-            "facebook/opt-125m",
-            "facebook/opt-1.3b",
-            "facebook/opt-2.7b",
-            "facebook/opt-6.7b",
-            "facebook/opt-13b",
-            "facebook/opt-30b",
-            "facebook/opt-66b",
-            # LLAMA 2 Models
-            'meta-llama/Llama-2-7b-hf',
-            'meta-llama/Llama-2-13b-hf',
-            'meta-llama/Llama-2-70b-hf',
-            # Phi-2 model
-            'microsoft/phi-2',
-        ],
-        required=True,
     )
-    parser.add_argument(
-        "--model-path", type=str, help="Path to the model to fine-tune (sliced or dense)", required=True
+    path_group = parser.add_mutually_exclusive_group()
+    path_group.add_argument(
+        "--model-path",
+        type=str,
+        default=None,
+        help="Path to load the model and tokenizer from (required for local models, not required for HF models)",
+    )
+    path_group.add_argument(
+        "--sliced-model-path",
+        type=str,
+        help="Path to load the model to fine-tune (sliced) and tokenizer from",
+        default=None,
     )
     parser.add_argument(
         "--sparsity", type=float, required=True, help="A measure of how much slicing is applied (in the range [0, 1))"
@@ -118,7 +112,10 @@ if __name__ == "__main__":
 
     # Add model-specific config options such as model type, model path and layers to fine-tune
     config_space['model'] = args.model
-    config_space['load-model-path'] = args.model_path
+    if args.model_path:
+        config_space['model-path'] = args.model_path
+    if args.sliced_model_path:
+        config_space['sliced-model-path'] = args.sliced_model_path
     config_space['sparsity'] = args.sparsity
     config_space['lora-target-option'] = choice(list(lora_target_map(args.model).keys()))
 
