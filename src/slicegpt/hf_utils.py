@@ -86,18 +86,29 @@ def get_model_and_tokenizer(
     else:
         model_type = "pretrained"
 
-    # sliced model is always a local model
     if model_path is None:
         local_model = False
     else:
         local_model = True
 
+    if uninitialized:
+        # Sliced models always have a model_path. Check if config.json exists, then it's a local sliced model
+        local_model = pathlib.Path(f"{model_path}/config.json").exists()
+
     if local_model:
-        logging.info(f"Loading {model_type} {model_name} model from {model_path}")
+        if uninitialized:
+            logging.info(f"Loading {model_name} config and sliced model weights from {model_path}")
+        else:
+            logging.info(f"Loading {model_type} {model_name} model from {model_path}")
     else:
-        # HF models can be downloaded using the name only, local models need to specify a path
-        model_path = model_name
-        logging.info(f"Loading {model_type} {model_name} from Hugging Face (cache)")
+        if uninitialized:
+            # HF sliced models can be loaded from local path, but config is used from HF
+            logging.info(f"Loading {model_name} config from Hugging Face and sliced model weights from {model_path}")
+            model_path = model_name
+        else:
+            # HF models can be downloaded using the name only, local models need to specify a path
+            model_path = model_name
+            logging.info(f"Loading {model_type} {model_name} from Hugging Face (cache)")
 
     if model_name.startswith("facebook/opt"):
         if uninitialized:
