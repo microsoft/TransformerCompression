@@ -105,7 +105,7 @@ def test_opt_125m():
         model='facebook/opt-125m',
         sparsity=0.2,
         expected_ppl=34.53,
-        expected_parameters=138_281_664,
+        expected_parameters=147_250_880,
     )
 
 
@@ -119,5 +119,5 @@ def test_phi_2():
         model='microsoft/phi-2',
         sparsity=0.2,
         expected_ppl=11.2691,
-        expected_parameters=2_256_505_856,
+        expected_parameters=2_391_772_160,
     )

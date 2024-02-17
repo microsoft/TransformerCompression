@@ -177,14 +177,14 @@ def load_sliced_model(
     replace_layers(model_adapter)
     fuse_modules(model_adapter)
 
+    hidden_size = model_adapter.hidden_size
     for layer_adapter in model_adapter.get_layers():
         if not model_adapter.parallel_blocks:
-            layer_adapter.layer.mlp_shortcut_Q = torch.zeros(model_adapter.hidden_size, model_adapter.hidden_size).to(
-                dtype=torch.float16
+            layer_adapter.layer.mlp_shortcut_Q = torch.nn.Parameter(
+                torch.zeros(hidden_size, hidden_size).to(dtype=torch.float16)
             )
-
-        layer_adapter.layer.attn_shortcut_Q = torch.zeros(model_adapter.hidden_size, model_adapter.hidden_size).to(
-            dtype=torch.float16
+        layer_adapter.layer.attn_shortcut_Q = torch.nn.Parameter(
+            torch.zeros(hidden_size, hidden_size).to(dtype=torch.float16)
         )
 
     config_path = pathlib.Path(sliced_model_path).with_suffix(".json")
@@ -194,7 +194,7 @@ def load_sliced_model(
 
     if model_adapter.slicing_conf is None:
         # assume the model was sliced with the const sparsity specified in the arguments to this method
-        new_embedding_dimension = int((1 - sparsity) * model_adapter.hidden_size)
+        new_embedding_dimension = int((1 - sparsity) * hidden_size)
         new_embedding_dimension -= new_embedding_dimension % round_interval
         config = SlicingConfig()
         config.const_dimension = new_embedding_dimension
