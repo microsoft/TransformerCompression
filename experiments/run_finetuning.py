@@ -266,7 +266,7 @@ def main() -> None:
         model_adapter.model.to(config.device)
 
     # compute perplexity before finetuning
-    dataset_ppl = gpu_utils.evaluate_ppl(model_adapter, ppl_eval_loader)
+    dataset_ppl = gpu_utils.evaluate_ppl(model_adapter.model, model_adapter.model.config.pad_token_id, ppl_eval_loader)
     logging.info(f'PPL before finetuning: {dataset_ppl:.4f}')
     wandb.log({"pre_finetune_ppl": dataset_ppl})
 
@@ -302,11 +302,11 @@ def main() -> None:
     )
 
     model = model_adapter.model
-    model = get_peft_model(model, lora_config)
-    model.print_trainable_parameters()
+    lora_model = get_peft_model(model, lora_config)
+    lora_model.print_trainable_parameters()
 
     # create optimizer and scheduler
-    optimizer, lr_scheduler = get_optimizer_and_scheduler(model, finetune_ds["train"], args)
+    optimizer, lr_scheduler = get_optimizer_and_scheduler(lora_model, finetune_ds["train"], args)
 
     training_args = TrainingArguments(
         output_dir=args.st_checkpoint_dir,  # output directory
@@ -326,7 +326,7 @@ def main() -> None:
     )
 
     trainer = CustomTrainer(
-        model=model,
+        model=lora_model,
         tokenizer=tokenizer,
         train_loader=finetune_train_loader,
         test_loader=finetune_test_loader,
@@ -336,9 +336,9 @@ def main() -> None:
     )
 
     # required to enable gradient_checkpointing
-    model.enable_input_require_grads()
+    lora_model.enable_input_require_grads()
 
-    model.train()
+    lora_model.train()
     trainer.train()
 
     if args.save_dir:
@@ -348,7 +348,7 @@ def main() -> None:
         model_file = os.path.join(args.save_dir, os.path.basename(args.model) + "_" + str(args.sparsity) + ".pt")
 
         # save peft model as a standard pt model
-        merged_model = model.merge_and_unload()
+        merged_model = lora_model.merge_and_unload()
 
         torch.save(merged_model.state_dict(), model_file)
         logging.info(f"Saved sliced and finetuned model to {args.save_dir}")
@@ -356,7 +356,7 @@ def main() -> None:
     utils.cleanup_memory()
 
     # compute perplexity after finetuning
-    dataset_ppl = gpu_utils.evaluate_ppl(model, ppl_eval_loader)
+    dataset_ppl = gpu_utils.evaluate_ppl(lora_model, model.config.pad_token_id, ppl_eval_loader)
     logging.info(f'PPL after finetuning: {dataset_ppl:.4f}')
     wandb.log({"post_finetune_ppl": dataset_ppl})
 

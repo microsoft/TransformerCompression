@@ -16,7 +16,9 @@ from .model_adapter import ModelAdapter
 
 
 @torch.no_grad()
-def evaluate_ppl(model_adapter: ModelAdapter, testloader: DataLoader[dict[str, torch.Tensor]]) -> float:
+def evaluate_ppl(
+    model: torch.nn.Module, pad_token_id: int | None, testloader: DataLoader[dict[str, torch.Tensor]]
+) -> float:
     """
     Evaluate the model's perplexity on the test set using batch processing.
     It is expected that model is already on the correct device.
@@ -25,9 +27,12 @@ def evaluate_ppl(model_adapter: ModelAdapter, testloader: DataLoader[dict[str, t
 
     start_time = time.time()
 
-    model_adapter.model.eval()
+    model.eval()
 
-    loss_fn = torch.nn.CrossEntropyLoss(reduction="none", ignore_index=model_adapter.model.config.pad_token_id)
+    if pad_token_id:
+        loss_fn = torch.nn.CrossEntropyLoss(reduction="none", ignore_index=pad_token_id)
+    else:
+        loss_fn = torch.nn.CrossEntropyLoss(reduction="none")
 
     nlls = []
 
@@ -35,7 +40,7 @@ def evaluate_ppl(model_adapter: ModelAdapter, testloader: DataLoader[dict[str, t
     for batch in testloader:
         logging.debug(f"Evaluating batch {len(nlls)}")
         batch = utils.map_tensors(batch, config.device)
-        logits = model_adapter.model(**batch).logits
+        logits = model(**batch).logits
 
         # shift outputs and labels autoregressively.
         logits = logits[:, :-1, :]

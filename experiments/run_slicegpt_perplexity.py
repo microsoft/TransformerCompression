@@ -185,7 +185,7 @@ def main() -> None:
     # evaluate perplexity and exit if sliced model is loaded or if ppl_only is set
     if args.sliced_model_path or args.ppl_only:
         reset_model_device()
-        dataset_ppl = gpu_utils.evaluate_ppl(model_adapter, test_loader)
+        dataset_ppl = gpu_utils.evaluate_ppl(model, model.config.pad_token_id, test_loader)
         logging.info(f'Loaded model perplexity: {dataset_ppl}')
         wandb.log({"original_ppl": dataset_ppl})
         return
@@ -193,7 +193,7 @@ def main() -> None:
     # original ppl
     if args.eval_baseline:
         reset_model_device()
-        dataset_ppl = gpu_utils.evaluate_ppl(model_adapter, test_loader)
+        dataset_ppl = gpu_utils.evaluate_ppl(model, model.config.pad_token_id, test_loader)
         logging.info(f'Original ppl: {dataset_ppl:.4f}')
         wandb.log({"original_ppl": dataset_ppl})
         model.cpu()
@@ -209,7 +209,7 @@ def main() -> None:
     if args.eval_fused_model and not args.distribute_model:
         model.to(config.device)
 
-        dataset_ppl = gpu_utils.evaluate_ppl(model_adapter, test_loader)
+        dataset_ppl = gpu_utils.evaluate_ppl(model, model.config.pad_token_id, test_loader)
         logging.info(f'Post-fusion: {dataset_ppl:.4f}')
         wandb.log({"post_fusion_ppl": dataset_ppl})
 
@@ -260,7 +260,7 @@ def main() -> None:
         logging.info(f"Saved sliced model to {args.save_dir}")
 
     reset_model_device()
-    dataset_ppl = gpu_utils.evaluate_ppl(model_adapter, test_loader)
+    dataset_ppl = gpu_utils.evaluate_ppl(model, model.config.pad_token_id, test_loader)
     logging.info(f'After rotating and slicing {dataset_ppl:.4f}')
     wandb.log({"sliced_ppl": dataset_ppl})
 
