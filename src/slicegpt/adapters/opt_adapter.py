@@ -239,7 +239,6 @@ class OPTModelAdapter(ModelAdapter):
         model_name: str,
         model_path: str,
         *,
-        model_type: str = 'pretrained',
         dtype: torch.dtype = torch.float16,
         local_files_only: bool = False,
         token: str | bool | None = None,
@@ -247,21 +246,31 @@ class OPTModelAdapter(ModelAdapter):
         if not model_name.startswith("facebook/opt"):
             return None
 
-        match model_type:
-            case 'pretrained':
-                model = OPTForCausalLM.from_pretrained(model_path, torch_dtype=dtype, local_files_only=local_files_only)
-                model.config.torch_dtype = dtype
-            case 'uninitialized':
+        model = OPTForCausalLM.from_pretrained(model_path, torch_dtype=dtype, local_files_only=local_files_only)
+        model.config.torch_dtype = dtype
 
-                class UninitializedOPTForCausalLM(OPTForCausalLM):
-                    def _init_weights(self, _) -> None:
-                        # Prevent weight initialization
-                        pass
+        return OPTModelAdapter(model)
 
-                config = OPTConfig.from_pretrained(model_path, torch_dtype=dtype)
-                model = UninitializedOPTForCausalLM(config)
-                model = model.to(dtype=dtype)
-            case _:
-                raise ValueError(f"Unknown model type: {model_type}")
+    @classmethod
+    def _from_uninitialised(
+        cls,
+        model_name: str,
+        model_path: str,
+        *,
+        dtype: torch.dtype = torch.float16,
+        local_files_only: bool = False,
+        token: str | bool | None = None,
+    ) -> ModelAdapter | None:
+        if not model_name.startswith("facebook/opt"):
+            return None
+
+        class UninitializedOPTForCausalLM(OPTForCausalLM):
+            def _init_weights(self, _) -> None:
+                # Prevent weight initialization
+                pass
+
+        config = OPTConfig.from_pretrained(model_path, torch_dtype=dtype)
+        model = UninitializedOPTForCausalLM(config)
+        model = model.to(dtype=dtype)
 
         return OPTModelAdapter(model)

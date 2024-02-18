@@ -87,7 +87,7 @@ def get_model_and_tokenizer(
         model_path if local_model else 'Hugging Face',
     )
 
-    model_adapter = ModelAdapter.from_pretrained(
+    model_adapter = ModelAdapter.from_model(
         model_name,
         model_path=model_path,
         model_type=model_type,

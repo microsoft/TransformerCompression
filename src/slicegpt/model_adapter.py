@@ -307,7 +307,7 @@ class ModelAdapter(ABC):
         pass
 
     @classmethod
-    def from_pretrained(
+    def from_model(
         cls,
         model_name: str,
         model_path: str,
@@ -335,7 +335,7 @@ class ModelAdapter(ABC):
             if inspect.isabstract(adapter_cls):
                 return None
 
-            return adapter_cls._from_pretrained(
+            return adapter_cls._from_model(
                 model_name,
                 model_path=model_path,
                 model_type=model_type,
@@ -351,8 +351,7 @@ class ModelAdapter(ABC):
         raise NotImplementedError(f"{model_path} is neither a Hugging Face model nor a supported local model.")
 
     @classmethod
-    @abstractmethod
-    def _from_pretrained(
+    def _from_model(
         cls,
         model_name: str,
         model_path: str,
@@ -362,8 +361,57 @@ class ModelAdapter(ABC):
         local_files_only: bool = False,
         token: str | bool | None = None,
     ) -> ModelAdapter | None:
+        match model_type:
+            case 'pretrained':
+                return cls._from_pretrained(
+                    model_name,
+                    model_path=model_path,
+                    dtype=dtype,
+                    local_files_only=local_files_only,
+                    token=token,
+                )
+
+            case 'uninitialized':
+                return cls._from_uninitialised(
+                    model_name,
+                    model_path=model_path,
+                    dtype=dtype,
+                    local_files_only=local_files_only,
+                    token=token,
+                )
+            case _:
+                raise ValueError(f"Unknown model type: {model_type}")
+
+    @classmethod
+    @abstractmethod
+    def _from_pretrained(
+        cls,
+        model_name: str,
+        model_path: str,
+        *,
+        dtype: torch.dtype = torch.float16,
+        local_files_only: bool = False,
+        token: str | bool | None = None,
+    ) -> ModelAdapter | None:
         """
-        Load the model from the given path and return a ModelAdapter instance.
+        Load the pretrained model from the given path and return a ModelAdapter instance.
+        Return None if the model_path is not supported.
+        """
+        raise NotImplementedError
+
+    @classmethod
+    @abstractmethod
+    def _from_uninitialised(
+        cls,
+        model_name: str,
+        model_path: str,
+        *,
+        dtype: torch.dtype = torch.float16,
+        local_files_only: bool = False,
+        token: str | bool | None = None,
+    ) -> ModelAdapter | None:
+        """
+        Create an uninitialised model from the given path and return a ModelAdapter instance.
         Return None if the model_path is not supported.
         """
         raise NotImplementedError
