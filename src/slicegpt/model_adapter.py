@@ -410,7 +410,7 @@ class ModelAdapter(ABC):
     ) -> ModelAdapter | None:
         """
         Create an uninitialised model from the given path and return a ModelAdapter instance.
-        Return None if the model_path is not supported.
+        Return None if the model_name is not supported.
         """
         raise NotImplementedError
 
