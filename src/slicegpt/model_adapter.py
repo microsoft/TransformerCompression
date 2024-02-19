@@ -289,8 +289,8 @@ class ModelAdapter(ABC):
         """
         compressed_layer = self.convert_layer_to_compressed(layer, layer_idx)
         if not self.parallel_blocks:
-            compressed_layer.register_buffer('mlp_shortcut_Q', None)
-        compressed_layer.register_buffer('attn_shortcut_Q', None)
+            compressed_layer.register_parameter('mlp_shortcut_Q', None)
+        compressed_layer.register_parameter('attn_shortcut_Q', None)
         return compressed_layer
 
 
