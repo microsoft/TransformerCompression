@@ -1,5 +1,6 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
+from __future__ import annotations
 
 import copy
 import inspect
@@ -7,7 +8,7 @@ import json
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
-from typing import Any, ForwardRef, final
+from typing import Any, final
 
 import torch
 from torch import FloatTensor, Tensor
@@ -105,9 +106,6 @@ class LayerAdapter(ABC):
         return (
             args[: self.hidden_states_args_position] + (hidden_states,) + args[self.hidden_states_args_position + 1 :]
         )
-
-
-ModelAdapter = ForwardRef('ModelAdapter')
 
 
 class ModelAdapter(ABC):
