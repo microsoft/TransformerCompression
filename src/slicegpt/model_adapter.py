@@ -316,8 +316,20 @@ class ModelAdapter(ABC):
         token: str | bool | None = None,
     ) -> ModelAdapter:
         """
-        Load the model from the given path and return the corresponding ModelAdapter instance.
-        `model_type` can be 'pretrained' or 'uninitialized'.
+        Create the model based on the given name path and return the corresponding ModelAdapter instance.
+        Raise NotImplementedError if the model is not supported.
+        Note: for this method to work the corresponding ModelAdapter subclass must be imported.
+
+        Args:
+            model_name: The name of the model, e.g. 'microsoft/phi-2'.
+            model_path: The path to the model.
+            model_type: The type of the model to create. Can be 'pretrained' or 'uninitialized'.
+            dtype: The torch dtype to create the model with.
+            local_files_only: Whether to only load local files (no attempt to download).
+            token: The token to use for authentication.
+
+        Returns:
+            The corresponding ModelAdapter instance.
         """
 
         def find_recursively(adapter_cls: type[ModelAdapter]) -> ModelAdapter | None:
@@ -370,7 +382,7 @@ class ModelAdapter(ABC):
                 )
 
             case 'uninitialized':
-                return cls._from_uninitialised(
+                return cls._from_uninitialized(
                     model_name,
                     model_path=model_path,
                     dtype=dtype,
@@ -393,13 +405,14 @@ class ModelAdapter(ABC):
     ) -> ModelAdapter | None:
         """
         Load the pretrained model from the given path and return a ModelAdapter instance.
-        Return None if the model_path is not supported.
+        Return None if the model_name is not supported.
+        See `from_model` for more details.
         """
         raise NotImplementedError
 
     @classmethod
     @abstractmethod
-    def _from_uninitialised(
+    def _from_uninitialized(
         cls,
         model_name: str,
         model_path: str,
@@ -409,8 +422,9 @@ class ModelAdapter(ABC):
         token: str | bool | None = None,
     ) -> ModelAdapter | None:
         """
-        Create an uninitialised model from the given path and return a ModelAdapter instance.
+        Create an uninitialized model from the given path and return a ModelAdapter instance.
         Return None if the model_name is not supported.
+        See `from_model` for more details.
         """
         raise NotImplementedError
 

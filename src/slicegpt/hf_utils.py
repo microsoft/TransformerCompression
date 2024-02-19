@@ -54,6 +54,7 @@ def get_model_and_tokenizer(
     Load the model and the tokenizer from the given path.
     Set uninitialized to True when loading a pre-rotated and sliced model; in this case no weights are loaded
     in this method.
+    The corresponding model adapter class must be imported before calling this method.
     Scenarios:
     - Rotate & slice HF model: model_name = name, model_path = empty, uninitialized = False
         -> Obtain the model config and weights from HF through path = name.
@@ -119,8 +120,11 @@ def load_sliced_model(
     sparsity: float | None = None,
     round_interval: int | None = 1,
 ) -> tuple[ModelAdapter, PreTrainedTokenizerBase]:
-    """Loads the sliced model and the tokenizer from the given path. If lora_config is supplied as an arg then this
-    function will return a PEFT model (post-slicing finetuned model)."""
+    """
+    Load the sliced model and the tokenizer from the given path. If lora_config is supplied as an arg then this
+    function will return a PEFT model (post-slicing finetuned model).
+    The corresponding model adapter class must be imported before calling this method.
+    """
     model_adapter, tokenizer = get_model_and_tokenizer(
         model_name,
         model_path=str(pathlib.Path(sliced_model_path).parent),

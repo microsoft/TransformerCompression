@@ -238,7 +238,7 @@ class LlamaModelAdapter(ModelAdapter):
         return LlamaModelAdapter(model)
 
     @classmethod
-    def _from_uninitialised(
+    def _from_uninitialized(
         cls,
         model_name: str,
         model_path: str,

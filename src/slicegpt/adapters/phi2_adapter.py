@@ -235,7 +235,7 @@ class Phi2ModelAdapter(ModelAdapter):
         return Phi2ModelAdapter(model)
 
     @classmethod
-    def _from_uninitialised(
+    def _from_uninitialized(
         cls,
         model_name: str,
         model_path: str,
