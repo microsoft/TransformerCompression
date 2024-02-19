@@ -5,7 +5,8 @@ def lora_target_map(model: str):
                 'qkv_proj': ['k_proj', 'q_proj', 'v_proj'],
                 'attn_head': ['k_proj', 'q_proj', 'v_proj', 'dense'],
                 'attn_head_and_mlp': ['k_proj', 'q_proj', 'v_proj', 'dense', 'fc1', 'fc2'],
-                'attn_head_mlp_lm_head': [
+                'attn_head_and_mlp_with_Q': ['k_proj', 'q_proj', 'v_proj', 'dense', 'fc1', 'fc2', 'attn_shortcut_Q'],
+                'attn_head_mlp_lm_head_with_Q': [
                     'k_proj',
                     'q_proj',
                     'v_proj',
@@ -20,8 +21,18 @@ def lora_target_map(model: str):
             return {
                 'qkv_proj': ['k_proj', 'q_proj', 'v_proj'],
                 'attn_head': ['k_proj', 'q_proj', 'v_proj', 'out_proj'],
-                'attn_head_and_mlp': ['k_proj', 'q_proj', 'v_proj', 'out_proj', 'attn_shortcut_Q', 'fc1', 'fc2'],
-                'attn_head_mlp_lm_head': [
+                'attn_head_and_mlp': ['k_proj', 'q_proj', 'v_proj', 'out_proj', 'fc1', 'fc2'],
+                'attn_head_and_mlp_with_Q': [
+                    'k_proj',
+                    'q_proj',
+                    'v_proj',
+                    'out_proj',
+                    'attn_shortcut_Q',
+                    'fc1',
+                    'fc2',
+                    'mlp_shortcut_Q',
+                ],
+                'attn_head_mlp_lm_head_with_Q': [
                     'k_proj',
                     'q_proj',
                     'v_proj',
@@ -42,12 +53,22 @@ def lora_target_map(model: str):
                     'q_proj',
                     'v_proj',
                     'o_proj',
-                    'attn_shortcut_Q',
                     'gate_proj',
                     'up_proj',
                     'down_proj',
                 ],
-                'attn_head_mlp_lm_head': [
+                'attn_head_and_mlp_with_Q': [
+                    'k_proj',
+                    'q_proj',
+                    'v_proj',
+                    'o_proj',
+                    'attn_shortcut_Q',
+                    'gate_proj',
+                    'up_proj',
+                    'down_proj',
+                    'mlp_shortcut_Q',
+                ],
+                'attn_head_mlp_lm_head_with_Q': [
                     'k_proj',
                     'q_proj',
                     'v_proj',
