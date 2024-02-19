@@ -9,9 +9,10 @@
 
 from typing import cast
 
+import torch
 from torch import FloatTensor, LongTensor, Tensor, matmul
 from torch.nn import LayerNorm, Linear, Module
-from transformers import PretrainedConfig
+from transformers import PretrainedConfig, PreTrainedTokenizerBase
 from transformers.models.phi.modeling_phi import PhiConfig, PhiDecoderLayer, PhiForCausalLM
 
 from slicegpt.model_adapter import LayerAdapter, ModelAdapter
@@ -207,3 +208,52 @@ class Phi2ModelAdapter(ModelAdapter):
 
     def get_lm_head(self) -> Linear:
         return self.model.lm_head
+
+    def post_init(self, tokenizer: PreTrainedTokenizerBase) -> None:
+        # Phi-2 doesn't have a pad token by default
+        tokenizer.pad_token = tokenizer.eos_token
+        self.config.pad_token_id = tokenizer.pad_token_id
+
+    @classmethod
+    def _from_pretrained(
+        cls,
+        model_name: str,
+        model_path: str,
+        *,
+        dtype: torch.dtype = torch.float16,
+        local_files_only: bool = False,
+        token: str | bool | None = None,
+    ) -> ModelAdapter | None:
+        if model_name != "microsoft/phi-2":
+            return None
+
+        model = PhiForCausalLM.from_pretrained(
+            model_path, torch_dtype=dtype, token=token, local_files_only=local_files_only
+        )
+        model.config.torch_dtype = dtype
+
+        return Phi2ModelAdapter(model)
+
+    @classmethod
+    def _from_uninitialized(
+        cls,
+        model_name: str,
+        model_path: str,
+        *,
+        dtype: torch.dtype = torch.float16,
+        local_files_only: bool = False,
+        token: str | bool | None = None,
+    ) -> ModelAdapter | None:
+        if model_name != "microsoft/phi-2":
+            return None
+
+        class UninitializedPhiForCausalLM(PhiForCausalLM):
+            def _init_weights(self, _) -> None:
+                # Prevent weight initialization
+                pass
+
+        config = PhiConfig.from_pretrained(model_path, torch_dtype=dtype, token=token)
+        model = UninitializedPhiForCausalLM(config)
+        model = model.to(dtype=dtype)
+
+        return Phi2ModelAdapter(model)

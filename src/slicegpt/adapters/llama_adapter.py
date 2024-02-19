@@ -7,9 +7,10 @@
 # https://www.apache.org/licenses/LICENSE-2.0
 from typing import cast
 
+import torch
 from torch import FloatTensor, LongTensor, Tensor, matmul
 from torch.nn import Linear, Module
-from transformers import PretrainedConfig
+from transformers import PretrainedConfig, PreTrainedTokenizerBase
 from transformers.models.llama.modeling_llama import LlamaConfig, LlamaDecoderLayer, LlamaForCausalLM, LlamaRMSNorm
 
 from slicegpt.model_adapter import LayerAdapter, ModelAdapter
@@ -210,3 +211,52 @@ class LlamaModelAdapter(ModelAdapter):
 
     def get_lm_head(self) -> Linear:
         return self.model.lm_head
+
+    def post_init(self, tokenizer: PreTrainedTokenizerBase) -> None:
+        # Llama-2 doesn't have a pad token by default
+        tokenizer.pad_token = tokenizer.eos_token
+        self.config.pad_token_id = tokenizer.pad_token_id
+
+    @classmethod
+    def _from_pretrained(
+        cls,
+        model_name: str,
+        model_path: str,
+        *,
+        dtype: torch.dtype = torch.float16,
+        local_files_only: bool = False,
+        token: str | bool | None = None,
+    ) -> ModelAdapter | None:
+        if not model_name.startswith("meta-llama/Llama-2"):
+            return None
+
+        model = LlamaForCausalLM.from_pretrained(
+            model_path, torch_dtype=dtype, token=token, local_files_only=local_files_only
+        )
+        model.config.torch_dtype = dtype
+
+        return LlamaModelAdapter(model)
+
+    @classmethod
+    def _from_uninitialized(
+        cls,
+        model_name: str,
+        model_path: str,
+        *,
+        dtype: torch.dtype = torch.float16,
+        local_files_only: bool = False,
+        token: str | bool | None = None,
+    ) -> ModelAdapter | None:
+        if not model_name.startswith("meta-llama/Llama-2"):
+            return None
+
+        class UninitializedLlamaForCausalLM(LlamaForCausalLM):
+            def _init_weights(self, _) -> None:
+                # Prevent weight initialization
+                pass
+
+        config = LlamaConfig.from_pretrained(model_path, torch_dtype=dtype, token=token)
+        model = UninitializedLlamaForCausalLM(config)
+        model = model.to(dtype=dtype)
+
+        return LlamaModelAdapter(model)

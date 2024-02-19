@@ -6,6 +6,7 @@
 # Copyright 2022 The Fairseq Authors and The HuggingFace Inc. team. All rights reserved.
 from typing import cast
 
+import torch
 from torch import FloatTensor, Tensor, matmul
 from torch.nn import LayerNorm, Linear, Module
 from torch.nn.functional import dropout
@@ -231,3 +232,45 @@ class OPTModelAdapter(ModelAdapter):
 
     def get_lm_head(self) -> Linear:
         return self.model.lm_head
+
+    @classmethod
+    def _from_pretrained(
+        cls,
+        model_name: str,
+        model_path: str,
+        *,
+        dtype: torch.dtype = torch.float16,
+        local_files_only: bool = False,
+        token: str | bool | None = None,
+    ) -> ModelAdapter | None:
+        if not model_name.startswith("facebook/opt"):
+            return None
+
+        model = OPTForCausalLM.from_pretrained(model_path, torch_dtype=dtype, local_files_only=local_files_only)
+        model.config.torch_dtype = dtype
+
+        return OPTModelAdapter(model)
+
+    @classmethod
+    def _from_uninitialized(
+        cls,
+        model_name: str,
+        model_path: str,
+        *,
+        dtype: torch.dtype = torch.float16,
+        local_files_only: bool = False,
+        token: str | bool | None = None,
+    ) -> ModelAdapter | None:
+        if not model_name.startswith("facebook/opt"):
+            return None
+
+        class UninitializedOPTForCausalLM(OPTForCausalLM):
+            def _init_weights(self, _) -> None:
+                # Prevent weight initialization
+                pass
+
+        config = OPTConfig.from_pretrained(model_path, torch_dtype=dtype)
+        model = UninitializedOPTForCausalLM(config)
+        model = model.to(dtype=dtype)
+
+        return OPTModelAdapter(model)

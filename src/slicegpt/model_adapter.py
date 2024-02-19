@@ -1,15 +1,19 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
+from __future__ import annotations
 
 import copy
+import inspect
 import json
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
 from typing import Any, final
 
+import torch
 from torch import FloatTensor, Tensor
 from torch.nn import Linear, Module
+from transformers import PreTrainedTokenizerBase
 
 """
 To add support for a new model, you need to create a new adapter class that inherits from ModelAdapter, and a new 
@@ -292,6 +296,137 @@ class ModelAdapter(ABC):
             compressed_layer.register_parameter('mlp_shortcut_Q', None)
         compressed_layer.register_parameter('attn_shortcut_Q', None)
         return compressed_layer
+
+    def post_init(self, tokenizer: PreTrainedTokenizerBase) -> None:
+        """
+        This method is called after the model is initialized and all the properties are set.
+        Override in subclasses to perform any additional setup.
+        """
+        pass
+
+    @classmethod
+    def from_model(
+        cls,
+        model_name: str,
+        model_path: str,
+        *,
+        model_type: str = 'pretrained',
+        dtype: torch.dtype = torch.float16,
+        local_files_only: bool = False,
+        token: str | bool | None = None,
+    ) -> ModelAdapter:
+        """
+        Create the model based on the given name path and return the corresponding ModelAdapter instance.
+        Raise NotImplementedError if the model is not supported.
+        Note: for this method to work the corresponding ModelAdapter subclass must be imported.
+
+        Args:
+            model_name: The name of the model, e.g. 'microsoft/phi-2'.
+            model_path: The path to the model.
+            model_type: The type of the model to create. Can be 'pretrained' or 'uninitialized'.
+            dtype: The torch dtype to create the model with.
+            local_files_only: Whether to only load local files (no attempt to download).
+            token: The token to use for authentication.
+
+        Returns:
+            The corresponding ModelAdapter instance.
+        """
+
+        def find_recursively(adapter_cls: type[ModelAdapter]) -> ModelAdapter | None:
+            """
+            Recursively search for a subclass that can handle the model.
+            """
+            # depth first search to find the most specific subclass that can handle the model
+            for subclass in adapter_cls.__subclasses__():
+                candidate = find_recursively(subclass)
+                if candidate is not None:
+                    return candidate
+
+            if inspect.isabstract(adapter_cls):
+                return None
+
+            return adapter_cls._from_model(
+                model_name,
+                model_path=model_path,
+                model_type=model_type,
+                dtype=dtype,
+                local_files_only=local_files_only,
+                token=token,
+            )
+
+        adapter = find_recursively(cls)
+        if adapter is not None:
+            return adapter
+
+        raise NotImplementedError(f"{model_path} is neither a Hugging Face model nor a supported local model.")
+
+    @classmethod
+    def _from_model(
+        cls,
+        model_name: str,
+        model_path: str,
+        *,
+        model_type: str = 'pretrained',
+        dtype: torch.dtype = torch.float16,
+        local_files_only: bool = False,
+        token: str | bool | None = None,
+    ) -> ModelAdapter | None:
+        match model_type:
+            case 'pretrained':
+                return cls._from_pretrained(
+                    model_name,
+                    model_path=model_path,
+                    dtype=dtype,
+                    local_files_only=local_files_only,
+                    token=token,
+                )
+
+            case 'uninitialized':
+                return cls._from_uninitialized(
+                    model_name,
+                    model_path=model_path,
+                    dtype=dtype,
+                    local_files_only=local_files_only,
+                    token=token,
+                )
+            case _:
+                raise ValueError(f"Unknown model type: {model_type}")
+
+    @classmethod
+    @abstractmethod
+    def _from_pretrained(
+        cls,
+        model_name: str,
+        model_path: str,
+        *,
+        dtype: torch.dtype = torch.float16,
+        local_files_only: bool = False,
+        token: str | bool | None = None,
+    ) -> ModelAdapter | None:
+        """
+        Load the pretrained model from the given path and return a ModelAdapter instance.
+        Return None if the model_name is not supported.
+        See `from_model` for more details.
+        """
+        raise NotImplementedError
+
+    @classmethod
+    @abstractmethod
+    def _from_uninitialized(
+        cls,
+        model_name: str,
+        model_path: str,
+        *,
+        dtype: torch.dtype = torch.float16,
+        local_files_only: bool = False,
+        token: str | bool | None = None,
+    ) -> ModelAdapter | None:
+        """
+        Create an uninitialized model from the given path and return a ModelAdapter instance.
+        Return None if the model_name is not supported.
+        See `from_model` for more details.
+        """
+        raise NotImplementedError
 
 
 @dataclass
