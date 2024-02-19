@@ -227,7 +227,7 @@ def rotate_and_slice_sequential(
         _, inps = get_signals(layer_adapter, args, kwargs)
         eig_val, Q = pca_calc(inps, ignore_masks)
         slicing_scheduler.set_attention_eigenvalues(idx, eig_val.detach().cpu().tolist())
-        
+
         if final_orientation == 'random':
             R = random_orthogonal_upper_left(Q.shape[0], slicing_scheduler.get_mlp_output_dimension(idx))
             Q = Q @ R.to(Q.device)
