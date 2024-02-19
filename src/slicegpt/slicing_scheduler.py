@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from typing import Callable, final
@@ -279,7 +284,7 @@ class FunctionSlicingScheduler(ForwardSlicingScheduler):
         attn_end: float | None = None,
         round_interval: int = 1,
         do_slice_head: bool = False,
-    ) -> 'FunctionSlicingScheduler':
+    ) -> FunctionSlicingScheduler:
         """Create a linear slicing scheduler, mainly as an example for testing."""
 
         def linear(start: float, end: float) -> Callable[[float], float]:
