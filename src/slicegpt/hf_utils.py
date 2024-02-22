@@ -71,6 +71,20 @@ def do_not_initialize(func):
 
     return wrapper
 
+def get_model_adapter(
+    model_name: str,
+    model
+) -> ModelAdapter:
+    if model_name.startswith("facebook/opt"):
+        model_adapter = OPTModelAdapter(model)
+    elif model_name.startswith("meta-llama/Llama-2"):
+        model_adapter = LlamaModelAdapter(model)
+    elif model_name == "microsoft/phi-2":
+        model_adapter = Phi2ModelAdapter(model)
+    else:
+        raise NotImplementedError(f"SliceGPT model adapter is not available for {model_name}")
+
+    return model_adapter    
 
 @do_not_initialize
 def get_model_and_tokenizer(
@@ -107,7 +121,6 @@ def get_model_and_tokenizer(
         else:
             model = OPTForCausalLM.from_pretrained(model_path, torch_dtype=dtype, local_files_only=local_model)
             model.config.torch_dtype = dtype
-        model_adapter = OPTModelAdapter(model)
     elif model_name.startswith("meta-llama/Llama-2"):
         if uninitialized:
             config = LlamaConfig.from_pretrained(model_path, torch_dtype=dtype, token=token)
@@ -118,7 +131,6 @@ def get_model_and_tokenizer(
                 model_path, torch_dtype=dtype, token=token, local_files_only=local_model
             )
             model.config.torch_dtype = dtype
-        model_adapter = LlamaModelAdapter(model)
     elif model_name == "microsoft/phi-2":
         if uninitialized:
             config = PhiConfig.from_pretrained(model_path, torch_dtype=dtype, token=token)
@@ -129,9 +141,10 @@ def get_model_and_tokenizer(
                 model_path, torch_dtype=dtype, token=token, local_files_only=local_model
             )
             model.config.torch_dtype = dtype
-        model_adapter = Phi2ModelAdapter(model)
     else:
         raise NotImplementedError(f"{model_name} is neither a Hugging Face model nor a supported local model")
+
+    model_adapter = get_model_adapter(model_name, model)
 
     tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True, token=token)
     # Phi-2 and Llama-2 models don't have a pad token by default
