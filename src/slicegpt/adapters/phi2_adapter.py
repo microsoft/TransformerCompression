@@ -252,7 +252,9 @@ class Phi2ModelAdapter(ModelAdapter):
                 # Prevent weight initialization
                 pass
 
-        config = PhiConfig.from_pretrained(model_path, torch_dtype=dtype, token=token, local_files_only=local_files_only)
+        config = PhiConfig.from_pretrained(
+            model_path, torch_dtype=dtype, token=token, local_files_only=local_files_only
+        )
         model = UninitializedPhiForCausalLM(config)
         model = model.to(dtype=dtype)
 
