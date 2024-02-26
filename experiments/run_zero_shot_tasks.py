@@ -62,7 +62,6 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument('--wandb-project', type=str, default="slicegpt-lm-eval", help="wandb project name.")
     parser.add_argument('--no-wandb', action="store_true", help="Disable wandb.")
-    parser.add_argument('--wandb-project', type=str, default="slicegpt-zeroshot")
     parser.add_argument(
         '--tasks',
         nargs='+',

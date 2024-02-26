@@ -269,7 +269,7 @@ class OPTModelAdapter(ModelAdapter):
                 # Prevent weight initialization
                 pass
 
-        config = OPTConfig.from_pretrained(model_path, torch_dtype=dtype)
+        config = OPTConfig.from_pretrained(model_path, torch_dtype=dtype, local_files_only=local_files_only)
         model = UninitializedOPTForCausalLM(config)
         model = model.to(dtype=dtype)
 

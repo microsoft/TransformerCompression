@@ -191,7 +191,7 @@ def argparser():
     )
     parser.add_argument(
         '--lora-target-option',
-        required=True,
+        default="attn_head_and_mlp",
         help="target module option to apply lora to (names of attn i/p, attn o/p and mlp in LayerAdapter)",
     )
 

@@ -60,7 +60,7 @@ if __name__ == "__main__":
         default=None,
     )
     parser.add_argument(
-        "--sparsity", type=float, required=True, help="A measure of how much slicing is applied (in the range [0, 1))"
+        "--sparsity", type=float, default=0.0, help="A measure of how much slicing is applied (in the range [0, 1))"
     )
     parser.add_argument(
         "--method",

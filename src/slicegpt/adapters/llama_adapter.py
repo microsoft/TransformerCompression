@@ -255,7 +255,9 @@ class LlamaModelAdapter(ModelAdapter):
                 # Prevent weight initialization
                 pass
 
-        config = LlamaConfig.from_pretrained(model_path, torch_dtype=dtype, token=token)
+        config = LlamaConfig.from_pretrained(
+            model_path, torch_dtype=dtype, token=token, local_files_only=local_files_only
+        )
         model = UninitializedLlamaForCausalLM(config)
         model = model.to(dtype=dtype)
 
