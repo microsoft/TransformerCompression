@@ -88,7 +88,7 @@ def check_ppl_in_log(log: str, expected_ppl: float | None, expected_parameters: 
 def verify_run_lm_eval(
     model: str, sparsity: float, task: str, expected_acc_dense: float, expected_acc_sliced: float
 ) -> None:
-    """Test the run_slicegpt.py script with the provided parameters."""
+    """Test the run_lm_eval.py script with the provided parameters."""
     # test lm eval of a dense model
     tests_dir = get_test_dir()
     script = tests_dir.parent / 'experiments' / 'run_lm_eval.py'
