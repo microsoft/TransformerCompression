@@ -54,7 +54,7 @@ def parse_args() -> argparse.Namespace:
         help="Interval for rounding the weights (the best value may depend on your hardware)",
     )
     parser.add_argument('--hf-token', type=str, default=os.getenv('HF_TOKEN', None))
-    parser.add_argument("--batch-size", type=int, default=1, help="Batch size for evaluating with lm eval harness.")
+    parser.add_argument("--batch-size", type=int, default=64, help="Batch size for evaluating with lm eval harness.")
     parser.add_argument(
         "--distribute-model",
         action="store_true",

@@ -11,13 +11,15 @@ of the model. This results in speedups (without any additional code optimization
 The code is arranged as a package `slicegpt` in `/src`, and scripts to replicate experiments from the paper are in 
 `/experiments`. To install the `slicegpt` package, we recommend
 
-`pip install -e .`
+```
+    pip install -e . 
+```
 
 ## Running SliceGPT
 
 To run SliceGPT on `microsoft/phi-2`, from the `experiments` folder, run 
 ```
-    python run_slicegpt_perplexity.py \
+    python run_slicegpt.py \
            --model microsoft/phi-2 \
            --save-dir dir/to/save/sliced_model/in \
            --sparsity 0.25 \
@@ -31,10 +33,48 @@ the script for the full set of options.
 
 The experiments folder also contains scripts for 
 - [finetuning](./experiments/run_finetuning.py) the compressed model to recover most of the quality lost during compression
-- [zero-shot task evaluation](./experiments/run_zero_shot_tasks.py) of a dense, compressed or fine-tuned model
+- [lm evaluation](./experiments/run_lm_eval.py) of a dense, compressed or fine-tuned model
 
 _Note:_ For models that require Hugging Face authentication, set the `--hf-token` argument 
 manually or using a key vault. Alternatively, set the environment variable `HF_TOKEN`.
+
+### Recovery fine-tuning
+
+To install additional dependencies required for post-slicing recovery fine-tuning (RFT):
+
+```
+    pip install -e .[finetune]
+```
+
+The following replicates the experiments in the paper (LoRA hyperparams valid for all Llama-2 and Phi-2 models): 
+```
+    python run_finetuning.py \
+           --model microsoft/phi-2 \
+           --sliced-model-path path/to/sliced/model \
+           --save-dir dir/to/save/finetuned_model/in \
+           --sparsity 0.25 \
+           --no-wandb \
+           --device cuda:0 \
+           --ppl-eval-dataset alpaca \
+           --finetune-dataset alpaca \
+           --finetune-train-nsamples 8000 \
+           --finetune-train-seqlen 1024 \
+           --finetune-train-batch-size 3 \
+           --lora-alpha 10 \
+           --lora-r 32 \
+           --lora-dropout 0.05 \
+           --lora-target-option attn_head_and_mlp \
+           --eval-steps 16 \
+           --save-steps 16
+
+```
+
+### LM evaluation
+```
+    python run_lm_eval.py \
+           --model microsoft/phi-2 \
+           --sliced-model-path path/to/sliced/model \
+```
 
 ## Supported models
 
