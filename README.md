@@ -46,7 +46,7 @@ The following replicates the experiments in the paper (LoRA hyperparams valid fo
 ```
     python run_finetuning.py \
            --model microsoft/phi-2 \
-           --sliced-model-path path/to/sliced/model \
+           --sliced-model-path path/to/sliced/model.pt \
            --save-dir dir/to/save/finetuned_model/in \
            --sparsity 0.25 \
            --device cuda:0 \
@@ -70,7 +70,7 @@ Note: the script [`bo_finetuning.py`](./experiments/bo_finetuning.py) can be use
 ```
     python run_lm_eval.py \
            --model microsoft/phi-2 \
-           --sliced-model-path path/to/sliced/model \
+           --sliced-model-path path/to/sliced/model.pt \
            --tasks piqa \
            --no-wandb
 ```
