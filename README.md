@@ -23,17 +23,13 @@ To run SliceGPT on `microsoft/phi-2`, from the `experiments` folder, run
            --model microsoft/phi-2 \
            --save-dir dir/to/save/sliced_model/in \
            --sparsity 0.25 \
-           --no-wandb \
            --device cuda:0 \
-           --eval-baseline
+           --eval-baseline \
+           --no-wandb
 ```
 
 This will compress the `microsoft/phi-2` model and save the compressed model to the specified directory. Please consult 
 the script for the full set of options.
-
-The experiments folder also contains scripts for 
-- [finetuning](./experiments/run_finetuning.py) the compressed model to recover most of the quality lost during compression
-- [lm evaluation](./experiments/run_lm_eval.py) of a dense, compressed or fine-tuned model
 
 _Note:_ For models that require Hugging Face authentication, set the `--hf-token` argument 
 manually or using a key vault. Alternatively, set the environment variable `HF_TOKEN`.
@@ -53,7 +49,6 @@ The following replicates the experiments in the paper (LoRA hyperparams valid fo
            --sliced-model-path path/to/sliced/model \
            --save-dir dir/to/save/finetuned_model/in \
            --sparsity 0.25 \
-           --no-wandb \
            --device cuda:0 \
            --ppl-eval-dataset alpaca \
            --finetune-dataset alpaca \
@@ -65,15 +60,19 @@ The following replicates the experiments in the paper (LoRA hyperparams valid fo
            --lora-dropout 0.05 \
            --lora-target-option attn_head_and_mlp \
            --eval-steps 16 \
-           --save-steps 16
-
+           --save-steps 16 \
+           --no-wandb
 ```
 
-### LM evaluation
+Note: the script [`bo_finetuning.py`](./experiments/bo_finetuning.py) can be use to run Bayesian optimization over the RFT hyperparameters.
+
+### Evaluation using the [LM Eval Harness](https://github.com/EleutherAI/lm-evaluation-harness) 
 ```
     python run_lm_eval.py \
            --model microsoft/phi-2 \
            --sliced-model-path path/to/sliced/model \
+           --tasks piqa \
+           --no-wandb
 ```
 
 ## Supported models
@@ -115,7 +114,7 @@ and update `hf_utils.get_model_and_tokenizer` before slicing the new model.
   ([Phi-2](./src/slicegpt/adapters/phi2_adapter.py)). The `self.*_shortcut_Q` matrices are attached to the modules during
   slicing and are available in `forward()`. If the skip connection does not need modification, these matrices will be None, 
   and the `forward()` method can follow the original workflow. For more details on this, 
-  please read Section 3 [the paper](https://arxiv.org/abs/2401.15024).
+  please read Section 3 in [the paper](https://arxiv.org/abs/2401.15024).
 
 Example: [llama_adapter.py](./src/slicegpt/adapters/llama_adapter.py)
 
