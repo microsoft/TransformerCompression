@@ -128,7 +128,7 @@ def argparser() -> argparse.Namespace:
 
 
 def main() -> None:
-    logging.info("Running SliceGPT experiment")
+    logging.info("Running SliceGPT experiment.")
 
     args = argparser()
 

@@ -11,6 +11,18 @@ from typing import TypeVar
 import torch
 
 
+def create_file_handler(log_dir: str) -> logging.FileHandler:
+    path = pathlib.Path.cwd() / log_dir / f'{datetime.datetime.now():log_%Y-%m-%d-%H-%M-%S}.log'
+    path.parent.mkdir(parents=True, exist_ok=True)
+    file_handler = logging.FileHandler(path, encoding='utf-8')
+    file_handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter(
+        '%(asctime)s.%(msecs)04d\t%(levelname)s\t%(name)s\t%(message)s', datefmt='%Y-%m-%dT%H:%M:%S'
+    )
+    file_handler.setFormatter(formatter)
+    return file_handler
+
+
 def configure_logging(
     log_to_console: bool = True,
     log_to_file: bool = True,
@@ -27,15 +39,7 @@ def configure_logging(
         handlers.append(handler)
 
     if log_to_file:
-        path = pathlib.Path.cwd() / log_dir / f'{datetime.datetime.now():log_%Y-%m-%d-%H-%M-%S}.log'
-        path.parent.mkdir(parents=True, exist_ok=True)
-        file_handler = logging.FileHandler(path, encoding='utf-8')
-        file_handler.setLevel(logging.DEBUG)
-        formatter = logging.Formatter(
-            '%(asctime)s.%(msecs)04d\t%(levelname)s\t%(name)s\t%(message)s', datefmt='%Y-%m-%dT%H:%M:%S'
-        )
-        file_handler.setFormatter(formatter)
-        handlers.append(file_handler)
+        handlers.append(create_file_handler(log_dir=log_dir))
 
     logging.basicConfig(
         handlers=handlers,
