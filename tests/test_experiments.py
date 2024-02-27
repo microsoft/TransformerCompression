@@ -102,7 +102,7 @@ def verify_run_lm_eval(
 
     # test lm eval of a sliced model
     model_path = save_dir / (model.split('/')[-1] + '_' + str(sparsity) + '.pt')
-    ext_args = ['--sliced-model-path', str(model_path)]
+    ext_args = ['--sliced-model-path', str(model_path), '--tasks', task]
     log = run_python_script(script, args + ext_args)
     check_task_acc_in_log(log, task, expected_acc_sliced)
 
