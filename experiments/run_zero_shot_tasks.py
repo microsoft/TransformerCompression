@@ -18,12 +18,9 @@ from lm_eval.tasks import initialize_tasks
 from slicegpt import gpu_utils, hf_utils, utils
 from slicegpt.config import config
 
-utils.configure_logging()
 
-os.environ["WANDB__SERVICE_WAIT"] = "300"
-
-
-def parse_args() -> argparse.Namespace:
+def eval_arg_parser(interactive: bool = True) -> argparse.Namespace:
+    initialize_tasks()
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--model",
@@ -69,14 +66,39 @@ def parse_args() -> argparse.Namespace:
         choices=lm_eval_utils.MultiChoice(tasks.ALL_TASKS),
     )
     parser.add_argument('--num-fewshot', type=int, default=0, help="Number of fewshots for all tasks.")
-    return parser.parse_args()
+    parser.add_argument("--save-dir", type=str, default=".", help="Path to save the lm eval results")
+    return parser.parse_args() if interactive else parser.parse_args('')
 
 
-def main() -> None:
+def calculate_avg_accuracy(task_names: str, results: dict) -> float:
+    n_tasks = len(task_names)
+    acc_cumul = sum(
+        result.get('acc_norm,none', result['acc,none']) for task, result in results.items() if 'mmlu' not in task
+    )
+
+    questions_per_mmlu_task = {
+        task_name: lm_eval.tasks.get_task_dict([task_name])[task_name].dataset["test"].num_rows
+        for task_name in task_names
+        if 'mmlu' in task_name
+    }
+
+    if not questions_per_mmlu_task:
+        return acc_cumul / n_tasks
+
+    # Calculate average accuracy for mmlu tasks, weighted by number of questions in each task
+    acc_mmlu = sum(
+        result.get('acc_norm,none', result['acc,none']) * questions_per_mmlu_task[task]
+        for task, result in results.items()
+        if 'mmlu' in task
+    )
+    acc_mmlu_avg = acc_mmlu / sum(questions_per_mmlu_task.values())
+    wandb.log({'acc_mmlu_avg': acc_mmlu_avg})
+
+    return (acc_cumul + acc_mmlu_avg) / (n_tasks - len(questions_per_mmlu_task) + 1)
+
+
+def eval_main(args: argparse.Namespace) -> None:
     logging.info("Running SliceGPT zeroshot tasks experiment.")
-
-    initialize_tasks()
-    args = parse_args()
 
     logging.info(f"PyTorch device: {config.device}")
     logging.info(f"Number of available cuda devices: {torch.cuda.device_count()}")
@@ -127,40 +149,22 @@ def main() -> None:
         'results'
     ]
 
-    wandb.log(results)
     metric_vals = {task: round(result.get('acc_norm,none', result['acc,none']), 4) for task, result in results.items()}
-    logging.info(json.dumps(metric_vals, indent=4))
-
-    def calculate_avg_accuracy(task_names, results):
-        n_tasks = len(task_names)
-        acc_cumul = sum(
-            result.get('acc_norm,none', result['acc,none']) for task, result in results.items() if 'mmlu' not in task
-        )
-
-        questions_per_mmlu_task = {
-            task_name: lm_eval.tasks.get_task_dict([task_name])[task_name].dataset["test"].num_rows
-            for task_name in task_names
-            if 'mmlu' in task_name
-        }
-
-        if not questions_per_mmlu_task:
-            return acc_cumul / n_tasks
-
-        # Calculate average accuracy for mmlu tasks, weighted by number of questions in each task
-        acc_mmlu = sum(
-            result.get('acc_norm,none', result['acc,none']) * questions_per_mmlu_task[task]
-            for task, result in results.items()
-            if 'mmlu' in task
-        )
-        acc_mmlu_avg = acc_mmlu / sum(questions_per_mmlu_task.values())
-        wandb.log({'acc_mmlu_avg': acc_mmlu_avg})
-
-        return (acc_cumul + acc_mmlu_avg) / (n_tasks - len(questions_per_mmlu_task) + 1)
-
     acc_avg = calculate_avg_accuracy(task_names, results)
+    metric_vals['average'] = round(acc_avg, 4)
+    with open(f"{args.save_dir}/{args.num_fewshot}_shot_task_results.json", "w") as f:
+        json.dump(metric_vals, f)
+
+    wandb.log(results)
     wandb.log({'acc_avg': acc_avg})
+
+    logging.info(json.dumps(metric_vals, indent=4))
     logging.info(f"Average accuracy across tasks: {acc_avg}")
 
 
 if __name__ == "__main__":
-    main()
+    utils.configure_logging(log_to_console=True, log_to_file=False, level=logging.ERROR)
+    os.environ["WANDB__SERVICE_WAIT"] = "300"
+
+    eval_args = eval_arg_parser()
+    eval_main(eval_args)
