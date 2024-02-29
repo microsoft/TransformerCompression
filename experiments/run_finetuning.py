@@ -325,6 +325,9 @@ def main() -> None:
         gradient_checkpointing=True,
     )
 
+    if not args.distribute_model:
+        training_args._n_gpu = 1
+
     trainer = CustomTrainer(
         model=lora_model,
         tokenizer=tokenizer,
