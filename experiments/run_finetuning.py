@@ -7,7 +7,6 @@ import os
 import pathlib
 import shutil
 
-import datasets
 import syne_tune
 import torch
 import transformers
