@@ -11,12 +11,8 @@ import wandb
 from slicegpt import data_utils, gpu_utils, hf_utils, utils
 from slicegpt.config import config
 
-utils.configure_logging()
 
-os.environ["WANDB__SERVICE_WAIT"] = "300"
-
-
-def argparser() -> argparse.Namespace:
+def benchmarking_arg_parser(interactive: bool = True) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--model",
@@ -74,8 +70,10 @@ def argparser() -> argparse.Namespace:
         help="PyTorch device to use. Example values are 'cpu', 'cuda', 'cuda:0'. If not specified it will be defaulted to 'cuda' if available and 'cpu' otherwise.",
     )
 
-    args = parser.parse_args()
+    return parser.parse_args() if interactive else parser.parse_args('')
 
+
+def process_benchmarking_args(args: argparse.Namespace):
     logging.debug(f'Parsed arguments:')
     for arg, argv in vars(args).items():
         logging.debug(f'{arg} = {argv}')
@@ -93,14 +91,9 @@ def argparser() -> argparse.Namespace:
     else:
         raise argparse.ArgumentTypeError(f"Data type should be one of 'fp16', 'fp32'")
 
-    return args
 
-
-def main() -> None:
+def benchmarking_main(args: argparse.Namespace) -> None:
     logging.info("Running benchmarking of a sliced model.")
-
-    args = argparser()
-
     logging.info(f"PyTorch device: {config.device}")
     logging.info(f"Number of available cuda devices: {torch.cuda.device_count()}")
 
@@ -148,4 +141,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    utils.configure_logging()
+    os.environ["WANDB__SERVICE_WAIT"] = "300"
+    benchmarking_args = benchmarking_arg_parser()
+    process_benchmarking_args(benchmarking_args)
+    benchmarking_main(benchmarking_args)

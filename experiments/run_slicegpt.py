@@ -14,12 +14,8 @@ from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate, 
 from slicegpt.config import config
 from slicegpt.slicing_scheduler import ConstSlicingScheduler
 
-utils.configure_logging()
 
-os.environ["WANDB__SERVICE_WAIT"] = "300"
-
-
-def argparser() -> argparse.Namespace:
+def slicing_arg_parser(interactive: bool = True) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--model",
@@ -105,9 +101,10 @@ def argparser() -> argparse.Namespace:
         help="PyTorch device to use. Example values are 'cpu', 'cuda', 'cuda:0'. If not specified it will be defaulted to 'cuda' if available and 'cpu' otherwise.",
     )
 
-    args = parser.parse_args()
+    return parser.parse_args() if interactive else parser.parse_args('')
 
-    logging.debug(f'Parsed arguments:')
+
+def process_slicing_args(args):
     for arg, argv in vars(args).items():
         logging.debug(f'{arg} = {argv}')
 
@@ -124,14 +121,9 @@ def argparser() -> argparse.Namespace:
     else:
         raise argparse.ArgumentTypeError(f"Data type should be one of 'fp16', 'fp32'")
 
-    return args
 
-
-def main() -> None:
+def slicing_main(args: argparse.Namespace) -> None:
     logging.info("Running SliceGPT experiment.")
-
-    args = argparser()
-
     logging.info(f"PyTorch device: {config.device}")
     logging.info(f"Number of available cuda devices: {torch.cuda.device_count()}")
 
@@ -248,11 +240,15 @@ def main() -> None:
         # If slicing a local model, also save HF config files in sliced model dir
         if args.model_path:
             try:
-                # copy all config files
-                for file in pathlib.Path(args.model_path).glob("*config*.json"):
+                # copy all config files (tokenizer, model and slicing configs)
+                for file in pathlib.Path(args.model_path).glob("*.json"):
+                    if 'safetensors' not in str(file):
+                        shutil.copy(str(file), sliced_model_dir)
+                # copy all tokenizer models
+                for file in pathlib.Path(args.model_path).glob("*token*.model"):
                     shutil.copy(str(file), sliced_model_dir)
-                # copy all tokenizer files
-                for file in pathlib.Path(args.model_path).glob("*token*.json"):
+                # copy vocab merges if any
+                for file in pathlib.Path(args.model_path).glob("merges.txt"):
                     shutil.copy(str(file), sliced_model_dir)
             except OSError as e:
                 logging.info(f'Failed to copy configs and tokenizer files: {e}')
@@ -270,4 +266,9 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    utils.configure_logging(log_to_console=True, log_to_file=False, level=logging.INFO)
+    os.environ["WANDB__SERVICE_WAIT"] = "300"
+
+    slicing_args = slicing_arg_parser()
+    process_slicing_args(slicing_args)
+    slicing_main(slicing_args)
