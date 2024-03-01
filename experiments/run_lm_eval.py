@@ -18,12 +18,14 @@ from lm_eval.tasks import initialize_tasks
 from slicegpt import gpu_utils, hf_utils, utils
 from slicegpt.config import config
 
-utils.configure_logging()
+# Use the logger from lm_eval, adding a file handler to write the log to file
+logging = lm_eval_utils.eval_logger
+logging.addHandler(utils.create_file_handler(log_dir="log"))
 
 os.environ["WANDB__SERVICE_WAIT"] = "300"
 
 
-def parse_args() -> argparse.Namespace:
+def argparser() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--model",
@@ -54,7 +56,7 @@ def parse_args() -> argparse.Namespace:
         help="Interval for rounding the weights (the best value may depend on your hardware)",
     )
     parser.add_argument('--hf-token', type=str, default=os.getenv('HF_TOKEN', None))
-    parser.add_argument("--batch-size", type=int, default=1, help="Batch size for evaluating with lm eval harness.")
+    parser.add_argument("--batch-size", type=int, default=64, help="Batch size for evaluating with lm eval harness.")
     parser.add_argument(
         "--distribute-model",
         action="store_true",
@@ -69,14 +71,21 @@ def parse_args() -> argparse.Namespace:
         choices=lm_eval_utils.MultiChoice(tasks.ALL_TASKS),
     )
     parser.add_argument('--num-fewshot', type=int, default=0, help="Number of fewshots for all tasks.")
-    return parser.parse_args()
+
+    args = parser.parse_args()
+
+    logging.info(f'Parsed arguments:')
+    for arg, argv in vars(args).items():
+        logging.info(f'{arg} = {argv}')
+
+    return args
 
 
 def main() -> None:
-    logging.info("Running SliceGPT zeroshot tasks experiment.")
+    logging.info("Running SliceGPT LM eval experiment.")
 
     initialize_tasks()
-    args = parse_args()
+    args = argparser()
 
     logging.info(f"PyTorch device: {config.device}")
     logging.info(f"Number of available cuda devices: {torch.cuda.device_count()}")

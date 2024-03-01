@@ -54,7 +54,7 @@ def argparser() -> argparse.Namespace:
         help="Number of samples of the calibration data to load.",
         default=128,
     )
-    parser.add_argument("--cal-batch-size", type=int, default=1, help="Batch size for loading the calibration data.")
+    parser.add_argument("--cal-batch-size", type=int, default=16, help="Batch size for loading the calibration data.")
     parser.add_argument(
         "--cal-max-seqlen", type=int, default=2048, help="Maximum sequence length for the calibration data."
     )
@@ -128,7 +128,7 @@ def argparser() -> argparse.Namespace:
 
 
 def main() -> None:
-    logging.info("Running SliceGPT perplexity experiment")
+    logging.info("Running SliceGPT experiment.")
 
     args = argparser()
 
