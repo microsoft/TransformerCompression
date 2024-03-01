@@ -74,7 +74,7 @@ def process_eval_args(args: argparse.Namespace):
     logging.info(f'Parsed arguments:')
     for arg, argv in vars(args).items():
         logging.info(f'{arg} = {argv}')
-    
+
 
 def calculate_avg_accuracy(task_names: str, results: dict) -> float:
     n_tasks = len(task_names)
