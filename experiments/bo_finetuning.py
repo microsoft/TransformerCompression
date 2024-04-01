@@ -16,7 +16,7 @@ config_space = {
     "weight-decay": loguniform(1e-5, 1e-1),
     "adam-beta1": uniform(0.9, 0.99),
     "adam-beta2": uniform(0.9, 0.999),
-    "adam-eps": loguniform(1e-9, 1e-6),
+    "adam-epsilon": loguniform(1e-9, 1e-6),
     "num-warmup-steps": randint(0, 10000),
     "lr-scheduler-type": choice(["linear", "cosine", "linear_with_warmup", "cosine_with_warmup"]),
     "lora-alpha": loguniform(4, 256),
