@@ -67,17 +67,21 @@ The following replicates the experiments in the paper (LoRA hyperparams valid fo
 Notes: 
 - The script [`bo_finetuning.py`](./experiments/bo_finetuning.py) can be used to run Bayesian optimization over the RFT hyperparameters.
 - To run finetuning on the original model, specify `--model-path` instead of `--sliced-model-path`. 
+- `sparsity` must be specified when specifying `sliced-model-path` to avoid default sparsity being used
 
 ### Evaluation using the [LM Eval Harness](https://github.com/EleutherAI/lm-evaluation-harness) 
 ```
     python run_lm_eval.py \
            --model microsoft/phi-2 \
            --sliced-model-path path/to/sliced \
+           --sparsity 0.25 \
            --tasks piqa \
            --no-wandb
 ```
 
-Note: To run lm-eval on the original model, specify `--model-path` instead of `--sliced-model-path`. 
+Notes: 
+- To run lm-eval on the original model, specify `--model-path` instead of `--sliced-model-path`. 
+- `sparsity` must be specified when specifying `sliced-model-path` to avoid default sparsity being used
 
 ## Supported models
 
