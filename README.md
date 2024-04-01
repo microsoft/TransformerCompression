@@ -46,7 +46,7 @@ The following replicates the experiments in the paper (LoRA hyperparams valid fo
 ```
     python run_finetuning.py \
            --model microsoft/phi-2 \
-           --sliced-model-path path/to/sliced/model.pt \
+           --sliced-model-path path/to/sliced \
            --save-dir dir/to/save/finetuned_model/in \
            --sparsity 0.25 \
            --device cuda:0 \
@@ -64,16 +64,20 @@ The following replicates the experiments in the paper (LoRA hyperparams valid fo
            --no-wandb
 ```
 
-Note: the script [`bo_finetuning.py`](./experiments/bo_finetuning.py) can be use to run Bayesian optimization over the RFT hyperparameters.
+Notes: 
+- The script [`bo_finetuning.py`](./experiments/bo_finetuning.py) can be used to run Bayesian optimization over the RFT hyperparameters.
+- To run finetuning on the original model, specify `--model-path` instead of `--sliced-model-path`. 
 
 ### Evaluation using the [LM Eval Harness](https://github.com/EleutherAI/lm-evaluation-harness) 
 ```
     python run_lm_eval.py \
            --model microsoft/phi-2 \
-           --sliced-model-path path/to/sliced/model.pt \
+           --sliced-model-path path/to/sliced \
            --tasks piqa \
            --no-wandb
 ```
+
+Note: To run lm-eval on the original model, specify `--model-path` instead of `--sliced-model-path`. 
 
 ## Supported models
 
@@ -124,7 +128,7 @@ Once a model adapter is implemented, compressing the model involves three concep
   - Fuse layer norms and add rotations to skip connections (via `slicegpt.layernorm_fusion.fuse_modules`)
   - Rotate the inputs and slice the layers (via `slicegpt.rotate.rotate_and_slice`)
 
-Example: [run_slicegpt_perplexity.py](./experiments/run_slicegpt_perplexity.py)
+Example: [run_slicegpt.py](./experiments/run_slicegpt.py)
 
 _Note:_ If the model you wish to support is not available in Hugging Face, you will also need to implement 
 custom model loading and initialization functionality.

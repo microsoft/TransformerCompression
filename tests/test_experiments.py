@@ -101,8 +101,8 @@ def verify_run_lm_eval(
     check_task_acc_in_log(log, task, expected_acc_dense)
 
     # test lm eval of a sliced model
-    model_path = save_dir / (model.split('/')[-1] + '_' + str(sparsity) + '.pt')
-    ext_args = ['--sliced-model-path', str(model_path), '--tasks', task]
+    model_path = save_dir
+    ext_args = ['--sparsity', str(sparsity), '--sliced-model-path', str(model_path), '--tasks', task]
     log = run_python_script(script, args + ext_args)
     check_task_acc_in_log(log, task, expected_acc_sliced)
 
@@ -120,8 +120,8 @@ def verify_run_slicegpt(model: str, sparsity: float, expected_ppl: float, expect
     check_ppl_in_log(log, expected_ppl=expected_ppl, expected_parameters=expected_parameters)
 
     # test load a sliced model
-    model_path = save_dir / (model.split('/')[-1] + '_' + str(sparsity) + '.pt')
-    ext_args = ['--sliced-model-path', str(model_path)]
+    model_path = save_dir
+    ext_args = ['--sparsity', str(sparsity), '--sliced-model-path', str(model_path)]
     log = run_python_script(script, args + ext_args)
     check_ppl_in_log(log, expected_ppl=expected_ppl, expected_parameters=None)
 
