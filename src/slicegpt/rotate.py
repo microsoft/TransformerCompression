@@ -103,6 +103,7 @@ def slice_embeddings(model_adapter: ModelAdapter, new_embedding_dimensions: dict
     # Slice the embeddings.
     for i, W in enumerate(model_adapter.get_embeddings()):
         W.weight.data = W.weight.data[:, : new_embedding_dimensions[i]]
+        W.embedding_dim = new_embedding_dimensions[i]
 
 
 def rotate_head(model_adapter: ModelAdapter, Q: torch.Tensor) -> None:
