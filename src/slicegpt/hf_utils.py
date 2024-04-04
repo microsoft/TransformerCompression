@@ -167,7 +167,9 @@ def load_sliced_model(
         model_adapter.model = get_peft_model(model_adapter.model, lora_config)
 
     logging.info(f"Loading sliced model weights from {sliced_model_path}")
-    model_adapter.model.load_state_dict(torch.load(str(pathlib.Path(sliced_model_path) / my_sliced_model_name) , map_location="cpu"))
+    model_adapter.model.load_state_dict(
+        torch.load(str(pathlib.Path(sliced_model_path) / my_sliced_model_name), map_location="cpu")
+    )
     model_adapter.model.eval()
 
     return model_adapter, tokenizer
