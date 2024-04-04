@@ -351,7 +351,7 @@ def finetuning_main(args: argparse.Namespace) -> None:
         torch.save(merged_model.state_dict(), model_file)
 
         if args.sliced_model_path:
-            sliced_model_dir = os.path.dirname(args.sliced_model_path)
+            sliced_model_dir = args.sliced_model_path
             try:
                 # copy all config files (tokenizer, model and slicing configs)
                 for file in pathlib.Path(sliced_model_dir).glob("*.json"):
