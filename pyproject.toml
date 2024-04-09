@@ -33,6 +33,7 @@ dependencies = [
     "tqdm",
     "transformers @ git+https://github.com/huggingface/transformers.git@55090585619d7ab880d9a7d7c8b327a746f7cc40",
     "wandb",
+    "fast_hadamard_transform",
 ]
 
 [project.optional-dependencies]
