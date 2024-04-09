@@ -33,6 +33,7 @@ dependencies = [
     "tqdm",
     "transformers==4.37",
     "wandb",
+    "fast_hadamard_transform",
 ]
 
 [project.optional-dependencies]
