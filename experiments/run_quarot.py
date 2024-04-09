@@ -8,9 +8,9 @@ import os
 import torch
 import wandb
 
+from quarot import hadamard_utils, quant_utils, rtn_utils
 from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, utils
 from slicegpt.config import config
-from quarot import quant_utils, hadamard_utils, rtn_utils
 
 
 def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:

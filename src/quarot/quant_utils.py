@@ -2,11 +2,14 @@
 # Licensed under the MIT license.
 
 import math
-import transformers
-import torch
-from slicegpt import utils
-from .hadamard_utils import matmul_hadU_cuda
+
 import fast_hadamard_transform
+import torch
+import transformers
+
+from slicegpt import utils
+
+from .hadamard_utils import matmul_hadU_cuda
 
 
 def get_minq_maxq(bits, sym):
