@@ -3,4 +3,4 @@
 
 from .hadamard_utils import get_hadK
 
-__all__ = ["hadamard_utils"]
+__all__ = ["hadamard_utils", "quant_utils", "rtn_utils"]
