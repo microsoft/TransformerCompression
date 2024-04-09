@@ -6,16 +6,17 @@ import tqdm
 import torch
 from slicegpt import utils
 from .quant_utils import find_qlayers, WeightQuantizer
+
 torch.backends.cuda.matmul.allow_tf32 = False
 torch.backends.cudnn.allow_tf32 = False
 
-       
+
 @torch.no_grad()
 def rtn_fwrd(model, dev, args):
     '''
     Round-to-nearest quantization of the model weights.
     '''
-    assert args.w_groupsize ==-1, "Groupsize not supported in RTN!"
+    assert args.w_groupsize == -1, "Groupsize not supported in RTN!"
     layers = model.model.layers
     torch.cuda.empty_cache()
 
@@ -24,8 +25,7 @@ def rtn_fwrd(model, dev, args):
     for i in tqdm.tqdm(range(len(layers)), desc="(RtN Quant.) Layers"):
         layer = layers[i].to(dev)
 
-        subset = find_qlayers(layer,
-                                            layers=[torch.nn.Linear])
+        subset = find_qlayers(layer, layers=[torch.nn.Linear])
 
         for name in subset:
             layer_weight_bits = args.w_bits
@@ -36,17 +36,14 @@ def rtn_fwrd(model, dev, args):
                 layer_weight_bits = 8
 
             quantizer = WeightQuantizer()
-            quantizer.configure(
-                layer_weight_bits, perchannel=True, sym=not(args.w_asym), mse=args.w_clip
-            )
+            quantizer.configure(layer_weight_bits, perchannel=True, sym=not (args.w_asym), mse=args.w_clip)
             W = subset[name].weight.data
             quantizer.find_params(W)
-            subset[name].weight.data = quantizer.quantize(W).to(
-                next(iter(layer.parameters())).dtype)
+            subset[name].weight.data = quantizer.quantize(W).to(next(iter(layer.parameters())).dtype)
             quantizers['model.layers.%d.%s' % (i, name)] = quantizer.cpu()
         layers[i] = layer.cpu()
         torch.cuda.empty_cache()
         del layer
-            
+
     utils.cleanup_memory()
     return quantizers
