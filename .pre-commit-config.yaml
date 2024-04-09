@@ -5,6 +5,7 @@ repos:
   - id: black
     types_or: [python]
     args: ["--config=./pyproject.toml"]
+    exclude: "hadamard_utils.py"
 
 - repo: https://github.com/pycqa/isort
   rev: 5.12.0
