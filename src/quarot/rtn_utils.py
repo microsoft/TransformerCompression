@@ -2,10 +2,12 @@
 # Licensed under the MIT license.
 # Based on the implementation in https://github.com/spcl/QuaRot/
 
-import tqdm
 import torch
+import tqdm
+
 from slicegpt import utils
-from .quant_utils import find_qlayers, WeightQuantizer
+
+from .quant_utils import WeightQuantizer, find_qlayers
 
 torch.backends.cuda.matmul.allow_tf32 = False
 torch.backends.cudnn.allow_tf32 = False

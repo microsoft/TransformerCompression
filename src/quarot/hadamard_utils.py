@@ -2,8 +2,11 @@
 # Licensed under the MIT license.
 # Based on the implementation in https://github.com/spcl/QuaRot/
 
-import torch, math
+import math
+
 import fast_hadamard_transform
+import torch
+
 
 def get_hadK(n, transpose=False):
     hadK, K = None, None
