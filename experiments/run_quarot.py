@@ -8,8 +8,8 @@ import os
 import torch
 import wandb
 
-from quarot import hadamard_utils, quant_utils, rtn_utils
-from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, utils
+from quarot import hadamard_utils, hf_utils, layernorm_fusion, quant_utils, rtn_utils
+from slicegpt import data_utils, gpu_utils, utils
 from slicegpt.config import config
 
 
@@ -177,6 +177,7 @@ def quarot_main(args: argparse.Namespace) -> None:
         else:
             model.to(config.device)
 
+    '''
     dataset = data_utils.get_dataset(args.cal_dataset)
     test_dataset = dataset["test"]
     test_loader = data_utils.prepare_test_dataloader(
@@ -191,12 +192,13 @@ def quarot_main(args: argparse.Namespace) -> None:
         wandb.log({"original_ppl": dataset_ppl})
         model.cpu()
         utils.cleanup_memory()
+    '''
 
     if args.rotate:
         # replace modules with compressible equivalents
         layernorm_fusion.replace_layers(model_adapter)
 
-        # fuse layernorms and add rotations to skip connections
+        # fuse layernorms
         layernorm_fusion.fuse_modules(model_adapter)
 
         utils.cleanup_memory()
@@ -205,6 +207,7 @@ def quarot_main(args: argparse.Namespace) -> None:
         quant_utils.add_actquant(model)  # Add Activation Wrapper to the model
         qlayers = quant_utils.find_qlayers(model)
         for name in qlayers:
+            print(name)
             if 'down_proj' in name:  # TODO : make this more general
                 had_K, K = hadamard_utils.get_hadK(model.config.intermediate_size)
                 qlayers[name].online_full_had = True

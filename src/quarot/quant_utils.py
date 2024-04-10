@@ -197,10 +197,8 @@ class ActQuantizer(torch.nn.Module):
 class ActQuantWrapper(torch.nn.Module):
     '''
     This class is a wrapper for the activation quantization.
-    We extract the FP features in the forward pass and quantize the rest using
-    the self.quantizer object.
     If a rotation Q is provided, the weight matrix will be rotated,
-    a pre-forward hook will be registerd to rotate the activation before quantization.
+    a pre-forward hook will be registered to rotate the activation before quantization.
     '''
 
     def __init__(self, module: torch.nn.Linear):
@@ -391,6 +389,7 @@ class WeightQuantizer(torch.nn.Module):
 def add_actquant(
     module, name='', layers=[torch.nn.Linear, ActQuantWrapper, transformers.models.falcon.modeling_falcon.FalconLinear]
 ):
+    print(module)
     if isinstance(module, ActQuantWrapper):
         return
     for attr in dir(module):
