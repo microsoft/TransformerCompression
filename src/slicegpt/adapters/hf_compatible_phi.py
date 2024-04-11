@@ -78,11 +78,13 @@ if __name__ == "__main__":
     sliced_model = SlicedPhi2Config(sparsity=sparsity, num_hidden_layers=num_hidden_layers, hidden_size=hidden_size, new_hidden_dim=new_embedding_dim)
     sliced_model.save_pretrained("sliced_phi2")
     
-    # load the config
     config = SlicedPhi2Config.from_pretrained("sliced_phi2")
     print(config)
     
     sliced_model = SlicedPhiForCausalLM(config)
     print(sliced_model)
     
+    sliced_model.save_pretrained("sliced_phi2_model")
+    sliced_model.from_pretrained("sliced_phi2_model")
     
+    print(sliced_model)
