@@ -8,7 +8,7 @@ import os
 import torch
 import wandb
 
-from quarot import hadamard_utils, hf_utils, layernorm_fusion, quant_utils, rtn_utils
+from quarot import hadamard_utils, hf_utils, layernorm_fusion, quant_utils, rtn_utils, rotation_utils
 from slicegpt import data_utils, gpu_utils, utils
 from slicegpt.config import config
 
@@ -177,7 +177,7 @@ def quarot_main(args: argparse.Namespace) -> None:
         else:
             model.to(config.device)
 
-    '''
+    #'''
     dataset = data_utils.get_dataset(args.cal_dataset)
     test_dataset = dataset["test"]
     test_loader = data_utils.prepare_test_dataloader(
@@ -192,7 +192,7 @@ def quarot_main(args: argparse.Namespace) -> None:
         wandb.log({"original_ppl": dataset_ppl})
         model.cpu()
         utils.cleanup_memory()
-    '''
+    #'''
 
     if args.rotate:
         # replace modules with compressible equivalents
@@ -200,6 +200,13 @@ def quarot_main(args: argparse.Namespace) -> None:
 
         # fuse layernorms
         layernorm_fusion.fuse_modules(model_adapter)
+
+        # rotate model
+        rotation_utils.rotate_model(model, args)
+    
+        reset_model_device()
+        dataset_ppl = gpu_utils.evaluate_ppl(model, model.config.pad_token_id, test_loader)
+        logging.info(f'Debug ppl1: {dataset_ppl:.4f}')
 
         utils.cleanup_memory()
 
@@ -221,10 +228,16 @@ def quarot_main(args: argparse.Namespace) -> None:
                 qlayers[name].K = K
                 qlayers[name].had_dim = model.config.hidden_size // model.config.num_attention_heads
                 qlayers[name].fp32_had = args.fp32_had
-        else:
-            quant_utils.add_actquant(
-                model
-            )  # Add Activation Wrapper to the model as the rest of the code assumes it is present
+
+        logging.info("Finished preparing model for quantization.")
+    else:
+        quant_utils.add_actquant(
+            model
+        )  # Add Activation Wrapper to the model as the rest of the code assumes it is present
+
+    reset_model_device()
+    dataset_ppl = gpu_utils.evaluate_ppl(model, model.config.pad_token_id, test_loader)
+    logging.info(f'Debug ppl2: {dataset_ppl:.4f}')
 
     # Quantize the model weights
     if args.w_bits < 16:
