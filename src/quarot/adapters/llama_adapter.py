@@ -14,11 +14,52 @@ from transformers import PretrainedConfig, PreTrainedTokenizerBase
 from transformers.models.llama.modeling_llama import LlamaConfig, LlamaDecoderLayer, LlamaForCausalLM, LlamaRMSNorm
 
 from quarot.model_adapter import LayerAdapter, ModelAdapter
-from slicegpt.adapters.llama_adapter import LlamaLayerAdapter  # Llama layer adapter is the same as in SliceGPT
 
 
 class QuaRotLlamaDecoderLayer(LlamaDecoderLayer):
     pass
+
+class LlamaLayerAdapter(LayerAdapter):
+    def __init__(self, layer: LlamaDecoderLayer) -> None:
+        super().__init__()
+        self._layer: LlamaDecoderLayer = layer
+
+    @property
+    def layer(self) -> Module:
+        return self._layer
+
+    @property
+    def hidden_states_args_position(self) -> int:
+        return 0
+
+    @property
+    def hidden_states_output_position(self) -> int:
+        return 0
+
+    def get_first_layernorm(self) -> Module:
+        return self.layer.input_layernorm
+
+    def get_second_layernorm(self) -> Module:
+        return self.layer.post_attention_layernorm
+
+    def get_attention_inputs(self) -> list[Linear]:
+        return [self.layer.self_attn.q_proj, self.layer.self_attn.k_proj, self.layer.self_attn.v_proj]
+
+    def get_attention_output(self) -> Linear:
+        return self.layer.self_attn.o_proj
+
+    def get_mlp_inputs(self) -> list[Linear]:
+        return [self.layer.mlp.gate_proj, self.layer.mlp.up_proj]
+
+    def get_mlp_output(self) -> Linear:
+        return self.layer.mlp.down_proj
+
+    # The below methods are QuaRot specific.
+    def get_v_proj(self) -> Linear:
+        return self.layer.self_attn.v_proj
+
+    def get_o_proj(self) -> Linear:
+        return self.layer.self_attn.o_proj
 
 
 class LlamaModelAdapter(ModelAdapter):

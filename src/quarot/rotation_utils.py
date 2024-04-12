@@ -19,6 +19,8 @@ from slicegpt.rotate import rotate_attention_output as rotate_attention_output_s
 from slicegpt.rotate import rotate_mlp_input as rotate_mlp_input_slicegpt
 from slicegpt.rotate import rotate_mlp_output as rotate_mlp_output_slicegpt
 
+from .model_adapter import LayerAdapter, ModelAdapter
+
 
 def random_orthogonal_matrix(size, device):
     """
@@ -182,28 +184,39 @@ def rotate_model(model, args):
         rotate_ov_proj(layers[idx], model_type, num_heads, head_dim)
 
 @torch.inference_mode()
-def rotate_model_clean(model_adapter, rotate_mode="hadamard"):
+def rotate_model_clean(model_adapter: ModelAdapter, rotate_mode: str = "hadamard") -> None:
+    '''
+    Rotate the model using the QuaRot method.
+    '''
     model = model_adapter.model
     Q = get_orthogonal_matrix(model.config.hidden_size, rotate_mode) # Generate Q
+
+    # Work out head_dim, needed for applying Hadamards to o_proj and v_proj in attention.
+    head_dim = model_adapter.config.hidden_size // model_adapter.config.num_attention_heads
 
     rotate_embeddings_slicegpt(model_adapter, Q) # Rotate embeddings
     rotate_head_slicegpt(model_adapter, Q) # Rotate head
     utils.cleanup_memory()
     layer_adapters = model_adapter.get_layers()
-    for idx, layer_adapter in enumerate(tqdm.tqdm(layer_adapters, unit="layer", desc="Rotating (slicegpt)")):
+    for layer_adapter in tqdm.tqdm(layer_adapters, unit="layer", desc="Rotating (slicegpt)"):
         rotate_attention_inputs_slicegpt(layer_adapter, Q)
         rotate_attention_output_slicegpt(layer_adapter, Q)
         rotate_mlp_input_slicegpt(layer_adapter, Q)
         rotate_mlp_output_slicegpt(layer_adapter, Q)
         apply_hadamard_to_mlp_output(layer_adapter)
-        # TODO rotate ov_proj
+        apply_hadamards_to_ov_proj(layer_adapter, head_dim)
 
-
-def apply_hadamard_to_mlp_output(layer_adapter):
+def apply_hadamard_to_mlp_output(layer_adapter: LayerAdapter) -> None:
     # Apply Hadamard to the input of the MLP's output.
     W = layer_adapter.get_mlp_output()
     apply_exact_had_to_linear(W, had_dim=-1, output=False) #apply exact (inverse) hadamard on the weights of mlp output
 
+def apply_hadamards_to_ov_proj(layer_adapter: LayerAdapter, head_dim: int) -> None:
+    # Apply Hadamard to the output projection of the self-attention layer.
+    v_proj = layer_adapter.get_v_proj()
+    o_proj = layer_adapter.get_o_proj()
+    apply_exact_had_to_linear(v_proj, had_dim=head_dim, output=True)
+    apply_exact_had_to_linear(o_proj, had_dim=-1, output=False)
 
 @torch.inference_mode
 def online_rotate(module, inp):

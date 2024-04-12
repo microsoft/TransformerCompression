@@ -26,6 +26,105 @@ attention and MLP components of the layer, and how to update the arguments to th
 See src/quarot/adapters/llama_adapter.py for an example of how to implement these classes.
 """
 
+class LayerAdapter(ABC):
+    """
+    To implement a new layer adapter, implement the interface defined in this class
+    """
+
+    @property
+    @abstractmethod
+    def layer(self) -> Module:
+        """
+        Instance of the transformer layer to be wrapped. This contains the forward() method of the original model
+        """
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def hidden_states_args_position(self) -> int:
+        """
+        Returns the position of the hidden_states argument in the layer's forward method.
+        """
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def hidden_states_output_position(self) -> int:
+        """
+        Returns the position of the hidden_states in the output of the layer's forward method.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_first_layernorm(self) -> Module:
+        """
+        Returns the first layer norm in the layer, usually the one before the attention component.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_second_layernorm(self) -> Module:
+        """
+        Returns the second layer norm in the layer, usually the one before the MLP component.
+        In the case where the layer has only one LayerNorm, should raise an exception.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_attention_inputs(self) -> Sequence[Linear]:
+        """
+        Returns a list of the Linear layers (nn.modules) that are inputs to the attention component.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_attention_output(self) -> Linear:
+        """
+        Returns the Linear layer (nn.module) that is the output of the attention component.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_mlp_inputs(self) -> Sequence[Linear]:
+        """
+        Returns a list of the Linear layers (nn.modules) that are inputs to the MLP component.
+        For simple mlps, this will be a list of length 1. For gated mlps (as in the Llama models) there will be two.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_mlp_output(self) -> Linear:
+        """
+        Returns the Linear layer (nn.module) that is the output of the MLP component (usually fc2 or down_proj)
+        """
+        raise NotImplementedError
+
+    def get_updated_args(self, hidden_states: Any, args: tuple) -> tuple:
+        """
+        `args` is a tuple of the arguments to the layer's forward method. hidden_states is the new value for the
+        hidden_states argument. This method returns a new tuple of arguments with the hidden_states argument updated.
+        """
+        return (
+            args[: self.hidden_states_args_position] + (hidden_states,) + args[self.hidden_states_args_position + 1 :]
+        )
+
+    # The below are QuaRot specific. Consider renaming these to something more general if non Llama-2 architectures name
+    # these differently.
+    @abstractmethod
+    def get_v_proj(self) -> Linear:
+        """
+        Returns the Linear layer (nn.module) that is the v projection in the attention component.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_o_proj(self) -> Linear:
+        """
+        Returns the Linear layer (nn.module) that is the output projection in the attention component.
+        """
+        raise NotImplementedError
+
+
 
 class ModelAdapter(ABC):
     """
