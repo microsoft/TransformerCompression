@@ -203,7 +203,7 @@ def quarot_main(args: argparse.Namespace) -> None:
         # rotate model. NB: this does NOT leave the model invariant as the input to the MLP down proj has
         # an extra Hadamard matrix applied to it, with its inverse applied on the inputs to the MLP online,
         # which is set by q[..down_proj].online_full_had = True later.
-        rotation_utils.rotate_model_clean(model_adapter, args.rotate_mode)  #
+        rotation_utils.rotate_model(model_adapter, args.rotate_mode, args.rotation_seed)
 
         # Prepare the model for quantization
         quant_utils.add_actquant(model)  # Add Activation Wrapper to the model
