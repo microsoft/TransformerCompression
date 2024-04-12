@@ -18,7 +18,6 @@ from slicegpt.rotate import rotate_mlp_output as rotate_mlp_output_slicegpt
 
 from .hadamard_utils import apply_exact_had_to_linear, is_pow2, random_hadamard_matrix
 from .model_adapter import LayerAdapter, ModelAdapter
-
 from .quant_utils import ActQuantizer
 
 
