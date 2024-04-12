@@ -26,7 +26,7 @@ def rotate_attention_inputs(layer_adapter: LayerAdapter, Q: torch.Tensor) -> Non
 def slice_attention_inputs(layer_adapter: LayerAdapter, new_embedding_dimension: int) -> None:
     # Slice the WQ, WK and WV matrices of the self-attention layer.
     for W in layer_adapter.get_attention_inputs():
-        W.weight.data = W.weight.data[:, :new_embedding_dimension]
+        W.weight.data = W.weight.data[:, :new_embedding_dimension].contiguous()
         W.in_features = new_embedding_dimension
 
     layer_adapter.layer.attn_shortcut_Q = nn.Parameter(layer_adapter.layer.attn_shortcut_Q[:new_embedding_dimension, :])
@@ -47,7 +47,7 @@ def rotate_attention_output(layer_adapter: LayerAdapter, Q: torch.Tensor) -> Non
 def slice_attention_output(layer_adapter: LayerAdapter, new_embedding_dimension: int) -> None:
     # Slice output matrix of the self-attention layer.
     W = layer_adapter.get_attention_output()
-    W.weight.data = W.weight.data[:new_embedding_dimension, :]
+    W.weight.data = W.weight.data[:new_embedding_dimension, :].contiguous()
     if W.bias is not None:
         W.bias.data = W.bias.data[:new_embedding_dimension]
     W.out_features = new_embedding_dimension
@@ -64,7 +64,7 @@ def rotate_mlp_input(layer_adapter: LayerAdapter, Q: torch.Tensor) -> None:
 def slice_mlp_input(layer_adapter: LayerAdapter, new_embedding_dimension: int) -> None:
     # Slice the MLP input weights.
     for W in layer_adapter.get_mlp_inputs():
-        W.weight.data = W.weight.data[:, :new_embedding_dimension]
+        W.weight.data = W.weight.data[:, :new_embedding_dimension].contiguous()
         W.in_features = new_embedding_dimension
 
 
@@ -82,7 +82,7 @@ def rotate_mlp_output(layer_adapter: LayerAdapter, Q: torch.Tensor) -> None:
 def slice_mlp_output(layer_adapter: LayerAdapter, new_embedding_dimension: int) -> None:
     # Slice the MLP output weights and bias.
     W = layer_adapter.get_mlp_output()
-    W.weight.data = W.weight.data[:new_embedding_dimension, :]
+    W.weight.data = W.weight.data[:new_embedding_dimension, :].contiguous()
     if W.bias is not None:
         W.bias.data = W.bias.data[:new_embedding_dimension]
     W.out_features = new_embedding_dimension
@@ -102,7 +102,7 @@ def rotate_embeddings(model_adapter: ModelAdapter, Q: torch.Tensor) -> None:
 def slice_embeddings(model_adapter: ModelAdapter, new_embedding_dimensions: dict[int, int]) -> None:
     # Slice the embeddings.
     for i, W in enumerate(model_adapter.get_embeddings()):
-        W.weight.data = W.weight.data[:, : new_embedding_dimensions[i]]
+        W.weight.data = W.weight.data[:, : new_embedding_dimensions[i]].contiguous()
         W.embedding_dim = new_embedding_dimensions[i]
 
 
@@ -117,7 +117,7 @@ def rotate_head(model_adapter: ModelAdapter, Q: torch.Tensor) -> None:
 def slice_head(model_adapter: ModelAdapter, new_embedding_dimension: int) -> None:
     # Slice the head.
     lm_head = model_adapter.get_lm_head()
-    lm_head.weight.data = lm_head.weight.data[:, :new_embedding_dimension]
+    lm_head.weight.data = lm_head.weight.data[:, :new_embedding_dimension].contiguous()
     lm_head.in_features = new_embedding_dimension
 
 
