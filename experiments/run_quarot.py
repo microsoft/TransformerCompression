@@ -216,13 +216,13 @@ def quarot_main(args: argparse.Namespace) -> None:
                 qlayers[name].had_K = had_K
                 qlayers[name].K = K
                 qlayers[name].fp32_had = args.fp32_had
-            # if 'o_proj' in name:  # TODO : make this more general
-            #     had_K, K = hadamard_utils.get_hadK(model.config.num_attention_heads)
-            #     qlayers[name].online_partial_had = True
-            #     qlayers[name].had_K = had_K
-            #     qlayers[name].K = K
-            #     qlayers[name].had_dim = model.config.hidden_size // model.config.num_attention_heads
-            #     qlayers[name].fp32_had = args.fp32_had
+            if 'o_proj' in name:  # TODO : make this more general
+                had_K, K = hadamard_utils.get_hadK(model.config.num_attention_heads)
+                qlayers[name].online_partial_had = True
+                qlayers[name].had_K = had_K
+                qlayers[name].K = K
+                qlayers[name].had_dim = model.config.hidden_size // model.config.num_attention_heads
+                qlayers[name].fp32_had = args.fp32_had
 
         logging.info("Finished preparing model for quantization.")
         reset_model_device()
