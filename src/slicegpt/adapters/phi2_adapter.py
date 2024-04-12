@@ -25,9 +25,10 @@ class CompressedPhiDecoderLayer(PhiDecoderLayer):
     but with the addition of a shortcut_Q attribute. This attribute is used to rotate the residual tensors.
     """
     
-    def __init__(self, config: PhiConfig, layer_idx: int):
+    def __init__(self, config: PhiConfig, layer_idx: int, replace_layernorm: bool = False):
         super().__init__(config, layer_idx)
-        self.input_layernorm = RMSN(config.hidden_size)
+        if replace_layernorm:
+            self.input_layernorm = RMSN(config.hidden_size)
 
     def forward(
         self,
@@ -154,6 +155,10 @@ class Phi2ModelAdapter(ModelAdapter):
     @property
     def hidden_size(self) -> int:
         return self.config.hidden_size
+    
+    @property
+    def intermediate_size(self) -> int:
+        return self.config.intermediate_size
 
     @property
     def should_bake_mean_into_linear(self) -> bool:
