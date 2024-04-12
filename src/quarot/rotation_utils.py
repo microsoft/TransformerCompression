@@ -21,7 +21,7 @@ from .model_adapter import LayerAdapter, ModelAdapter
 from .quant_utils import ActQuantizer
 
 
-def random_orthogonal_matrix(size, device):
+def random_orthogonal_matrix(size, device, seed=17):
     """
     Generate a random orthogonal matrix of the specified size.
     First, we generate a random matrix with entries from a standard distribution.
@@ -34,6 +34,7 @@ def random_orthogonal_matrix(size, device):
     Returns:
     torch.Tensor: An orthogonal matrix of the specified size.
     """
+    torch.manual_seed(seed)
     torch.cuda.empty_cache()
     random_matrix = torch.randn(size, size, dtype=torch.float64).to(device)
     q, r = torch.linalg.qr(random_matrix)
@@ -41,11 +42,11 @@ def random_orthogonal_matrix(size, device):
     return q
 
 
-def get_orthogonal_matrix(size, mode, device=config.device):
+def get_orthogonal_matrix(size, mode, device=config.device, seed: int = 17):
     if mode == 'random':
-        return random_orthogonal_matrix(size, device)
+        return random_orthogonal_matrix(size, device, seed=seed)
     elif mode == 'hadamard':
-        return random_hadamard_matrix(size, device)
+        return random_hadamard_matrix(size, device, seed=seed)
     else:
         raise ValueError(f'Unknown mode {mode}')
 
@@ -68,12 +69,12 @@ def matmul_hadU_cuda_had(X, hadK, transpose=False):
 
 
 @torch.inference_mode()
-def rotate_model_clean(model_adapter: ModelAdapter, rotate_mode: str = "hadamard") -> None:
+def rotate_model(model_adapter: ModelAdapter, rotate_mode: str = "hadamard", seed: int = 17) -> None:
     '''
     Rotate the model using the QuaRot method.
     '''
     model = model_adapter.model
-    Q = get_orthogonal_matrix(model.config.hidden_size, rotate_mode)  # Generate Q
+    Q = get_orthogonal_matrix(model.config.hidden_size, rotate_mode, seed=seed)  # Generate Q
 
     # Work out head_dim, needed for applying Hadamards to o_proj and v_proj in attention.
     head_dim = model_adapter.config.hidden_size // model_adapter.config.num_attention_heads
