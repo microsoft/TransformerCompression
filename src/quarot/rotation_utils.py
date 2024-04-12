@@ -12,6 +12,13 @@ from .quant_utils import ActQuantizer
 from .hadamard_utils import random_hadamard_matrix, apply_exact_had_to_linear, is_pow2
 from fast_hadamard_transform import hadamard_transform
 
+from slicegpt.rotate import rotate_embeddings as rotate_embeddings_slicegpt
+from slicegpt.rotate import rotate_head as rotate_head_slicegpt
+from slicegpt.rotate import rotate_attention_inputs as rotate_attention_inputs_slicegpt
+from slicegpt.rotate import rotate_attention_output as rotate_attention_output_slicegpt
+from slicegpt.rotate import rotate_mlp_input as rotate_mlp_input_slicegpt
+from slicegpt.rotate import rotate_mlp_output as rotate_mlp_output_slicegpt
+
 
 def random_orthogonal_matrix(size, device):
     """
@@ -156,26 +163,42 @@ def rotate_ov_proj(layer, model_type, head_num, head_dim):
 
 @torch.inference_mode()
 def rotate_model(model, args):
-    Q = get_orthogonal_matrix(model.config.hidden_size,
-                                                args.rotate_mode)
+    Q = get_orthogonal_matrix(model.config.hidden_size, args.rotate_mode) # Generate Q
     config = model.config
     num_heads = config.num_attention_heads
     model_dim = config.hidden_size
     head_dim = model_dim // num_heads
 
-
     model_type = model_type_extractor(model)
-    rotate_embeddings(model, Q)
-    rotate_head(model, Q)
+    rotate_embeddings(model, Q) # Rotate embeddings
+    rotate_head(model, Q) # Rotate head
     utils.cleanup_memory()
-    layers = get_transformer_layers(model, 
-                                                model_type=model_type)
+    layers = get_transformer_layers(model, model_type=model_type) # get the layers as a list
     for idx, layer in enumerate(tqdm.tqdm(layers, unit="layer", desc="Rotating")):
         rotate_attention_inputs(layers[idx], Q, model_type)
         rotate_attention_output(layers[idx], Q, model_type)
         rotate_mlp_input(layers[idx], Q, model_type)
         rotate_mlp_output(layers[idx], Q, model_type)
         rotate_ov_proj(layers[idx], model_type, num_heads, head_dim)
+
+@torch.inference_mode()
+def rotate_model_clean(model_adapter, rotate_mode="hadamard"):
+    model = model_adapter.model
+    Q = get_orthogonal_matrix(model.config.hidden_size, rotate_mode) # Generate Q
+
+    rotate_embeddings_slicegpt(model_adapter, Q) # Rotate embeddings
+    rotate_head_slicegpt(model_adapter, Q) # Rotate head
+    utils.cleanup_memory()
+    layer_adapters = model_adapter.get_layers()
+    for idx, layer_adapter in enumerate(tqdm.tqdm(layer_adapters, unit="layer", desc="Rotating (slicegpt)")):
+        rotate_attention_inputs_slicegpt(layer_adapter, Q)
+        rotate_attention_output_slicegpt(layer_adapter, Q)
+        rotate_mlp_input_slicegpt(layer_adapter, Q)
+        rotate_mlp_output_slicegpt(layer_adapter, Q)
+        # TODO rotate ov_proj
+
+
+
 
 
 @torch.inference_mode

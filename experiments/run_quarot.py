@@ -202,7 +202,7 @@ def quarot_main(args: argparse.Namespace) -> None:
         layernorm_fusion.fuse_modules(model_adapter)
 
         # rotate model
-        rotation_utils.rotate_model(model, args)
+        rotation_utils.rotate_model_clean(model_adapter, args)
     
         reset_model_device()
         dataset_ppl = gpu_utils.evaluate_ppl(model, model.config.pad_token_id, test_loader)
