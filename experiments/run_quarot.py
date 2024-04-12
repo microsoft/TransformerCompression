@@ -8,7 +8,7 @@ import os
 import torch
 import wandb
 
-from quarot import hadamard_utils, hf_utils, layernorm_fusion, quant_utils, rtn_utils, rotation_utils
+from quarot import hadamard_utils, hf_utils, layernorm_fusion, quant_utils, rotation_utils, rtn_utils
 from slicegpt import data_utils, gpu_utils, utils
 from slicegpt.config import config
 
@@ -49,6 +49,7 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
         "--ppl-eval-nsamples", type=int, default=128, help="Number of samples to evaluate the perplexity on."
     )
     parser.add_argument("--eval-baseline", action="store_true", help="Evaluate the baseline model.")
+    parser.add_argument("--eval-rotated-model", action="store_true", help="Evaluate the rotated model (for debugging).")
     parser.add_argument("--eval-quantized-model", action="store_true", help="Evaluate the quantized model.")
 
     parser.add_argument(
@@ -77,7 +78,7 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
                         if we want to quantize the Keys''',
     )
     parser.add_argument('--rotate-mode', type=str, default='hadamard', choices=['hadamard', 'random'])
-    parser.add_argument('--rotation-seed', type=int, default=-1, help='Seed for generating random matrix.')
+    parser.add_argument('--rotation-seed', type=int, default=17, help='Seed for generating random matrix.')
     parser.add_argument(
         '--fp32-had', action="store_true", default=False, help='Apply Hadamard rotation in FP32 (default: False)'
     )
@@ -201,15 +202,14 @@ def quarot_main(args: argparse.Namespace) -> None:
 
         # rotate model. NB: this does NOT leave the model invariant as the input to the MLP down proj has
         # an extra Hadamard matrix applied to it, with its inverse applied on the inputs to the MLP online,
-        # which is set by q[..down_proj].online_full_had = True later.    
-        rotation_utils.rotate_model_clean(model_adapter, args.rotate_mode)  #  
+        # which is set by q[..down_proj].online_full_had = True later.
+        rotation_utils.rotate_model_clean(model_adapter, args.rotate_mode)  #
 
         # Prepare the model for quantization
         quant_utils.add_actquant(model)  # Add Activation Wrapper to the model
         qlayers = quant_utils.find_qlayers(model)
 
         for name in qlayers:
-            print(name)
             if 'down_proj' in name:  # TODO : make this more general
                 had_K, K = hadamard_utils.get_hadK(model.config.intermediate_size)
                 qlayers[name].online_full_had = True
@@ -225,16 +225,19 @@ def quarot_main(args: argparse.Namespace) -> None:
                 qlayers[name].fp32_had = args.fp32_had
 
         logging.info("Finished preparing model for quantization.")
-        reset_model_device()
-        dataset_ppl = gpu_utils.evaluate_ppl(model, model.config.pad_token_id, test_loader)
-        print(f'Post-rotation ppl: {dataset_ppl:.4f}')
+
+        if args.eval_rotated_model:
+            # For debugging. Consider removing this in the future.
+            reset_model_device()
+            dataset_ppl = gpu_utils.evaluate_ppl(model, model.config.pad_token_id, test_loader)
+            logging.info(f'Rotated ppl: {dataset_ppl:.4f}')
+            wandb.log({"rotated_ppl": dataset_ppl})
 
     else:
         quant_utils.add_actquant(
             model
         )  # Add Activation Wrapper to the model as the rest of the code assumes it is present
 
- 
     # Quantize the model weights
     if args.w_bits < 16:
         save_dict = {}

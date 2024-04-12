@@ -19,6 +19,7 @@ from quarot.model_adapter import LayerAdapter, ModelAdapter
 class QuaRotLlamaDecoderLayer(LlamaDecoderLayer):
     pass
 
+
 class LlamaLayerAdapter(LayerAdapter):
     def __init__(self, layer: LlamaDecoderLayer) -> None:
         super().__init__()
