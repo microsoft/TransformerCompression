@@ -78,7 +78,12 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
                         if we want to quantize the Keys''',
     )
     parser.add_argument('--rotate-mode', type=str, default='hadamard', choices=['hadamard', 'random'])
-    parser.add_argument('--rotation-seed', type=int, default=0, help='Seed for generating random matrix. Use 0 to replicate paper results.')
+    parser.add_argument(
+        '--rotation-seed',
+        type=int,
+        default=0,
+        help='Seed for generating random matrix. Use 0 to replicate paper results.',
+    )
     parser.add_argument(
         '--fp32-had', action="store_true", default=False, help='Apply Hadamard rotation in FP32 (default: False)'
     )
