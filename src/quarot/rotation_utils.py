@@ -195,10 +195,14 @@ def rotate_model_clean(model_adapter, rotate_mode="hadamard"):
         rotate_attention_output_slicegpt(layer_adapter, Q)
         rotate_mlp_input_slicegpt(layer_adapter, Q)
         rotate_mlp_output_slicegpt(layer_adapter, Q)
+        apply_hadamard_to_mlp_output(layer_adapter)
         # TODO rotate ov_proj
 
 
-
+def apply_hadamard_to_mlp_output(layer_adapter):
+    # Apply Hadamard to the input of the MLP's output.
+    W = layer_adapter.get_mlp_output()
+    apply_exact_had_to_linear(W, had_dim=-1, output=False) #apply exact (inverse) hadamard on the weights of mlp output
 
 
 @torch.inference_mode
