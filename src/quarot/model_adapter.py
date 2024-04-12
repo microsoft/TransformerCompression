@@ -26,6 +26,7 @@ attention and MLP components of the layer, and how to update the arguments to th
 See src/quarot/adapters/llama_adapter.py for an example of how to implement these classes.
 """
 
+
 class LayerAdapter(ABC):
     """
     To implement a new layer adapter, implement the interface defined in this class
@@ -123,7 +124,6 @@ class LayerAdapter(ABC):
         Returns the Linear layer (nn.module) that is the output projection in the attention component.
         """
         raise NotImplementedError
-
 
 
 class ModelAdapter(ABC):
