@@ -177,7 +177,6 @@ def quarot_main(args: argparse.Namespace) -> None:
         else:
             model.to(config.device)
 
-    #'''
     dataset = data_utils.get_dataset(args.cal_dataset)
     test_dataset = dataset["test"]
     test_loader = data_utils.prepare_test_dataloader(
@@ -192,7 +191,6 @@ def quarot_main(args: argparse.Namespace) -> None:
         wandb.log({"original_ppl": dataset_ppl})
         model.cpu()
         utils.cleanup_memory()
-    #'''
 
     if args.rotate:
         # replace modules with compressible equivalents
@@ -201,18 +199,15 @@ def quarot_main(args: argparse.Namespace) -> None:
         # fuse layernorms
         layernorm_fusion.fuse_modules(model_adapter)
 
-        # rotate model
-        rotation_utils.rotate_model_clean(model_adapter, args)
-    
-        reset_model_device()
-        dataset_ppl = gpu_utils.evaluate_ppl(model, model.config.pad_token_id, test_loader)
-        logging.info(f'Debug ppl1: {dataset_ppl:.4f}')
-
-        utils.cleanup_memory()
+        # rotate model. NB: this does NOT leave the model invariant as the input to the MLP down proj has
+        # an extra Hadamard matrix applied to it, with its inverse applied on the inputs to the MLP online,
+        # which is set by q[..down_proj].online_full_had = True later.    
+        rotation_utils.rotate_model_clean(model_adapter, args.rotate_mode)  #  
 
         # Prepare the model for quantization
         quant_utils.add_actquant(model)  # Add Activation Wrapper to the model
         qlayers = quant_utils.find_qlayers(model)
+
         for name in qlayers:
             print(name)
             if 'down_proj' in name:  # TODO : make this more general
@@ -221,24 +216,25 @@ def quarot_main(args: argparse.Namespace) -> None:
                 qlayers[name].had_K = had_K
                 qlayers[name].K = K
                 qlayers[name].fp32_had = args.fp32_had
-            if 'o_proj' in name:  # TODO : make this more general
-                had_K, K = hadamard_utils.get_hadK(model.config.num_attention_heads)
-                qlayers[name].online_partial_had = True
-                qlayers[name].had_K = had_K
-                qlayers[name].K = K
-                qlayers[name].had_dim = model.config.hidden_size // model.config.num_attention_heads
-                qlayers[name].fp32_had = args.fp32_had
+            # if 'o_proj' in name:  # TODO : make this more general
+            #     had_K, K = hadamard_utils.get_hadK(model.config.num_attention_heads)
+            #     qlayers[name].online_partial_had = True
+            #     qlayers[name].had_K = had_K
+            #     qlayers[name].K = K
+            #     qlayers[name].had_dim = model.config.hidden_size // model.config.num_attention_heads
+            #     qlayers[name].fp32_had = args.fp32_had
 
         logging.info("Finished preparing model for quantization.")
+        reset_model_device()
+        dataset_ppl = gpu_utils.evaluate_ppl(model, model.config.pad_token_id, test_loader)
+        print(f'Post-rotation ppl: {dataset_ppl:.4f}')
+
     else:
         quant_utils.add_actquant(
             model
         )  # Add Activation Wrapper to the model as the rest of the code assumes it is present
 
-    reset_model_device()
-    dataset_ppl = gpu_utils.evaluate_ppl(model, model.config.pad_token_id, test_loader)
-    logging.info(f'Debug ppl2: {dataset_ppl:.4f}')
-
+ 
     # Quantize the model weights
     if args.w_bits < 16:
         save_dict = {}
