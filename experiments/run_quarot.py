@@ -5,8 +5,13 @@ import argparse
 import logging
 import os
 
+import lm_eval
 import torch
 import wandb
+from lm_eval import utils as lm_eval_utils
+from lm_eval.api.registry import ALL_TASKS
+from lm_eval.models.huggingface import HFLM
+from lm_eval.tasks import initialize_tasks
 
 from quarot import hadamard_utils, hf_utils, layernorm_fusion, quant_utils, rotation_utils, rtn_utils
 from slicegpt import data_utils, gpu_utils, utils
@@ -55,7 +60,7 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
     parser.add_argument(
         "--distribute-model",
         action="store_true",
-        help="Use accelerate to put the model on multiple GPUs for evaluation. It is recommended to use it for models with 30B parameters and above.",
+        help="Use accelerate to put the model on multiple GPUs for evaluation.",
     )
     parser.add_argument("--save-dir", type=str, default=None, help="Path to save the model.")
     parser.add_argument('--hf-token', type=str, default=os.getenv('HF_TOKEN', None))
@@ -178,6 +183,17 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
         type=float,
         default=1.0,
         help='Clip ratio for K-cache quantization. new_max = max * clip-ratio',
+    )
+
+    # LM Eval Arguments
+    parser.add_argument("--lm-eval", action="store_true", help="Evaluate the model on LM Eval tasks.")
+    parser.add_argument(
+        '--tasks',
+        nargs='+',
+        default=["piqa", "hellaswag", "arc_easy", "arc_challenge", "winogrande", "lambada"],
+    )
+    parser.add_argument(
+        '--lm-eval-batch-size', type=int, default=128, help='Batch size for evaluating with lm eval harness.'
     )
 
     return parser.parse_args() if interactive else parser.parse_args('')
@@ -346,6 +362,20 @@ def quarot_main(args: argparse.Namespace) -> None:
     dataset_ppl = gpu_utils.evaluate_ppl(model, model.config.pad_token_id, test_loader)
     logging.info(f'QuaRot ppl: {dataset_ppl:.4f}')
     wandb.log({"quarot_ppl": dataset_ppl})
+
+    if not args.lm_eval:
+        return
+
+    hflm = HFLM(pretrained=model, tokenizer=tokenizer, batch_size=args.lm_eval_batch_size)
+
+    initialize_tasks()
+    task_names = lm_eval_utils.pattern_match(args.tasks, ALL_TASKS)
+    results = lm_eval.simple_evaluate(hflm, tasks=task_names, batch_size=args.lm_eval_batch_size)['results']
+
+    metric_vals = {task: round(result.get('acc_norm,none', result['acc,none']), 4) for task, result in results.items()}
+    metric_vals['acc_avg'] = round(sum(metric_vals.values()) / len(metric_vals.values()), 4)
+    logging.info(f"LM Eval results: {metric_vals}")
+    wandb.log(metric_vals)
 
 
 if __name__ == "__main__":
