@@ -1,6 +1,7 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
+import functools
 import math
 
 import torch
@@ -18,6 +19,7 @@ from slicegpt.rotate import rotate_mlp_output as rotate_mlp_output_slicegpt
 
 from .hadamard_utils import apply_exact_had_to_linear, is_pow2, random_hadamard_matrix
 from .model_adapter import LayerAdapter, ModelAdapter
+from .monkeypatch import add_wrapper_after_function_call_in_method
 from .quant_utils import ActQuantizer
 
 
@@ -154,3 +156,16 @@ class QKRotationWrapper(torch.nn.Module):
         self.k_quantizer.free()
 
         return q, k
+
+
+def add_qk_rotation_wrapper_after_function_call_in_forward(module, function_name, *args, **kwargs):
+    '''
+    This function adds a rotation wrapper after the output of a function call in forward.
+    Only calls directly in the forward function are affected. calls by other functions called in forward are not affected.
+    '''
+    attr_name = f"{function_name}_qk_rotation_wrapper"
+    assert not hasattr(module, attr_name)
+    wrapper = add_wrapper_after_function_call_in_method(
+        module, "forward", function_name, functools.partial(QKRotationWrapper, *args, **kwargs)
+    )
+    setattr(module, attr_name, wrapper)

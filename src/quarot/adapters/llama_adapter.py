@@ -62,6 +62,12 @@ class LlamaLayerAdapter(LayerAdapter):
     def get_o_proj(self) -> Linear:
         return self.layer.self_attn.o_proj
 
+    def get_rope_function_name(self) -> str:
+        return "apply_rotary_pos_emb"
+
+    def get_self_attn(self) -> Module:
+        return self.layer.self_attn
+
 
 class LlamaModelAdapter(ModelAdapter):
     def __init__(self, model: LlamaForCausalLM) -> None:

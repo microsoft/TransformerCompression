@@ -24,16 +24,17 @@ dependencies = [
     "accelerate",
     "datasets==2.14.7",
     "einops",
+    "fast_hadamard_transform",
     "huggingface-hub==0.20.2",
     "lm-eval==0.4.1",
     "ml-collections",
     "numpy",
+    "packaging",
     "sentencepiece",
     "torch",
     "tqdm",
     "transformers==4.37",
     "wandb",
-    "fast_hadamard_transform",
 ]
 
 [project.optional-dependencies]
