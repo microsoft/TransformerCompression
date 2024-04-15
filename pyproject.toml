@@ -24,12 +24,10 @@ dependencies = [
     "accelerate",
     "datasets==2.14.7",
     "einops",
-    "fast_hadamard_transform",
     "huggingface-hub==0.20.2",
     "lm-eval==0.4.1",
     "ml-collections",
     "numpy",
-    "packaging",
     "sentencepiece",
     "torch",
     "tqdm",
@@ -47,7 +45,11 @@ dev = [
 
 finetune = [
     "syne-tune[gpsearchers]==0.10.0",
-    "peft==0.6.0"
+    "peft==0.6.0",
+]
+
+quarot = [
+    "fast_hadamard_transform",
 ]
 
 [tool.setuptools.packages.find]
@@ -92,4 +94,5 @@ docstring-min-length = 10
 markers = [
     "gpu: tests that require GPU to run",
     "experiment: end to end experiments, slow to run",
+    "quarot: end to end quarot experiments, slow to run",
 ]
