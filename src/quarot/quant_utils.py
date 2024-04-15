@@ -1,6 +1,7 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
+import logging
 import math
 
 import fast_hadamard_transform
@@ -168,7 +169,7 @@ class ActQuantizer(torch.nn.Module):
         if self.groupsize > 0:
             # group-wise per-token quantization
             self.find_params_per_token_groupwise(x)
-            utils.cleanup_memory(verbos=False)
+            utils.cleanup_memory()
             return
 
         reshaped_x = x.reshape((-1, x.shape[-1]))
@@ -422,3 +423,20 @@ def find_qlayers(module, layers=[torch.nn.Linear, ActQuantWrapper], name=''):
     for name1, child in module.named_children():
         res.update(find_qlayers(child, layers=layers, name=name + '.' + name1 if name != '' else name1))
     return res
+
+
+def llama_down_proj_groupsize(model, groupsize):
+
+    assert groupsize > 1, 'groupsize should be greater than 1!'
+
+    if model.config.intermediate_size % groupsize == 0:
+        logging.info(f'(Act.) Groupsiz = Down_proj Groupsize: {groupsize}')
+        return groupsize
+
+    group_num = int(model.config.hidden_size / groupsize)
+    assert groupsize * group_num == model.config.hidden_size, 'Invalid groupsize for llama!'
+
+    down_proj_groupsize = model.config.intermediate_size // group_num
+    assert down_proj_groupsize * group_num == model.config.intermediate_size, 'Invalid groupsize for down_proj!'
+    logging.info(f'(Act.) Groupsize: {groupsize}, Down_proj Groupsize: {down_proj_groupsize}')
+    return down_proj_groupsize

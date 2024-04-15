@@ -105,10 +105,10 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
         '--a-asym', action="store_true", default=False, help='ASymmetric Activation quantization (default: False)'
     )
     parser.add_argument(
-        '--a-clip_ratio',
+        '--a-clip-ratio',
         type=float,
         default=1.0,
-        help='Clip ratio for activation quantization. new_max = max * clip_ratio',
+        help='Clip ratio for activation quantization. new_max = max * clip-ratio',
     )
 
     # Weight Quantization Arguments
@@ -141,6 +141,43 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
         action="store_true",
         default=False,
         help='Use INT8 for Down Projection! If this set, both weights and activations of this layer will be in INT8',
+    )
+
+    # KV-Cache Quantization Arguments
+    parser.add_argument(
+        '--v-bits',
+        type=int,
+        default=16,
+        help='''Number of bits for V-cache quantization. 
+                        Note that quantizing the V-cache does not need any other rotation''',
+    )
+    parser.add_argument('--v-groupsize', type=int, default=-1)
+    parser.add_argument(
+        '--v-asym', action=argparse.BooleanOptionalAction, default=False, help='ASymmetric V-cache quantization'
+    )
+    parser.add_argument(
+        '--v-clip-ratio',
+        type=float,
+        default=1.0,
+        help='Clip ratio for v-cache quantization. new_max = max * clip-ratio',
+    )
+
+    parser.add_argument(
+        '--k-bits',
+        type=int,
+        default=16,
+        help='''Number of bits for K-cache quantization. 
+                        Note that quantizing the K-cache needs another rotation for the keys/queries''',
+    )
+    parser.add_argument('--k-groupsize', type=int, default=-1)
+    parser.add_argument(
+        '--k-asym', action=argparse.BooleanOptionalAction, default=False, help='ASymmetric K-cache quantization'
+    )
+    parser.add_argument(
+        '--k-clip-ratio',
+        type=float,
+        default=1.0,
+        help='Clip ratio for K-cache quantization. new_max = max * clip-ratio',
     )
 
     return parser.parse_args() if interactive else parser.parse_args('')
@@ -257,6 +294,53 @@ def quarot_main(args: argparse.Namespace) -> None:
 
         if args.save_dir:
             raise NotImplementedError("Saving quantized model is not yet implemented!")
+
+    # Add activation and v quantization
+    if args.a_bits < 16 or args.v_bits < 16:
+        qlayers = quant_utils.find_qlayers(model, layers=[quant_utils.ActQuantWrapper])
+        down_proj_groupsize = -1
+        if args.a_groupsize > 0 and "llama" in args.model:
+            down_proj_groupsize = quant_utils.llama_down_proj_groupsize(model, args.a_groupsize)
+
+        for name in qlayers:
+            layer_input_bits = args.a_bits
+            layer_groupsize = args.a_groupsize
+            layer_a_sym = not (args.a_asym)
+            layer_a_clip = args.a_clip_ratio
+
+            if 'v_proj' in name and args.v_bits < 16:  # Set the v_proj precision
+                qlayers[name].out_quantizer.configure(
+                    bits=args.v_bits, groupsize=args.v_groupsize, sym=not (args.v_asym), clip_ratio=args.v_clip_ratio
+                )
+
+            if 'lm_head' in name:  # Skip lm_head quantization
+                layer_input_bits = 16
+
+            if 'down_proj' in name:  # Set the down_proj precision
+                if args.int8_down_proj:
+                    layer_input_bits = 8
+                layer_groupsize = down_proj_groupsize
+
+            qlayers[name].quantizer.configure(
+                bits=layer_input_bits, groupsize=layer_groupsize, sym=layer_a_sym, clip_ratio=layer_a_clip
+            )
+
+    # Add k quantization
+    if args.k_bits < 16:
+        layer_adapters = model_adapter.get_layers()
+        k_quant_config = {
+            'k_bits': args.k_bits,
+            "k_groupsize": args.k_groupsize,
+            "k_sym": not (args.k_asym),
+            "k_clip_ratio": args.k_clip_ratio,
+        }
+        for layer_adapter in layer_adapters:
+            rotation_utils.add_qk_rotation_wrapper_after_function_call_in_forward(
+                layer_adapter.get_self_attn(),
+                layer_adapter.get_rope_function_name(),
+                config=model.config,
+                **k_quant_config,
+            )
 
     reset_model_device()
     dataset_ppl = gpu_utils.evaluate_ppl(model, model.config.pad_token_id, test_loader)
