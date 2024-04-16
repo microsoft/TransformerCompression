@@ -13,7 +13,7 @@ from typing import Any, final
 import torch
 from torch import FloatTensor, Tensor
 from torch.nn import Linear, Module
-from transformers import PreTrainedTokenizerBase
+from transformers import PretrainedConfig, PreTrainedTokenizerBase
 
 """
 To add support for a new model, you need to create a new adapter class that inherits from ModelAdapter, and a new 
@@ -126,7 +126,7 @@ class ModelAdapter(ABC):
 
     @property
     @abstractmethod
-    def config(self) -> object:
+    def config(self) -> PretrainedConfig:
         """
         The model config
         """

@@ -2,20 +2,15 @@
 # Licensed under the MIT license.
 from __future__ import annotations
 
-import copy
 import inspect
-import json
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
-from dataclasses import asdict, dataclass, field
 from typing import Any, final
 
 import torch
 from torch import FloatTensor, Tensor
 from torch.nn import Linear, Module
-from transformers import PreTrainedTokenizerBase
-
-from slicegpt.model_adapter import LayerAdapter  # LayerAdapter is the same as the SliceGPT one
+from transformers import PretrainedConfig, PreTrainedTokenizerBase
 
 """
 To add support for a new model, you need to create a new adapter class that inherits from ModelAdapter, and a new 
@@ -139,9 +134,6 @@ class ModelAdapter(ABC):
     To implement a new model adapter, implement the interface defined in this class.
     """
 
-    def __init__(self):
-        self.quarot_conf: QuaRotConfig | None = None
-
     @property
     @abstractmethod
     def model(self) -> Module:
@@ -152,17 +144,9 @@ class ModelAdapter(ABC):
 
     @property
     @abstractmethod
-    def config(self) -> object:
+    def config(self) -> PretrainedConfig:
         """
         The model config
-        """
-        raise NotImplementedError
-
-    @property
-    @abstractmethod
-    def config_type(self) -> type:
-        """
-        Type of the config class
         """
         raise NotImplementedError
 
@@ -452,10 +436,3 @@ class ModelAdapter(ABC):
         See `from_model` for more details.
         """
         raise NotImplementedError
-
-
-@dataclass
-class QuaRotConfig:
-    """QuaRot configuration."""
-
-    pass
