@@ -2,10 +2,9 @@
 # Licensed under the MIT license.
 
 import logging
-from typing import Callable, Iterable, Optional, TypeVar
+from typing import TypeVar
 
-import torch
-from torch.nn import Linear, Module, Parameter
+from torch.nn import Module, Parameter
 
 from slicegpt.layernorm_fusion import bake_mean_into_linear, fuse_ln_linear, replace_modules
 from slicegpt.modules import RMSN
