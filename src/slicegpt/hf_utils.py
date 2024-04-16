@@ -116,7 +116,7 @@ def load_sliced_model(
     sliced_model_path: str,
     *,
     token: str | None = None,
-    lora_config: LoraConfig = None,
+    lora_config: LoraConfig | None = None,
     sparsity: float | None = None,
     round_interval: int | None = 1,
 ) -> tuple[ModelAdapter, PreTrainedTokenizerBase]:
@@ -135,6 +135,7 @@ def load_sliced_model(
         uninitialized=True,
         token=token,
     )
+
     replace_layers(model_adapter)
     fuse_modules(model_adapter)
 
