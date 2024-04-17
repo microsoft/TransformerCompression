@@ -239,13 +239,6 @@ class ModelAdapter(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def convert_layer_to_quarot(self, layer: Module, layer_idx: int | None) -> Module:
-        """
-        Replace the given layer with a quarot version of the layer.
-        """
-        raise NotImplementedError
-
-    @abstractmethod
     def get_layers(self) -> Sequence[LayerAdapter]:
         """
         Returns a list of LayerAdapters, one for each layer in the model.
@@ -294,14 +287,6 @@ class ModelAdapter(ABC):
         See https://huggingface.co/docs/accelerate/concept_guides/big_model_inference for more details.
         """
         return [self.original_layer_type.__name__, self.quarot_layer_type.__name__]
-
-    @final
-    def convert_layer_to_quarot(self, layer: Module, layer_idx: int | None) -> Module:
-        """
-        Replace the given layer with a quarot version of the layer.
-        """
-        quarot_layer = self.convert_layer_to_quarot(layer, layer_idx)
-        return quarot_layer
 
     def post_init(self, tokenizer: PreTrainedTokenizerBase) -> None:
         """
@@ -364,9 +349,6 @@ class ModelAdapter(ABC):
         if adapter is not None:
             return adapter
 
-        import pdb
-
-        pdb.set_trace()
         raise NotImplementedError(f"{model_path} is neither a Hugging Face model nor a supported local model.")
 
     @classmethod

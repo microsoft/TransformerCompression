@@ -387,9 +387,7 @@ class WeightQuantizer(torch.nn.Module):
         return torch.all(self.scale != 0)
 
 
-def add_actquant(
-    module, name='', layers=[torch.nn.Linear, ActQuantWrapper, transformers.models.falcon.modeling_falcon.FalconLinear]
-):
+def add_actquant(module, name='', layers=[torch.nn.Linear, ActQuantWrapper]):
     if isinstance(module, ActQuantWrapper):
         return
     for attr in dir(module):

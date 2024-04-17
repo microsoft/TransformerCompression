@@ -13,8 +13,8 @@ from lm_eval.api.registry import ALL_TASKS
 from lm_eval.models.huggingface import HFLM
 from lm_eval.tasks import initialize_tasks
 
-from quarot import hadamard_utils, hf_utils, layernorm_fusion, quant_utils, rotation_utils, rtn_utils
-from slicegpt import data_utils, gpu_utils, utils
+from quarot import hadamard_utils, hf_utils, quant_utils, rotation_utils, rtn_utils
+from slicegpt import data_utils, gpu_utils, layernorm_fusion, utils
 from slicegpt.config import config
 
 
@@ -82,7 +82,6 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
                         out-projection. Note that this does not apply rotation to the K/Q and they will be rotated
                         if we want to quantize the Keys''',
     )
-    parser.add_argument('--rotate-mode', type=str, default='hadamard', choices=['hadamard', 'random'])
     parser.add_argument(
         '--rotation-seed',
         type=int,
@@ -90,7 +89,10 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
         help='Seed for generating random matrix. Use 0 to replicate paper results.',
     )
     parser.add_argument(
-        '--fp32-had', action="store_true", default=False, help='Apply Hadamard rotation in FP32 (default: False)'
+        '--fp32-had',
+        action="store_true",
+        default=False,
+        help='Apply Hadamard rotation in FP32 (default: False means FP16)',
     )
 
     # Activation Quantization Arguments
@@ -252,35 +254,34 @@ def quarot_main(args: argparse.Namespace) -> None:
         utils.cleanup_memory()
 
     if args.rotate:
-        # replace modules with compressible equivalents
-        layernorm_fusion.replace_layers(model_adapter)
-
         # fuse layernorms
-        layernorm_fusion.fuse_modules(model_adapter)
+        layernorm_fusion.fuse_modules(
+            model_adapter
+        )  # TODO: here we pass a quarot adapter instead of a slicegpt adapter
 
         # rotate model. NB: this does NOT leave the model invariant as the input to the MLP down proj has
         # an extra Hadamard matrix applied to it, with its inverse applied on the inputs to the MLP online,
         # which is set by q[..down_proj].online_full_had = True later.
-        rotation_utils.rotate_model(model_adapter, args.rotate_mode, args.rotation_seed)
+        rotation_utils.rotate_model(model_adapter, args.rotation_seed)
 
         # Prepare the model for quantization
         quant_utils.add_actquant(model)  # Add Activation Wrapper to the model
-        qlayers = quant_utils.find_qlayers(model)
+        quantizeable_modules = quant_utils.find_qlayers(model)
 
-        for name in qlayers:
+        for name in quantizeable_modules:
             if 'down_proj' in name:  # TODO : make this more general
                 had_K, K = hadamard_utils.get_hadK(model.config.intermediate_size)
-                qlayers[name].online_full_had = True
-                qlayers[name].had_K = had_K
-                qlayers[name].K = K
-                qlayers[name].fp32_had = args.fp32_had
+                quantizeable_modules[name].online_full_had = True
+                quantizeable_modules[name].had_K = had_K
+                quantizeable_modules[name].K = K
+                quantizeable_modules[name].fp32_had = args.fp32_had
             if 'o_proj' in name:  # TODO : make this more general
                 had_K, K = hadamard_utils.get_hadK(model.config.num_attention_heads)
-                qlayers[name].online_partial_had = True
-                qlayers[name].had_K = had_K
-                qlayers[name].K = K
-                qlayers[name].had_dim = model.config.hidden_size // model.config.num_attention_heads
-                qlayers[name].fp32_had = args.fp32_had
+                quantizeable_modules[name].online_partial_had = True
+                quantizeable_modules[name].had_K = had_K
+                quantizeable_modules[name].K = K
+                quantizeable_modules[name].had_dim = model.config.hidden_size // model.config.num_attention_heads
+                quantizeable_modules[name].fp32_had = args.fp32_had
 
         logging.info("Finished preparing model for quantization.")
 
@@ -313,19 +314,19 @@ def quarot_main(args: argparse.Namespace) -> None:
 
     # Add activation and v quantization
     if args.a_bits < 16 or args.v_bits < 16:
-        qlayers = quant_utils.find_qlayers(model, layers=[quant_utils.ActQuantWrapper])
+        quantizeable_modules = quant_utils.find_qlayers(model, layers=[quant_utils.ActQuantWrapper])
         down_proj_groupsize = -1
         if args.a_groupsize > 0 and "llama" in args.model:
             down_proj_groupsize = quant_utils.llama_down_proj_groupsize(model, args.a_groupsize)
 
-        for name in qlayers:
+        for name in quantizeable_modules:
             layer_input_bits = args.a_bits
             layer_groupsize = args.a_groupsize
             layer_a_sym = not (args.a_asym)
             layer_a_clip = args.a_clip_ratio
 
             if 'v_proj' in name and args.v_bits < 16:  # Set the v_proj precision
-                qlayers[name].out_quantizer.configure(
+                quantizeable_modules[name].out_quantizer.configure(
                     bits=args.v_bits, groupsize=args.v_groupsize, sym=not (args.v_asym), clip_ratio=args.v_clip_ratio
                 )
 
@@ -337,7 +338,7 @@ def quarot_main(args: argparse.Namespace) -> None:
                     layer_input_bits = 8
                 layer_groupsize = down_proj_groupsize
 
-            qlayers[name].quantizer.configure(
+            quantizeable_modules[name].quantizer.configure(
                 bits=layer_input_bits, groupsize=layer_groupsize, sym=layer_a_sym, clip_ratio=layer_a_clip
             )
 
