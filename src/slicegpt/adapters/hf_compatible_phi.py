@@ -37,12 +37,12 @@ class SlicedPhi(PhiModel):
         super().__init__(config)
         self.config = config
         self.layers = nn.ModuleList(
-            [CompressedPhiDecoderLayer(config, layer_idx, replace_layernorm=True).to(config.torch_dtype) for layer_idx in range(config.num_layers)]
+            [CompressedPhiDecoderLayer(config, layer_idx, replace_layernorm=True)for layer_idx in range(config.num_layers)]
         )
         self.final_layernorm = RMSN(config.hidden_size)
         
 class SlicedPhiForCausalLM(PhiForCausalLM):
-    def __init__(self, config, scheduler: SlicingScheduler | None = None):
+    def __init__(self, config, scheduler: SlicingScheduler | None = None, *model_args, **kwargs):
         super().__init__(config)
         self.model = SlicedPhi(config)
         self.model_adapter = Phi2ModelAdapter(self)
@@ -51,11 +51,11 @@ class SlicedPhiForCausalLM(PhiForCausalLM):
             self.update_dims(scheduler)
             
     @classmethod
-    def from_pretrained(cls, pretrained_model_name_or_path, scheduler, *model_args, **kwargs):
+    def from_pretrained(cls, pretrained_model_name_or_path, scheduler: SlicingScheduler, config_path, *model_args, **kwargs):
         """Overrides the from_pretrained method to accept the scheduler and returns the sliced model"""
-        #scheduler = kwargs.pop("slicing_scheduler", None)
-        model = super().from_pretrained(pretrained_model_name_or_path, *model_args, **kwargs)
-        model = cls(model.config, scheduler)
+        config = SlicedPhi2Config.from_pretrained(config_path)
+        #model = cls(config, scheduler)
+        model = super().from_pretrained(pretrained_model_name_or_path, scheduler, config)
         model.load_state_dict(model.state_dict())
         return model
 
@@ -130,9 +130,6 @@ if __name__ == "__main__":
 
     config.torch_dtype = torch.float16
     sliced_model = SlicedPhiForCausalLM(config, slicing_scheduler)
-
-    #sliced_model.save_pretrained("sliced_phi2_model")
-    #sliced_model.from_pretrained("sliced_phi2_model", slicing_scheduler, config)
     
     # load the saved sliced model
     model_adapter, tokenizer = hf_utils.load_sliced_model(
@@ -142,9 +139,6 @@ if __name__ == "__main__":
             round_interval=args.round_interval,
             token=args.hf_token,
         )
-
-    sliced_model.load_state_dict(model_adapter.model.state_dict())
-    print("Model loaded successfully!")
     
     dataset = data_utils.get_dataset("wikitext2")
     train_dataset, test_dataset = dataset["train"], dataset["test"]
@@ -153,9 +147,24 @@ if __name__ == "__main__":
         dataset=test_dataset, tokenizer=tokenizer, batch_size=8
     )
     
+    # evaluate original perplexity
+    dataset_ppl = gpu_utils.evaluate_ppl(model_adapter.model.to("cuda"), tokenizer.pad_token_id, test_loader)
+    print(f'Loaded sliced model perplexity: {dataset_ppl}')
+    
+
+    sliced_model = sliced_model.to(torch.float16)
+    sliced_model.load_state_dict(model_adapter.model.state_dict(), strict=True, assign=True)
+    print("Model loaded successfully!")
+
+    
     sliced_model.to("cuda")
     
     dataset_ppl = gpu_utils.evaluate_ppl(sliced_model, tokenizer.pad_token_id, test_loader)
-    print(f'Loaded model perplexity: {dataset_ppl}')
+    print(f'Loaded new sliced model perplexity: {dataset_ppl}')
     
-    sliced_model.save_pretrained(args.save_model_path)
+    sliced_model.save_pretrained("new_sliced_phi2_model")
+    sliced_model_new = sliced_model.from_pretrained("new_sliced_phi2_model", slicing_scheduler, "sliced_phi2")
+    sliced_model_new = sliced_model_new.to(torch.float16)
+    
+    dataset_ppl = gpu_utils.evaluate_ppl(sliced_model_new.to("cuda"), tokenizer.pad_token_id, test_loader)
+    print(f'Loaded new sliced model perplexity: {dataset_ppl}')
