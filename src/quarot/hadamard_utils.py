@@ -88,13 +88,15 @@ def matmul_hadU(X, transpose=False):
 def matmul_hadUt(X):
     return matmul_hadU(X, transpose=True)
 
-def random_hadamard_matrix(size, device, seed=17):
-    # See https://cornell-relaxml.github.io/quip-sharp/ , Section "Randomized Hadamard Transformation"
+def random_hadamard_matrix(size: int, seed: int = 0):
+    """
+    Generates a random Hadamard matrix of size `size`. See https://cornell-relaxml.github.io/quip-sharp/ , Section "Randomized Hadamard Transformation" for details.
+    """
     torch.manual_seed(seed)
     Q = torch.randint(low=0, high=2, size=(size,)).to(torch.float64)
     Q = Q * 2 - 1
     Q = torch.diag(Q)
-    return matmul_hadU(Q).to(device)
+    return matmul_hadU(Q)
 
 def matmul_hadU_cuda(X, hadK, K):
     n = X.shape[-1]
@@ -112,7 +114,7 @@ def matmul_hadUt_cuda(X, hadK, K):
     return matmul_hadU_cuda(X, hadK, K, transpose=True)
 
 
-def apply_exact_had_to_linear(module, had_dim=-1, output=False):
+def apply_exact_had_to_linear(module : torch.nn.Linear, had_dim: int = -1, output: bool = False):
     assert isinstance(module, torch.nn.Linear)
     in_features, out_features = module.in_features, module.out_features
     

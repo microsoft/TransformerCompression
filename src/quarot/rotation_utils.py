@@ -9,105 +9,50 @@ import tqdm
 from fast_hadamard_transform import hadamard_transform
 
 from slicegpt import utils
-from slicegpt.config import config
-from slicegpt.rotate import rotate_attention_inputs as rotate_attention_inputs_slicegpt
-from slicegpt.rotate import rotate_attention_output as rotate_attention_output_slicegpt
-from slicegpt.rotate import rotate_embeddings as rotate_embeddings_slicegpt
-from slicegpt.rotate import rotate_head as rotate_head_slicegpt
-from slicegpt.rotate import rotate_mlp_input as rotate_mlp_input_slicegpt
-from slicegpt.rotate import rotate_mlp_output as rotate_mlp_output_slicegpt
+from slicegpt.rotate import (
+    config,
+    rotate_attention_inputs,
+    rotate_attention_output,
+    rotate_embeddings,
+    rotate_head,
+    rotate_mlp_input,
+    rotate_mlp_output,
+)
 
 from .hadamard_utils import apply_exact_had_to_linear, is_pow2, random_hadamard_matrix
-from .model_adapter import LayerAdapter, ModelAdapter
+from .model_adapter import ModelAdapter
 from .monkeypatch import add_wrapper_after_function_call_in_method
 from .quant_utils import ActQuantizer
 
 
-def random_orthogonal_matrix(size, device, seed=17):
-    """
-    Generate a random orthogonal matrix of the specified size.
-    First, we generate a random matrix with entries from a standard distribution.
-    Then, we use QR decomposition to obtain an orthogonal matrix.
-    Finally, we multiply by a diagonal matrix with diag r to adjust the signs.
-
-    Args:
-    size (int): The size of the matrix (size x size).
-
-    Returns:
-    torch.Tensor: An orthogonal matrix of the specified size.
-    """
-    torch.manual_seed(seed)
-    torch.cuda.empty_cache()
-    random_matrix = torch.randn(size, size, dtype=torch.float64).to(device)
-    q, r = torch.linalg.qr(random_matrix)
-    q *= torch.sign(torch.diag(r)).unsqueeze(0)
-    return q
-
-
-def get_orthogonal_matrix(size, mode, device=config.device, seed: int = 17):
-    if mode == 'random':
-        return random_orthogonal_matrix(size, device, seed=seed)
-    elif mode == 'hadamard':
-        return random_hadamard_matrix(size, device, seed=seed)
-    else:
-        raise ValueError(f'Unknown mode {mode}')
-
-
-def matmul_hadU_cuda_had(X, hadK, transpose=False):
-    '''
-    Apply hadamard transformation.
-    It reshapes X and applies Walsh-Hadamard transform to the last dimension.
-    Then, it will multiply the retult by another hadamard matrix.
-    '''
-    n = X.shape[-1]
-    K = hadK.shape[-1]
-
-    if transpose:
-        hadK = hadK.T.contiguous()
-    input = X.float().cuda().view(-1, K, n // K)
-    input = hadamard_transform(input.contiguous(), scale=1 / math.sqrt(n))
-    input = hadK.to(input.device).to(input.dtype) @ input
-    return input.to(X.device).to(X.dtype).reshape(X.shape)
-
-
 @torch.inference_mode()
-def rotate_model(model_adapter: ModelAdapter, rotate_mode: str = "hadamard", seed: int = 17) -> None:
+def rotate_model(model_adapter: ModelAdapter, seed: int = 0) -> None:
     '''
     Rotate the model using the QuaRot method.
     '''
     model = model_adapter.model
-    Q = get_orthogonal_matrix(model.config.hidden_size, rotate_mode, seed=seed)  # Generate Q
+
+    # Generate a random Hadamard matrix.
+    Q = random_hadamard_matrix(model.config.hidden_size, seed=seed)
+    Q = Q.to(config.device)
 
     # Work out head_dim, needed for applying Hadamards to o_proj and v_proj in attention.
     head_dim = model_adapter.config.hidden_size // model_adapter.config.num_attention_heads
 
-    rotate_embeddings_slicegpt(model_adapter, Q)  # Rotate embeddings
-    rotate_head_slicegpt(model_adapter, Q)  # Rotate head
-    utils.cleanup_memory()
+    rotate_embeddings(model_adapter, Q)
+    rotate_head(model_adapter, Q)
+
     layer_adapters = model_adapter.get_layers()
-    for layer_adapter in tqdm.tqdm(layer_adapters, unit="layer", desc="Rotating (slicegpt)"):
-        rotate_attention_inputs_slicegpt(layer_adapter, Q)
-        rotate_attention_output_slicegpt(layer_adapter, Q)
-        rotate_mlp_input_slicegpt(layer_adapter, Q)
-        rotate_mlp_output_slicegpt(layer_adapter, Q)
-        apply_hadamard_to_mlp_output(layer_adapter)
-        apply_hadamards_to_ov_proj(layer_adapter, head_dim)
+    for layer_adapter in tqdm.tqdm(layer_adapters, unit="layer", desc="Rotating"):
+        rotate_attention_inputs(layer_adapter, Q)
+        rotate_attention_output(layer_adapter, Q)
+        rotate_mlp_input(layer_adapter, Q)
+        rotate_mlp_output(layer_adapter, Q)
+        apply_exact_had_to_linear(layer_adapter.get_mlp_output(), had_dim=-1, output=False)
+        apply_exact_had_to_linear(layer_adapter.get_v_proj(), had_dim=head_dim, output=True)
+        apply_exact_had_to_linear(layer_adapter.get_o_proj(), had_dim=-1, output=False)
 
-
-def apply_hadamard_to_mlp_output(layer_adapter: LayerAdapter) -> None:
-    # Apply Hadamard to the input of the MLP's output.
-    W = layer_adapter.get_mlp_output()
-    apply_exact_had_to_linear(
-        W, had_dim=-1, output=False
-    )  # apply exact (inverse) hadamard on the weights of mlp output
-
-
-def apply_hadamards_to_ov_proj(layer_adapter: LayerAdapter, head_dim: int) -> None:
-    # Apply Hadamard to the output projection of the self-attention layer.
-    v_proj = layer_adapter.get_v_proj()
-    o_proj = layer_adapter.get_o_proj()
-    apply_exact_had_to_linear(v_proj, had_dim=head_dim, output=True)
-    apply_exact_had_to_linear(o_proj, had_dim=-1, output=False)
+    utils.cleanup_memory()
 
 
 class QKRotationWrapper(torch.nn.Module):

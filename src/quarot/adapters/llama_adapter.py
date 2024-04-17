@@ -16,10 +16,6 @@ from transformers.models.llama.modeling_llama import LlamaConfig, LlamaDecoderLa
 from quarot.model_adapter import LayerAdapter, ModelAdapter
 
 
-class QuaRotLlamaDecoderLayer(LlamaDecoderLayer):
-    pass
-
-
 class LlamaLayerAdapter(LayerAdapter):
     def __init__(self, layer: LlamaDecoderLayer) -> None:
         super().__init__()
@@ -116,7 +112,7 @@ class LlamaModelAdapter(ModelAdapter):
 
     @property
     def quarot_layer_type(self) -> type:
-        return QuaRotLlamaDecoderLayer
+        return LlamaDecoderLayer
 
     @property
     def use_cache(self) -> bool:
@@ -128,13 +124,6 @@ class LlamaModelAdapter(ModelAdapter):
 
     def compute_output_logits(self, input_ids: Tensor) -> FloatTensor:
         return self.model(input_ids=input_ids).logits
-
-    def convert_layer_to_quarot(self, layer: Module, layer_idx: int | None) -> Module:
-        quarot_layer = self.quarot_layer_type(cast(self.config_type, self.config), layer_idx).to(
-            self.config.torch_dtype
-        )
-        quarot_layer.load_state_dict(layer.state_dict(), strict=True)
-        return quarot_layer
 
     def get_layers(self) -> list[LayerAdapter]:
         return [self.layer_adapter_type(layer) for layer in self.model.model.layers]
