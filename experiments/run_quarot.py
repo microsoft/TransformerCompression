@@ -14,6 +14,7 @@ from lm_eval.models.huggingface import HFLM
 from lm_eval.tasks import initialize_tasks
 
 from quarot import hf_utils, quant_utils, rotation_utils, rtn_utils
+from quarot.adapters.llama_adapter import LlamaModelAdapter
 from slicegpt import data_utils, gpu_utils, layernorm_fusion, utils
 from slicegpt.config import config
 
@@ -298,9 +299,9 @@ def quarot_main(args: argparse.Namespace) -> None:
 
     # Add activation and v quantization
     if args.a_bits < 16 or args.v_bits < 16:
-        quantizeable_modules = quant_utils.get_quantizeable_modules(model, layers=[quant_utils.ActQuantWrapper])
+        quantizeable_modules = quant_utils.get_quantizeable_modules(model)
         down_proj_groupsize = -1
-        if args.a_groupsize > 0 and "llama" in args.model:
+        if args.a_groupsize > 0 and isinstance(model_adapter, LlamaModelAdapter):  # TODO: make this general
             down_proj_groupsize = quant_utils.llama_down_proj_groupsize(model, args.a_groupsize)
 
         for name in quantizeable_modules:
@@ -310,7 +311,7 @@ def quarot_main(args: argparse.Namespace) -> None:
             layer_a_clip = args.a_clip_ratio
 
             if 'v_proj' in name and args.v_bits < 16:  # Set the v_proj precision
-                quantizeable_modules[name].out_quantizer.configure(
+                quantizeable_modules[name].output_quantizer.configure(
                     bits=args.v_bits, groupsize=args.v_groupsize, sym=not (args.v_asym), clip_ratio=args.v_clip_ratio
                 )
 
@@ -322,7 +323,7 @@ def quarot_main(args: argparse.Namespace) -> None:
                     layer_input_bits = 8
                 layer_groupsize = down_proj_groupsize
 
-            quantizeable_modules[name].quantizer.configure(
+            quantizeable_modules[name].input_quantizer.configure(
                 bits=layer_input_bits, groupsize=layer_groupsize, sym=layer_a_sym, clip_ratio=layer_a_clip
             )
 
