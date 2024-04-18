@@ -238,79 +238,82 @@ class ActQuantWrapper(torch.nn.Module):
 class WeightQuantizer(torch.nn.Module):
     '''From GPTQ Repo'''
 
-    def __init__(self, shape=1):
+    def __init__(
+        self,
+        shape: int = 1,
+        bits: int = 16,
+        perchannel: bool = False,
+        sym: bool = True,
+        mse: bool = False,
+        norm: float = 2.4,
+        grid: int = 100,
+        max_shrink: float = 0.8,
+    ) -> None:
         super(WeightQuantizer, self).__init__()
         self.register_buffer('maxq', torch.tensor(0))
         self.register_buffer('scale', torch.zeros(shape))
         self.register_buffer('zero', torch.zeros(shape))
 
-    def configure(
-        self,
-        bits,
-        perchannel=False,
-        sym=True,
-        mse=False,
-        norm=2.4,
-        grid=100,
-        maxshrink=0.8,
-    ):
         self.bits = bits
-        self.perchannel = perchannel
+        self.per_channel = perchannel
         self.sym = sym
         self.mse = mse
         self.norm = norm
         self.grid = grid
-        self.maxshrink = maxshrink
+        self.max_shrink = max_shrink
         if sym:
-            self.maxq = torch.tensor(2 ** (bits - 1) - 1)
+            self.max_quantized_value = torch.tensor(2 ** (bits - 1) - 1)
         else:
-            self.maxq = torch.tensor(2**bits - 1)
+            self.max_quantized_value = torch.tensor(2**bits - 1)
 
-    def find_params(self, x):
+    def calc_params(self, w: torch.tensor) -> None:
+        '''
+        Calculates the quantization parameters max_quantized_value, scale and zero from the weight tensor w.
+        '''
         if self.bits == 16:
             return
-        dev = x.device
-        self.maxq = self.maxq.to(dev)
 
-        shape = x.shape
-        if self.perchannel:
-            x = x.flatten(1)
+        dev = w.device
+        self.max_quantized_value = self.max_quantized_value.to(dev)
+
+        shape = w.shape
+        if self.per_channel:
+            w = w.flatten(1)
         else:
-            x = x.flatten().unsqueeze(0)
+            w = w.flatten().unsqueeze(0)
 
-        tmp = torch.zeros(x.shape[0], device=dev)
-        xmin = torch.minimum(x.min(1)[0], tmp)
-        xmax = torch.maximum(x.max(1)[0], tmp)
+        tmp = torch.zeros(w.shape[0], device=dev)
+        w_min = torch.minimum(w.min(1)[0], tmp)
+        w_max = torch.maximum(w.max(1)[0], tmp)
 
         if self.sym:
-            xmax = torch.maximum(torch.abs(xmin), xmax).clamp(min=1e-5)
-            self.scale = xmax / self.maxq
+            w_max = torch.maximum(torch.abs(w_min), w_max).clamp(min=1e-5)
+            self.scale = w_max / self.max_quantized_value
             self.zero = torch.zeros_like(self.scale)
         else:
-            tmp = (xmin == 0) & (xmax == 0)
-            xmin[tmp] = -1
-            xmax[tmp] = +1
-            self.scale = (xmax - xmin).clamp(min=1e-5) / self.maxq
-            self.zero = torch.round(-xmin / self.scale)
+            tmp = (w_min == 0) & (w_max == 0)
+            w_min[tmp] = -1
+            w_max[tmp] = +1
+            self.scale = (w_max - w_min).clamp(min=1e-5) / self.max_quantized_value
+            self.zero = torch.round(-w_min / self.scale)
 
         if self.mse:
-            best = torch.full([x.shape[0]], float('inf'), device=dev)
-            for i in range(int(self.maxshrink * self.grid)):
+            best = torch.full([w.shape[0]], float('inf'), device=dev)
+            for i in range(int(self.max_shrink * self.grid)):
                 p = 1 - i / self.grid
-                xmin1 = p * xmin
-                xmax1 = p * xmax
+                xmin1 = p * w_min
+                xmax1 = p * w_max
 
                 if self.sym:
-                    scale1 = xmax1 / self.maxq
+                    scale1 = xmax1 / self.max_quantized_value
                     zero1 = torch.zeros_like(scale1)
-                    q = sym_quant_dequant(x, scale1.unsqueeze(1), self.maxq)
+                    q = sym_quant_dequant(w, scale1.unsqueeze(1), self.max_quantized_value)
                 else:
-
-                    scale1 = (xmax1 - xmin1) / self.maxq
+                    scale1 = (xmax1 - xmin1) / self.max_quantized_value
                     zero1 = torch.round(-xmin1 / scale1)
-                    q = asym_quant_dequant(x, scale1.unsqueeze(1), zero1.unsqueeze(1), self.maxq)
+                    q = asym_quant_dequant(w, scale1.unsqueeze(1), zero1.unsqueeze(1), self.max_quantized_value)
 
-                q -= x
+                q -= w
                 q.abs_()
                 q.pow_(self.norm)
                 err = torch.sum(q, 1)
@@ -319,8 +322,8 @@ class WeightQuantizer(torch.nn.Module):
                     best[tmp] = err[tmp]
                     self.scale[tmp] = scale1[tmp]
                     self.zero[tmp] = zero1[tmp]
-        if not self.perchannel:
 
+        if not self.per_channel:
             tmp = shape[0]
             self.scale = self.scale.repeat(tmp)
             self.zero = self.zero.repeat(tmp)
@@ -335,12 +338,12 @@ class WeightQuantizer(torch.nn.Module):
         x_dtype = x.dtype
         if self.ready() and self.bits < 16:
             if self.sym:
-                return sym_quant_dequant(x, self.scale, self.maxq).to(x_dtype)
-            return asym_quant_dequant(x, self.scale, self.zero, self.maxq).to(x_dtype)
+                return sym_quant_dequant(x, self.scale, self.max_quantized_value).to(x_dtype)
+            return asym_quant_dequant(x, self.scale, self.zero, self.max_quantized_value).to(x_dtype)
         return x
 
     def enabled(self):
-        return self.maxq > 0
+        return self.max_quantized_value > 0
 
     def ready(self):
         return torch.all(self.scale != 0)
