@@ -6,7 +6,6 @@ import math
 
 import fast_hadamard_transform
 import torch
-import transformers
 
 from slicegpt import utils
 
@@ -51,47 +50,6 @@ def sym_dequant(q, scale):
 
 def sym_quant_dequant(x, scale, maxq):
     return sym_dequant(*sym_quant(x, scale, maxq))
-
-
-def two_compl(x, bits: int):
-    return torch.where(x < 0, 2**bits + x, x)
-
-
-# Pack the int tensor. Each uint8 stores two int4 value.
-def pack_i4(q):
-    assert torch.is_signed(q), 'The tensor to be packed should be signed int'
-    minq, maxq = get_minq_maxq(4, True)
-    assert torch.all(torch.logical_and(q >= minq, q <= maxq))
-
-    q_i8 = two_compl(q.to(dtype=torch.int8), 4).to(torch.uint8)
-    q_i4 = q_i8[:, 0::2] | (q_i8[:, 1::2] << 4)
-    return q_i4
-
-
-# Unpack the quantized int4 tensor (stored in uint8) into int32 tensor.
-def unpack_i4(x: torch.Tensor):
-    assert x.dtype == torch.uint8, 'The tensor to be unpacked should be stored in uint8'
-
-    out_shape = list(x.shape)
-    out_shape[-1] *= 2  # Each uint8 packs two numbers
-
-    # Low 4 bits
-    x0 = (x & 0x0F).to(torch.int8)
-    x0[x0 >= 8] -= 16
-    x0 = x0.view(-1, x0.shape[-1])
-
-    # High 4 bits
-    x1 = ((x & 0xF0) >> 4).to(torch.int8)
-    x1[x1 >= 8] -= 16
-    x1 = x1.view(-1, x1.shape[-1])
-
-    out = torch.empty(out_shape, device=x.device, dtype=torch.int32)
-    out = out.view(-1, out.shape[-1])
-    # Interleaving
-    out[:, 0::2] = x0
-    out[:, 1::2] = x1
-
-    return out.view(out_shape)
 
 
 class ActQuantizer(torch.nn.Module):
@@ -197,9 +155,9 @@ class ActQuantizer(torch.nn.Module):
 
 class ActQuantWrapper(torch.nn.Module):
     '''
-    This class is a wrapper for the activation quantization.
-    If a rotation Q is provided, the weight matrix will be rotated,
-    a pre-forward hook will be registered to rotate the activation before quantization.
+    Wrapper for torch.nn.Linear blocks to emulate activation quantization. It emulates the quantization
+    of the input and output activations of the linear layer. In addition, it can apply an online Hadamard
+    transform (partial or full) to the input activations.
     '''
 
     def __init__(self, module: torch.nn.Linear):
@@ -208,8 +166,8 @@ class ActQuantWrapper(torch.nn.Module):
         self.module = module
         self.weight = module.weight
         self.bias = module.bias
-        self.quantizer = ActQuantizer()
-        self.out_quantizer = ActQuantizer()
+        self.input_quantizer = ActQuantizer()
+        self.output_quantizer = ActQuantizer()
         self.register_buffer('had_K', torch.tensor(0))
         self._buffers['had_K'] = None
         self.K = 1
@@ -219,17 +177,17 @@ class ActQuantWrapper(torch.nn.Module):
         self.fp32_had = False
 
     def extra_repr(self) -> str:
-        str_ = f'Input Quantizer Bits: {self.quantizer.bits}'
-        if self.quantizer.bits < 16:
-            str_ += f' (Asymmetric Per-Token)' if not self.quantizer.sym else f' (Symmetric Per-Token)'
+        str_ = f'Input Quantizer Bits: {self.input_quantizer.bits}'
+        if self.input_quantizer.bits < 16:
+            str_ += f' (Asymmetric Per-Token)' if not self.input_quantizer.sym else f' (Symmetric Per-Token)'
 
-        str_ += f'\nOutput Quantizer Bits: {self.out_quantizer.bits}'
-        if self.out_quantizer.bits < 16:
-            str_ += f' (Asymmetric Per-Token)' if not self.out_quantizer.sym else f' (Symmetric Per-Token)'
+        str_ += f'\nOutput Quantizer Bits: {self.output_quantizer.bits}'
+        if self.output_quantizer.bits < 16:
+            str_ += f' (Asymmetric Per-Token)' if not self.output_quantizer.sym else f' (Symmetric Per-Token)'
 
         return str_
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x_dtype = x.dtype
 
         # Rotate, if needed
@@ -261,17 +219,18 @@ class ActQuantWrapper(torch.nn.Module):
                 x = x.to(x_dtype)
             x = x.reshape(init_shape)
 
-        if self.quantizer.bits < 16:  # Quantize, if needed
-            self.quantizer.find_params(x)
-            x = self.quantizer(x).to(x_dtype)
-            self.quantizer.free()
+        if self.input_quantizer.bits < 16:  # Quantize, if needed
+            self.input_quantizer.find_params(x)
+            x = self.input_quantizer(x).to(x_dtype)
+            self.input_quantizer.free()
 
+        # Forward pass through the linear layer
         x = self.module(x).to(x_dtype)
 
-        if self.out_quantizer.bits < 16:  # Quantize the output, if needed
-            self.out_quantizer.find_params(x)
-            x = self.out_quantizer(x).to(x_dtype)
-            self.out_quantizer.free()
+        if self.output_quantizer.bits < 16:  # Quantize the output, if needed
+            self.output_quantizer.find_params(x)
+            x = self.output_quantizer(x).to(x_dtype)
+            self.output_quantizer.free()
 
         return x
 
@@ -387,39 +346,40 @@ class WeightQuantizer(torch.nn.Module):
         return torch.all(self.scale != 0)
 
 
-def add_actquant(module, name='', layers=[torch.nn.Linear, ActQuantWrapper]):
+def wrap_linears_with_actquantwrapper(module: torch.nn.Module, name: str = '') -> None:
+    """
+    Wraps the linear blocks in the model with ActQuantWrapper.
+    """
     if isinstance(module, ActQuantWrapper):
         return
-    for attr in dir(module):
-        tmp = getattr(module, attr)
-        if type(tmp) in layers:
-            setattr(module, attr, ActQuantWrapper(tmp))
-        if type(tmp) == torch.nn.Sequential:
-            replaced = []
-            for i, child in enumerate(tmp.children()):
-                if type(child) in layers:
-                    replaced.append(ActQuantWrapper(child))
-                else:
-                    replaced.append(child)
-            setattr(module, attr, torch.nn.Sequential(*replaced))
-        if type(tmp) == torch.nn.ModuleList:
-            replaced = []
-            for i, child in enumerate(tmp.children()):
-                if type(child) in layers:
-                    replaced.append(ActQuantWrapper(child))
-                else:
-                    replaced.append(child)
-            setattr(module, attr, torch.nn.ModuleList(replaced))
-    for name1, child in module.named_children():
-        add_actquant(child, name + '.' + name1 if name != '' else name1, layers)
+
+    linear_type = torch.nn.Linear
+
+    for attribute in dir(module):
+        module_attribute = getattr(module, attribute)
+        if isinstance(module_attribute, linear_type):
+            setattr(module, attribute, ActQuantWrapper(module_attribute))
+        elif isinstance(module_attribute, (torch.nn.Sequential, torch.nn.ModuleList)):
+            replaced = [
+                ActQuantWrapper(child) if isinstance(child, linear_type) else child
+                for child in module_attribute.children()
+            ]
+            setattr(module, attribute, type(module_attribute)(replaced))
+
+    for child_name, child in module.named_children():
+        wrap_linears_with_actquantwrapper(child, f'{name}.{child_name}' if name else child_name)
 
 
-def find_qlayers(module, layers=[torch.nn.Linear, ActQuantWrapper], name=''):
-    if type(module) in layers:
-        return {name: module}
+def get_quantizeable_modules(module: torch.nn.Module, name: str = '') -> dict[str, ActQuantWrapper]:
+    """
+    Get all the ActQuantWrapper modules in the model as a dictionary of name: module pairs.
+    """
     res = {}
-    for name1, child in module.named_children():
-        res.update(find_qlayers(child, layers=layers, name=name + '.' + name1 if name != '' else name1))
+    if isinstance(module, ActQuantWrapper):
+        res[name] = module
+    else:
+        for child_name, child in module.named_children():
+            res.update(get_quantizeable_modules(child, name=f'{name}.{child_name}' if name else child_name))
     return res
 
 
