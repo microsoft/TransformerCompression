@@ -257,9 +257,7 @@ def quarot_main(args: argparse.Namespace) -> None:
         # fuse layernorms
         layernorm_fusion.fuse_modules(model_adapter)  # TODO: fix expected adapter type
 
-        # Rotate model. NB: this does NOT leave the model invariant as the input to the MLP down proj has
-        # an extra Hadamard matrix applied to it, with its inverse applied on the inputs to the MLP online,
-        # which is set by q[..down_proj].online_full_had = True later.
+        # Rotate the model with fused Hadamard transformations.
         rotation_utils.rotate_model(model_adapter, args.rotation_seed)
 
         # Wrap the linear blocks with activation quantization wrappers.
