@@ -7,7 +7,7 @@ import tqdm
 
 from slicegpt import utils
 
-from .quant_utils import WeightQuantizer, find_qlayers
+from .quant_utils import WeightQuantizer, get_quantizeable_modules
 
 torch.backends.cuda.matmul.allow_tf32 = False
 torch.backends.cudnn.allow_tf32 = False
@@ -27,7 +27,7 @@ def rtn_fwrd(model, dev, args):
     for i in tqdm.tqdm(range(len(layers)), desc="(RtN Quant.) Layers"):
         layer = layers[i].to(dev)
 
-        subset = find_qlayers(layer, layers=[torch.nn.Linear])
+        subset = get_quantizeable_modules(layer, layers=[torch.nn.Linear])
 
         for name in subset:
             layer_weight_bits = args.w_bits

@@ -19,10 +19,10 @@ from slicegpt.rotate import (
     rotate_mlp_output,
 )
 
-from .hadamard_utils import apply_exact_had_to_linear, is_pow2, random_hadamard_matrix
+from .hadamard_utils import apply_exact_had_to_linear, get_hadK, is_pow2, random_hadamard_matrix
 from .model_adapter import ModelAdapter
 from .monkeypatch import add_wrapper_after_function_call_in_method
-from .quant_utils import ActQuantizer
+from .quant_utils import ActQuantizer, get_quantizeable_modules
 
 
 @torch.inference_mode()
@@ -50,7 +50,7 @@ def rotate_model(model_adapter: ModelAdapter, seed: int = 0) -> None:
         rotate_mlp_output(layer_adapter, Q)
         apply_exact_had_to_linear(layer_adapter.get_mlp_output(), had_dim=-1, output=False)
         apply_exact_had_to_linear(layer_adapter.get_v_proj(), had_dim=head_dim, output=True)
-        apply_exact_had_to_linear(layer_adapter.get_o_proj(), had_dim=-1, output=False)
+        apply_exact_had_to_linear(layer_adapter.get_attention_output(), had_dim=-1, output=False)
 
     utils.cleanup_memory()
 
@@ -114,3 +114,24 @@ def add_qk_rotation_wrapper_after_function_call_in_forward(module, function_name
         module, "forward", function_name, functools.partial(QKRotationWrapper, *args, **kwargs)
     )
     setattr(module, attr_name, wrapper)
+
+
+def add_online_hadamards(model, fp32_had: bool = False) -> None:
+    '''
+    Set the online Hadamard matrices for the MLP down-projection and attention out-projection.
+    '''
+    quantizeable_modules = get_quantizeable_modules(model)
+    for name, module in quantizeable_modules.items():
+        if 'down_proj' in name:
+            had_K, K = get_hadK(model.config.intermediate_size)
+            module.online_full_had = True
+            module.had_K = had_K
+            module.K = K
+            module.fp32_had = fp32_had
+        elif 'o_proj' in name:
+            had_K, K = get_hadK(model.config.num_attention_heads)
+            module.online_partial_had = True
+            module.had_K = had_K
+            module.K = K
+            module.had_dim = model.config.hidden_size // model.config.num_attention_heads
+            module.fp32_had = fp32_had

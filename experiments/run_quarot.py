@@ -13,7 +13,7 @@ from lm_eval.api.registry import ALL_TASKS
 from lm_eval.models.huggingface import HFLM
 from lm_eval.tasks import initialize_tasks
 
-from quarot import hadamard_utils, hf_utils, quant_utils, rotation_utils, rtn_utils
+from quarot import hf_utils, quant_utils, rotation_utils, rtn_utils
 from slicegpt import data_utils, gpu_utils, layernorm_fusion, utils
 from slicegpt.config import config
 
@@ -255,35 +255,20 @@ def quarot_main(args: argparse.Namespace) -> None:
 
     if args.rotate:
         # fuse layernorms
-        layernorm_fusion.fuse_modules(
-            model_adapter
-        )  # TODO: here we pass a quarot adapter instead of a slicegpt adapter
+        layernorm_fusion.fuse_modules(model_adapter)  # TODO: fix expected adapter type
 
-        # rotate model. NB: this does NOT leave the model invariant as the input to the MLP down proj has
+        # Rotate model. NB: this does NOT leave the model invariant as the input to the MLP down proj has
         # an extra Hadamard matrix applied to it, with its inverse applied on the inputs to the MLP online,
         # which is set by q[..down_proj].online_full_had = True later.
         rotation_utils.rotate_model(model_adapter, args.rotation_seed)
 
-        # Prepare the model for quantization
-        quant_utils.add_actquant(model)  # Add Activation Wrapper to the model
-        quantizeable_modules = quant_utils.find_qlayers(model)
+        # Wrap the linear blocks with activation quantization wrappers.
+        quant_utils.wrap_linears_with_actquantwrapper(model)
 
-        for name in quantizeable_modules:
-            if 'down_proj' in name:  # TODO : make this more general
-                had_K, K = hadamard_utils.get_hadK(model.config.intermediate_size)
-                quantizeable_modules[name].online_full_had = True
-                quantizeable_modules[name].had_K = had_K
-                quantizeable_modules[name].K = K
-                quantizeable_modules[name].fp32_had = args.fp32_had
-            if 'o_proj' in name:  # TODO : make this more general
-                had_K, K = hadamard_utils.get_hadK(model.config.num_attention_heads)
-                quantizeable_modules[name].online_partial_had = True
-                quantizeable_modules[name].had_K = had_K
-                quantizeable_modules[name].K = K
-                quantizeable_modules[name].had_dim = model.config.hidden_size // model.config.num_attention_heads
-                quantizeable_modules[name].fp32_had = args.fp32_had
+        # Add online Hadamards to the model.
+        rotation_utils.add_online_hadamards(model, args.fp32_had)
 
-        logging.info("Finished preparing model for quantization.")
+        logging.info("Finished applying QuaRot.")
 
         if args.eval_rotated_model:
             # For debugging. Consider removing this in the future.
@@ -293,7 +278,7 @@ def quarot_main(args: argparse.Namespace) -> None:
             wandb.log({"rotated_ppl": dataset_ppl})
 
     else:
-        quant_utils.add_actquant(
+        quant_utils.wrap_linears_with_actquantwrapper(
             model
         )  # Add Activation Wrapper to the model as the rest of the code assumes it is present
 
@@ -314,7 +299,7 @@ def quarot_main(args: argparse.Namespace) -> None:
 
     # Add activation and v quantization
     if args.a_bits < 16 or args.v_bits < 16:
-        quantizeable_modules = quant_utils.find_qlayers(model, layers=[quant_utils.ActQuantWrapper])
+        quantizeable_modules = quant_utils.get_quantizeable_modules(model, layers=[quant_utils.ActQuantWrapper])
         down_proj_groupsize = -1
         if args.a_groupsize > 0 and "llama" in args.model:
             down_proj_groupsize = quant_utils.llama_down_proj_groupsize(model, args.a_groupsize)

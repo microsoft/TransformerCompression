@@ -114,13 +114,6 @@ class LayerAdapter(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def get_o_proj(self) -> Linear:
-        """
-        Returns the Linear layer (nn.module) that is the output projection in the attention component.
-        """
-        raise NotImplementedError
-
-    @abstractmethod
     def get_rope_function_name(self) -> str:
         """
         Returns the name of the rotary positional embedding (RoPE) function in the layer.

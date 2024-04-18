@@ -4,8 +4,8 @@
 
 import math
 
-import fast_hadamard_transform
 import torch
+from fast_hadamard_transform import hadamard_transform
 
 
 def get_hadK(n, transpose=False):
@@ -98,14 +98,13 @@ def random_hadamard_matrix(size: int, seed: int = 0):
     Q = torch.diag(Q)
     return matmul_hadU(Q)
 
-def matmul_hadU_cuda(X, hadK, K):
+def matmul_hadU_cuda(X: torch.tensor, hadK: torch.tensor, K: int) -> torch.tensor:
     n = X.shape[-1]
     if K == 1:
-        return fast_hadamard_transform.hadamard_transform(X.contiguous(), 1.0/torch.tensor(n).sqrt()) 
-    # if transpose:
-    #     hadK = hadK.T.contiguous()
+        return hadamard_transform(X.contiguous(), 1.0/torch.tensor(n).sqrt()) 
+
     input = X.view(-1, K, n // K)
-    input = fast_hadamard_transform.hadamard_transform(input.contiguous(), 1.0/torch.tensor(n).sqrt())
+    input = hadamard_transform(input.contiguous(), 1.0/torch.tensor(n).sqrt())
     input = hadK.to(input.device).to(input.dtype) @ input
     return input.reshape(X.shape)
 
@@ -124,7 +123,6 @@ def apply_exact_had_to_linear(module : torch.nn.Linear, had_dim: int = -1, outpu
     W_ = module.weight.data
     dtype = W_.dtype
     dev = W_.device
-    init_shape = W_.shape
     W_ = W_.float().cuda()
     
     if had_dim == -1:
@@ -139,14 +137,12 @@ def apply_exact_had_to_linear(module : torch.nn.Linear, had_dim: int = -1, outpu
         if output:
             W_ = W_.t()
             transposed_shape = W_.shape
-            W_ = fast_hadamard_transform.hadamard_transform(
+            W_ = hadamard_transform(
                 W_.reshape(-1, transposed_shape[-1]//had_dim, had_dim), 
                 scale=1/math.sqrt(had_dim)
                 ).reshape(transposed_shape).t()
         else:
             raise NotImplementedError("Not implemented (or tested) yet!")
-            n = W_.shape[1]
-            W_ = hadamard_transform(W_.reshape(-1, n//had_dim, had_dim), scale=1/math.sqrt(had_dim)).reshape(init_shape)
     module.weight.data = W_.to(device=dev, dtype=dtype)
 
 
