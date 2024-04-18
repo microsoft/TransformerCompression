@@ -287,11 +287,12 @@ def quarot_main(args: argparse.Namespace) -> None:
         save_dict = {}
         if args.quarot_model_path:  # Load Quantized Rotated Model
             raise NotImplementedError("Loading quantized rotated model is not yet implemented!")
-
         elif not args.w_rtn:  # GPTQ Weight Quantization
             raise NotImplementedError("GPTQ weight quantization is not yet implemented!")
         else:  # RTN Weight Quantization
-            quantizers = rtn_utils.rtn_fwrd(model, config.device, args)
+            quantizers = rtn_utils.apply_weight_rtn_quantization(
+                model, args.w_bits, args.int8_down_proj, args.w_asym, args.w_clip
+            )
             save_dict["w_quantizers"] = quantizers
 
         if args.save_dir:

@@ -6,6 +6,7 @@ import torch
 import tqdm
 
 from slicegpt import utils
+from slicegpt.config import config
 
 from .quant_utils import WeightQuantizer, get_quantizeable_modules
 
@@ -14,38 +15,34 @@ torch.backends.cudnn.allow_tf32 = False
 
 
 @torch.no_grad()
-def rtn_fwrd(model, dev, args):
+def apply_weight_rtn_quantization(
+    model, bits: int = 16, int8_down_proj: bool = False, asymmetric: bool = True, clip: bool = True
+) -> dict[str, WeightQuantizer]:
     '''
-    Round-to-nearest quantization of the model weights.
+    Apply round-to-nearest quantization of the model weights.
     '''
-    assert args.w_groupsize == -1, "Groupsize not supported in RTN!"
-    layers = model.model.layers
-    torch.cuda.empty_cache()
-
     quantizers = {}
-
-    for i in tqdm.tqdm(range(len(layers)), desc="(RtN Quant.) Layers"):
-        layer = layers[i].to(dev)
-
-        subset = get_quantizeable_modules(layer, layers=[torch.nn.Linear])
-
-        for name in subset:
-            layer_weight_bits = args.w_bits
+    layers = model.model.layers
+    for layer_idx, layer in tqdm.tqdm(enumerate(layers), desc="(RtN Quant.) Layers"):
+        layer = layer.to(config.device)
+        layer_modules = get_quantizeable_modules(layer)
+        for name in layer_modules:
             if 'lm_head' in name:
-                layer_weight_bits = 16
+                bits = 16
                 continue
-            if args.int8_down_proj and 'down_proj' in name:
-                layer_weight_bits = 8
+            elif int8_down_proj and 'down_proj' in name:
+                bits = 8
 
             quantizer = WeightQuantizer()
-            quantizer.configure(layer_weight_bits, perchannel=True, sym=not (args.w_asym), mse=args.w_clip)
-            W = subset[name].weight.data
-            quantizer.find_params(W)
-            subset[name].weight.data = quantizer.quantize(W).to(next(iter(layer.parameters())).dtype)
-            quantizers['model.layers.%d.%s' % (i, name)] = quantizer.cpu()
-        layers[i] = layer.cpu()
-        torch.cuda.empty_cache()
-        del layer
 
-    utils.cleanup_memory()
+            quantizer.configure(bits, perchannel=True, sym=not asymmetric, mse=clip)
+            W = layer_modules[name].weight.data
+            quantizer.find_params(W)
+            layer_modules[name].weight.data = quantizer.quantize(W).to(next(iter(layer.parameters())).dtype)
+            quantizers['model.layers.%d.%s' % (layer_idx, name)] = quantizer.cpu()
+
+        layer = layer.cpu()
+        layers[layer_idx] = layer
+        utils.cleanup_memory()
+
     return quantizers
