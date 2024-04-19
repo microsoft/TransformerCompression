@@ -8,7 +8,7 @@ import tqdm
 from slicegpt import utils
 from slicegpt.config import config
 
-from .quant_utils import WeightQuantizer, get_quantizeable_modules
+from .quant_utils import WeightQuantizer, get_linear_modules
 
 torch.backends.cuda.matmul.allow_tf32 = False
 torch.backends.cudnn.allow_tf32 = False
@@ -26,7 +26,7 @@ def apply_weight_rtn_quantization(
     layers = model.model.layers
     for layer_idx, layer in tqdm.tqdm(enumerate(layers), desc="(RtN Quant.) Layers"):
         layer = layer.to(config.device)
-        layer_modules = get_quantizeable_modules(layer)
+        layer_modules = get_linear_modules(layer)
         for name in layer_modules:
             if 'lm_head' in name:
                 bits = 16
@@ -34,7 +34,8 @@ def apply_weight_rtn_quantization(
             elif int8_down_proj and 'down_proj' in name:
                 bits = 8
 
-            quantizer = WeightQuantizer(bits=bits, perchannel=True, sym=not asymmetric, mse=clip)
+            hidden_dim = layer_modules[name].weight.shape[1]
+            quantizer = WeightQuantizer(shape=hidden_dim, bits=bits, perchannel=True, sym=not asymmetric, mse=clip)
             W = layer_modules[name].weight.data
             quantizer.calc_params(W)
             layer_modules[name].weight.data = quantizer.quantize(W).to(next(iter(layer.parameters())).dtype)
