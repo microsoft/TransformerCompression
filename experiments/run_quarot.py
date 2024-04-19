@@ -15,6 +15,8 @@ from lm_eval.models.huggingface import HFLM
 from lm_eval.tasks import initialize_tasks
 
 from quarot import hf_utils, modeling_llama, rotation_utils, rtn_utils
+from quarot.modeling_llama import QuarotFP16LlamaForCausalLM
+from quarot.quant_utils import WeightQuantizer
 from slicegpt import data_utils, gpu_utils, layernorm_fusion, utils
 from slicegpt.config import config
 
@@ -254,15 +256,14 @@ def quarot_main(args: argparse.Namespace) -> None:
         model.cpu()
         utils.cleanup_memory()
 
-    if args.rotate:
-        # fuse layernorms
-        layernorm_fusion.fuse_modules(model_adapter)  # TODO: fix expected adapter type
+    # fuse layernorms
+    layernorm_fusion.fuse_modules(model_adapter)  # TODO: fix expected adapter type
 
-        # Rotate the model with fused Hadamard transformations.
-        rotation_utils.rotate_model(model_adapter, args.rotation_seed)
+    # Rotate the model with fused Hadamard transformations.
+    rotation_utils.rotate_model(model_adapter, args.rotation_seed)
 
     # Quantize the model weights
-    if args.w_bits < 17:
+    if args.w_bits <= 16:
         if not args.w_rtn:  # GPTQ Weight Quantization
             raise NotImplementedError("GPTQ weight quantization is not yet implemented!")
         else:  # RTN Weight Quantization
@@ -270,50 +271,11 @@ def quarot_main(args: argparse.Namespace) -> None:
                 model, args.w_bits, args.int8_down_proj, args.w_asym, args.w_clip
             )
 
-    old_dict = model.state_dict()
+    # Convert the model to a quantizeable model
+    model = convert_model_to_quantizeable(model, quantizers, fake_quant=True)
 
-    # modules names given by keys will be renamed to the values
-    key_maps = {"mlp.down_proj": "mlp.down_proj.2", "self_attn.o_proj": "self_attn.o_proj.1"}
-    bad_key_names = {"post_attention_layernorm.weight", "input_layernorm.weight"}
-
-    def _get_new_key(key):
-        new_key = key
-        for old_name, new_name in key_maps.items():
-            new_key = new_key.replace(old_name, new_name)
-        return new_key
-
-    def _keep_key(key):
-        return all(bad_name not in key for bad_name in bad_key_names)
-
-    fake_quant = True
-    new_dict = {_get_new_key(key): value for key, value in old_dict.items() if _keep_key(key)}
-    for key, value in quantizers.items():
-        new_key = _get_new_key(key)
-        weight_scales = value.scale
-        new_dict[f"{new_key}.weight_scales"] = weight_scales
-        weight_matrix = new_dict[f"{new_key}.weight"]
-        int_rounded_weight = (weight_matrix / weight_scales).round()
-
-        if not fake_quant:
-            raise NotImplementedError("Real quantization is not yet implemented!")
-        else:
-            new_dict[f"{new_key}.weight"] = int_rounded_weight
-
-    model_config = modeling_llama.QuarotLlamaConfig.from_pretrained(args.model, attn_implementation="flash_attention_2")
-    torch.set_default_dtype(torch.float16)
-    with transformers.modeling_utils.no_init_weights():
-        if fake_quant:
-            new_model = modeling_llama.QuarotFP16LlamaForCausalLM(config=model_config)
-        else:
-            raise NotImplementedError("Real quantization is not yet implemented!")
-
-    result = new_model.load_state_dict(new_dict, strict=False)
-    assert all("had_rem_dim" in key for key in result.missing_keys), result
-    assert len(result.unexpected_keys) == 0, result
-
-    new_model = new_model.cuda()
-
-    dataset_ppl = gpu_utils.evaluate_ppl(new_model, new_model.config.pad_token_id, test_loader)
+    reset_model_device()
+    dataset_ppl = gpu_utils.evaluate_ppl(model, model.config.pad_token_id, test_loader)
     logging.info(f'QuaRot ppl: {dataset_ppl:.4f}')
     wandb.log({"quarot_ppl": dataset_ppl})
 
@@ -330,6 +292,56 @@ def quarot_main(args: argparse.Namespace) -> None:
     metric_vals['acc_avg'] = round(sum(metric_vals.values()) / len(metric_vals.values()), 4)
     logging.info(f"LM Eval results: {metric_vals}")
     wandb.log(metric_vals)
+
+
+def convert_model_to_quantizeable(
+    model, quantizers: dict[str, WeightQuantizer], fake_quant: bool = True
+) -> QuarotFP16LlamaForCausalLM:
+    '''
+    Convert the model to a quantizeable model by replacing modules with quantizeable equivalents. TODO : make this general.
+    '''
+    old_dict = model.state_dict()
+
+    # module names in the current model given by keys will be renamed to the values
+    key_maps = {"mlp.down_proj": "mlp.down_proj.2", "self_attn.o_proj": "self_attn.o_proj.1"}
+    bad_key_names = {"post_attention_layernorm.weight", "input_layernorm.weight"}
+
+    def _get_new_key(key):
+        new_key = key
+        for old_name, new_name in key_maps.items():
+            new_key = new_key.replace(old_name, new_name)
+        return new_key
+
+    def _keep_key(key):
+        return all(bad_name not in key for bad_name in bad_key_names)
+
+    new_dict = {_get_new_key(key): value for key, value in old_dict.items() if _keep_key(key)}
+    for key, value in quantizers.items():
+        new_key = _get_new_key(key)
+        weight_scales = value.scale
+        new_dict[f"{new_key}.weight_scales"] = weight_scales
+        weight_matrix = new_dict[f"{new_key}.weight"]
+        int_rounded_weight = (weight_matrix / weight_scales).round()
+
+        if fake_quant:
+            new_dict[f"{new_key}.weight"] = int_rounded_weight
+        else:
+            raise NotImplementedError("Real quantization is not yet implemented!")
+
+    model_config = modeling_llama.QuarotLlamaConfig.from_pretrained(
+        "meta-llama/Llama-2-7b-hf", attn_implementation="flash_attention_2"
+    )
+    torch.set_default_dtype(torch.float16)
+    with transformers.modeling_utils.no_init_weights():
+        if fake_quant:
+            new_model = modeling_llama.QuarotFP16LlamaForCausalLM(config=model_config)
+        else:
+            raise NotImplementedError("Real quantization is not yet implemented!")
+
+    result = new_model.load_state_dict(new_dict, strict=False)
+    assert all("had_rem_dim" in key for key in result.missing_keys), result
+    assert len(result.unexpected_keys) == 0, result
+    return new_model
 
 
 if __name__ == "__main__":
