@@ -25,13 +25,13 @@ dependencies = [
     "datasets==2.14.7",
     "einops",
     "huggingface-hub==0.20.2",
-    "lm-eval @ git+https://github.com/EleutherAI/lm-evaluation-harness.git@9b0b15b1ccace3534ffbd13298c569869ce8eaf3",
+    "lm-eval==0.4.1",
     "ml-collections",
     "numpy",
     "sentencepiece",
     "torch",
     "tqdm",
-    "transformers @ git+https://github.com/huggingface/transformers.git@55090585619d7ab880d9a7d7c8b327a746f7cc40",
+    "transformers==4.37",
     "wandb",
 ]
 
