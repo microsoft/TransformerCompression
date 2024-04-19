@@ -37,24 +37,23 @@ class SlicedPhi(PhiModel):
         super().__init__(config)
         self.config = config
         self.layers = nn.ModuleList(
-            [CompressedPhiDecoderLayer(config, layer_idx, replace_layernorm=True)for layer_idx in range(config.num_layers)]
+            [CompressedPhiDecoderLayer(config, layer_idx, replace_layernorm=True)for layer_idx in range(config.num_hidden_layers)]
         )
         self.final_layernorm = RMSN(config.hidden_size)
-        
+
 class SlicedPhiForCausalLM(PhiForCausalLM):
     def __init__(self, config, scheduler: SlicingScheduler | None = None, *model_args, **kwargs):
         super().__init__(config)
         self.model = SlicedPhi(config)
         self.model_adapter = Phi2ModelAdapter(self)
-        
+
         if scheduler:
             self.update_dims(scheduler)
             
     @classmethod
-    def from_pretrained(cls, pretrained_model_name_or_path, scheduler: SlicingScheduler, config_path, *model_args, **kwargs):
+    def from_pretrained(cls, pretrained_model_name_or_path, scheduler: SlicingScheduler | None, config_path, *model_args, **kwargs):
         """Overrides the from_pretrained method to accept the scheduler and returns the sliced model"""
         config = SlicedPhi2Config.from_pretrained(config_path)
-        #model = cls(config, scheduler)
         model = super().from_pretrained(pretrained_model_name_or_path, scheduler, config)
         model.load_state_dict(model.state_dict())
         return model
@@ -85,7 +84,7 @@ def arg_parser() -> argparse.Namespace:
     parser.add_argument(
         "--save-model-path",
         type=str,
-        default=None,
+        default="sliced_HF_model",
         help="Path to save the final model to",
     )
     parser.add_argument(
@@ -109,9 +108,23 @@ def arg_parser() -> argparse.Namespace:
         help="Path to load the config of the sliced model from",
         default="",
     )
+    parser.add_argument(
+        "--cal-dataset",
+        type=str,
+        help="Dataset that sliced model was calibrated on. Also used to compute perplexity",
+        choices=["wikitext2", "ptb", "c4", "alpaca"],
+        default="wikitext2",
+    )
+    parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument('--hf-token', type=str, default=os.getenv('HF_TOKEN', None))
 
     return parser.parse_args()
+
+def compare_weights(model1, model2):
+    for p1, p2 in zip(model1.parameters(), model2.parameters()):
+        if not torch.equal(p1.data, p2.data):
+            return False
+    return True
 
 if __name__ == "__main__":
     
@@ -126,10 +139,12 @@ if __name__ == "__main__":
     sliced_model_conf = SlicedPhi2Config(sparsity=args.sparsity, hidden_size=slicing_conf.hidden_size, intermediate_size=slicing_conf.intermediate_size, num_layers=slicing_conf.layers_num)
     sliced_model_conf.save_pretrained("sliced_phi2")
     
-    config = SlicedPhi2Config.from_pretrained("sliced_phi2")
+    # sliced config should be the same as the original model's config
+    orig_config = PhiConfig.from_pretrained(
+            "microsoft/phi-2", torch_dtype=torch.float16,
+        )
 
-    config.torch_dtype = torch.float16
-    sliced_model = SlicedPhiForCausalLM(config, slicing_scheduler)
+    sliced_model = SlicedPhiForCausalLM(orig_config, slicing_scheduler, slicing_conf)
     
     # load the saved sliced model
     model_adapter, tokenizer = hf_utils.load_sliced_model(
@@ -144,27 +159,19 @@ if __name__ == "__main__":
     train_dataset, test_dataset = dataset["train"], dataset["test"]
     
     test_loader = data_utils.prepare_test_dataloader(
-        dataset=test_dataset, tokenizer=tokenizer, batch_size=8
+        dataset=test_dataset, tokenizer=tokenizer, batch_size=1
     )
     
-    # evaluate original perplexity
-    dataset_ppl = gpu_utils.evaluate_ppl(model_adapter.model.to("cuda"), tokenizer.pad_token_id, test_loader)
+    dataset_ppl = gpu_utils.evaluate_ppl(model_adapter.model.to(args.device), tokenizer.pad_token_id, test_loader)
     print(f'Loaded sliced model perplexity: {dataset_ppl}')
     
-
     sliced_model = sliced_model.to(torch.float16)
     sliced_model.load_state_dict(model_adapter.model.state_dict(), strict=True, assign=True)
     print("Model loaded successfully!")
 
-    
-    sliced_model.to("cuda")
-    
-    dataset_ppl = gpu_utils.evaluate_ppl(sliced_model, tokenizer.pad_token_id, test_loader)
-    print(f'Loaded new sliced model perplexity: {dataset_ppl}')
-    
-    sliced_model.save_pretrained("new_sliced_phi2_model")
-    sliced_model_new = sliced_model.from_pretrained("new_sliced_phi2_model", slicing_scheduler, "sliced_phi2")
+    sliced_model.save_pretrained(args.save_model_path)
+    sliced_model_new = sliced_model.from_pretrained(args.save_model_path, slicing_scheduler, "sliced_phi2")
     sliced_model_new = sliced_model_new.to(torch.float16)
     
-    dataset_ppl = gpu_utils.evaluate_ppl(sliced_model_new.to("cuda"), tokenizer.pad_token_id, test_loader)
+    dataset_ppl = gpu_utils.evaluate_ppl(sliced_model_new.to(args.device), tokenizer.pad_token_id, test_loader)
     print(f'Loaded new sliced model perplexity: {dataset_ppl}')
