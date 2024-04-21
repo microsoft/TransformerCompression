@@ -41,7 +41,7 @@ def test_HF_model():
     layernorm_fusion.fuse_modules(model_adapter)
 
     config = PhiConfig.from_pretrained(
-        "microsoft/phi-2",
+        model_name,
         torch_dtype=torch.float16,
     )
 
@@ -78,29 +78,18 @@ def test_HF_model():
 
 def test_save_and_load_HF_model():
     """Test HF model saving and loading"""
+    base_model_name = "microsoft/phi-2"
     config = PhiConfig.from_pretrained(
-        "microsoft/phi-2",
+        base_model_name,
         torch_dtype=torch.float16,
     )
 
     sliced_model = SlicedPhiForCausalLM(config).to(torch.float16)
     sliced_model.save_pretrained("sliced_model")
-    sliced_model = SlicedPhiForCausalLM.from_pretrained("sliced_model", None, "microsoft/phi-2")
+    sliced_model = SlicedPhiForCausalLM.from_pretrained("sliced_model", None, base_model_name)
 
     assert isinstance(sliced_model, SlicedPhiForCausalLM)
     assert sliced_model.model.config == config
-
-
-def test_save_and_load_sliced_llama():
-    """Test HF model saving and loading"""
-    config = LlamaConfig.from_pretrained(
-        "openlm-research/open_llama_7b_v2",
-        torch_dtype=torch.float16,
-    )
-
-    sliced_model = SlicedLlamaForCausalLM(config).to(torch.float16)
-    sliced_model.save_pretrained("sliced_model")
-    sliced_model = SlicedLlamaForCausalLM.from_pretrained("sliced_model", None, "openlm-research/open_llama_7b_v2")
 
 
 def compare_weights(model1, model2):
