@@ -18,13 +18,14 @@ from transformers.models.phi.modeling_phi import PhiConfig, PhiDecoderLayer, Phi
 from slicegpt.model_adapter import LayerAdapter, ModelAdapter
 from slicegpt.modules import RMSN
 
+
 class CompressedPhiDecoderLayer(PhiDecoderLayer):
     """
     This class simulates the PhiDecoderlayer class from PhiModel (PhiForCausalLM)
     https://huggingface.co/microsoft/phi-2/blob/main/modeling_phi.py
     but with the addition of a shortcut_Q attribute. This attribute is used to rotate the residual tensors.
     """
-    
+
     def __init__(self, config: PhiConfig, layer_idx: int, replace_layernorm: bool = False):
         super().__init__(config, layer_idx)
         if replace_layernorm:
@@ -155,7 +156,7 @@ class Phi2ModelAdapter(ModelAdapter):
     @property
     def hidden_size(self) -> int:
         return self.config.hidden_size
-    
+
     @property
     def intermediate_size(self) -> int:
         return self.config.intermediate_size

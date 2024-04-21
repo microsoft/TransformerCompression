@@ -163,7 +163,12 @@ def rotate_and_slice_sequential(
             ignore_masks.append(batch["attention_mask"])
 
     layers = model_adapter.get_layers()
-    slicing_scheduler.setup(hidden_size=model_adapter.hidden_size, intermediate_size=model_adapter.model.intermediate_size, layers_num=len(layers), parallel_blocks=True)
+    slicing_scheduler.setup(
+        hidden_size=model_adapter.hidden_size,
+        intermediate_size=model_adapter.model.intermediate_size,
+        layers_num=len(layers),
+        parallel_blocks=True,
+    )
 
     # rotate and slice embeddings
     eig_val, Q = pca_calc(inps, ignore_masks)
@@ -277,7 +282,12 @@ def rotate_and_slice_parallel(
             ignore_masks.append(batch["attention_mask"])
 
     layers = model_adapter.get_layers()
-    slicing_scheduler.setup(hidden_size=model_adapter.hidden_size, intermediate_size=model_adapter.intermediate_size, layers_num=len(layers), parallel_blocks=True)
+    slicing_scheduler.setup(
+        hidden_size=model_adapter.hidden_size,
+        intermediate_size=model_adapter.intermediate_size,
+        layers_num=len(layers),
+        parallel_blocks=True,
+    )
 
     # rotate and slice embeddings
     _, Q = pca_calc(inps, ignore_masks)
@@ -466,14 +476,18 @@ def slice_rotated_model(model_adapter: ModelAdapter, slicing_scheduler: SlicingS
 
         if model_adapter.parallel_blocks:  # parallel case
             layer.attn_shortcut_Q = nn.Parameter(
-                layer.attn_shortcut_Q[:, : slicing_scheduler.get_attention_output_dimension(i, match_head_dim=True)].contiguous()
+                layer.attn_shortcut_Q[
+                    :, : slicing_scheduler.get_attention_output_dimension(i, match_head_dim=True)
+                ].contiguous()
             )
             slice_attention_output(
                 layer_adapter, slicing_scheduler.get_attention_output_dimension(i, match_head_dim=True)
             )
         else:  # sequential case
             layer.attn_shortcut_Q = nn.Parameter(
-                layer.attn_shortcut_Q[:, : slicing_scheduler.get_attention_output_dimension(i, match_head_dim=False)].contiguous()
+                layer.attn_shortcut_Q[
+                    :, : slicing_scheduler.get_attention_output_dimension(i, match_head_dim=False)
+                ].contiguous()
             )
             layer.mlp_shortcut_Q = nn.Parameter(
                 layer.mlp_shortcut_Q[:, : slicing_scheduler.get_mlp_output_dimension(i)].contiguous()
