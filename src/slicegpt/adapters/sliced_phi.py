@@ -7,6 +7,18 @@ from slicegpt.modules import RMSN
 from slicegpt.rotate import slice_rotated_model
 from slicegpt.slicing_scheduler import SlicingScheduler
 
+class SlicedPhi2Config(PhiConfig):
+    model_type = "sliced_phi2"
+    is_composition = True
+
+    def __init__(self, sparsity = 0.1, new_hidden_size = 1024, **kwargs):
+        self.sparsity = sparsity
+        self.new_hidden_size = new_hidden_size
+        super().__init__(**kwargs)
+
+    @classmethod
+    def from_pretrained(cls, config_path, sparsity, new_hidden_size):
+        return super().from_pretrained(config_path, sparsity, new_hidden_size)
 
 class SlicedPhi(PhiModel):
     def __init__(self, config):
@@ -22,7 +34,7 @@ class SlicedPhi(PhiModel):
 
 
 class SlicedPhiForCausalLM(PhiForCausalLM):
-    def __init__(self, config, scheduler: SlicingScheduler | None = None, *model_args, **kwargs):
+    def __init__(self, config, scheduler: SlicingScheduler | None = None, sparsity: float = 0.0, new_hidden_size: int = 1024, *model_args, **kwargs):
         super().__init__(config)
         self.model = SlicedPhi(config)
         self.model_adapter = Phi2ModelAdapter(self)
@@ -32,11 +44,11 @@ class SlicedPhiForCausalLM(PhiForCausalLM):
 
     @classmethod
     def from_pretrained(
-        cls, pretrained_model_name_or_path, scheduler: SlicingScheduler | None, config_path, *model_args, **kwargs
+        cls, pretrained_model_name_or_path, scheduler: SlicingScheduler | None, sparsity: float, new_hidden_size: int, config_path: str, *model_args, **kwargs
     ):
         """Overrides the from_pretrained method to accept the scheduler and returns the sliced model"""
-        config = PhiConfig.from_pretrained(config_path)
-        model = super().from_pretrained(pretrained_model_name_or_path, scheduler, config)
+        config = SlicedPhi2Config.from_pretrained(config_path, sparsity, new_hidden_size)
+        model = super().from_pretrained(pretrained_model_name_or_path, config=config)
         model.load_state_dict(model.state_dict())
         return model
 

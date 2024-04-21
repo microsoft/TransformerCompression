@@ -8,13 +8,9 @@ import pathlib
 import shutil
 
 import torch
-from transformers.models.llama.modeling_llama import LlamaConfig
-from transformers.models.phi.modeling_phi import PhiConfig
 
 import wandb
 from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate, utils
-from slicegpt.adapters.hf_compatible_phi import SlicedPhiForCausalLM
-from slicegpt.adapters.sliced_llama import SlicedLlamaForCausalLM
 from slicegpt.config import config
 from slicegpt.slicing_scheduler import ConstSlicingScheduler
 
@@ -232,34 +228,8 @@ def slicing_main(args: argparse.Namespace) -> None:
         sliced_model_dir = pathlib.Path(args.save_dir)
         sliced_model_dir.mkdir(parents=True, exist_ok=True)
 
-        sliced_model_name = sliced_model_dir / f'{pathlib.Path(args.model).name}_{args.sparsity}.pt'
-
         # Save the sliced model in HF format for Phi and Llama
-        if args.model == "microsoft/phi-2":
-            config_to_save = PhiConfig.from_pretrained(
-                args.model,
-                torch_dtype=config.dtype,
-            )
-
-            sliced_model = SlicedPhiForCausalLM(config_to_save, scheduler).to(config.dtype)
-            sliced_model.load_state_dict(model_adapter.model.state_dict(), strict=True, assign=True)
-            sliced_model.save_pretrained(sliced_model_dir)
-        elif "meta-llama" in args.model:
-            config_to_save = LlamaConfig.from_pretrained(
-                args.model,
-                torch_dtype=config.dtype,
-            )
-
-            sliced_model = SlicedLlamaForCausalLM(config_to_save, scheduler).to(config.dtype)
-            sliced_model.load_state_dict(model_adapter.model.state_dict(), strict=True, assign=True)
-            sliced_model.save_pretrained(sliced_model_dir)
-        else:
-            # Save the sliced model for other models types
-            torch.save(model.state_dict(), sliced_model_name)
-
-        # Save the slicing config
-        config_path = sliced_model_name.with_suffix('.json')
-        config_path.write_text(model_adapter.slicing_conf.to_json_string())
+        hf_utils.save_sliced_model(args.model, config.dtype, model, scheduler, sliced_model_dir, args.sparsity, new_embedding_dimension, model_adapter.slicing_conf)
 
         # If slicing a local model, also save HF config files in sliced model dir
         if args.model_path:
