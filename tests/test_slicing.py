@@ -2,13 +2,10 @@
 # Licensed under the MIT license.
 
 import torch
-from transformers import AutoTokenizer
-from transformers.models.llama.modeling_llama import LlamaConfig
 from transformers.models.phi.modeling_phi import PhiConfig
 
 from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate
 from slicegpt.adapters.opt_adapter import OPTModelAdapter
-from slicegpt.adapters.sliced_llama import SlicedLlamaForCausalLM
 from slicegpt.adapters.sliced_phi import SlicedPhiForCausalLM
 from slicegpt.slicing_scheduler import ConstSlicingScheduler
 
