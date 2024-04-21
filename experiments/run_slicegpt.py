@@ -8,9 +8,11 @@ import pathlib
 import shutil
 
 import torch
-import wandb
+from transformers.models.phi.modeling_phi import PhiConfig
 
+import wandb
 from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate, utils
+from slicegpt.adapters.hf_compatible_phi import SlicedPhiForCausalLM
 from slicegpt.config import config
 from slicegpt.slicing_scheduler import ConstSlicingScheduler
 
@@ -230,8 +232,19 @@ def slicing_main(args: argparse.Namespace) -> None:
 
         sliced_model_name = sliced_model_dir / f'{pathlib.Path(args.model).name}_{args.sparsity}.pt'
 
-        # Save the sliced model
-        torch.save(model.state_dict(), sliced_model_name)
+        # Save the sliced model in HF format
+        if args.model == "microsoft/phi-2":
+            config_to_save = PhiConfig.from_pretrained(
+                "microsoft/phi-2",
+                torch_dtype=torch.float16,
+            )
+
+            sliced_model = SlicedPhiForCausalLM(config_to_save, scheduler).to(config.dtype)
+            sliced_model.load_state_dict(model_adapter.model.state_dict(), strict=True, assign=True)
+            sliced_model.save_pretrained(sliced_model_dir)
+        else:
+            # Save the sliced model for other models types
+            torch.save(model.state_dict(), sliced_model_name)
 
         # Save the slicing config
         config_path = sliced_model_name.with_suffix('.json')
