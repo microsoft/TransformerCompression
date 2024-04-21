@@ -1,12 +1,13 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
+import pytest
 import torch
 from transformers.models.phi.modeling_phi import PhiConfig
 
 from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate
 from slicegpt.adapters.opt_adapter import OPTModelAdapter
-from slicegpt.adapters.sliced_phi import SlicedPhiForCausalLM
+from slicegpt.adapters.sliced_phi import SlicedPhi2Config, SlicedPhiForCausalLM
 from slicegpt.slicing_scheduler import ConstSlicingScheduler
 
 
@@ -28,22 +29,25 @@ def get_module_names(model) -> list[str]:
     return [name for name, _ in model.named_parameters()]
 
 
+@pytest.mark.experiment
+@pytest.mark.gpu
 def test_HF_model():
     """Check that the HF model weights are equivalent to the sliced model weights"""
     model_name = "microsoft/phi-2"
     model_adapter, tokenizer = hf_utils.get_model_and_tokenizer(model_name)
     sparsity = 0.1
+    new_hidden_size = 2304
 
     layernorm_fusion.replace_layers(model_adapter)
     layernorm_fusion.fuse_modules(model_adapter)
 
-    config = PhiConfig.from_pretrained(
+    phi_config = PhiConfig.from_pretrained(
         model_name,
         torch_dtype=torch.float16,
     )
 
-    new_embedding_dimension = int((1 - sparsity) * model_adapter.hidden_size)
-    new_embedding_dimension -= new_embedding_dimension % 8
+    phi_config.save_pretrained("phi_config")
+    config = SlicedPhi2Config.from_pretrained(config_path="phi_config", sparsity=sparsity, new_hidden_size=new_hidden_size)
 
     sliced_model = SlicedPhiForCausalLM(config).to(torch.float16)
     sliced_model.load_state_dict(model_adapter.model.state_dict(), strict=True, assign=True)
@@ -58,7 +62,7 @@ def test_HF_model():
 
     test_loader = data_utils.prepare_test_dataloader(dataset=test_dataset, tokenizer=tokenizer)
 
-    scheduler = ConstSlicingScheduler(new_embedding_dimension)
+    scheduler = ConstSlicingScheduler(new_hidden_size)
     rotate.rotate_and_slice(model_adapter, train_loader, scheduler, final_orientation="random")
 
     sliced_ppl = gpu_utils.evaluate_ppl(model_adapter.model.to("cuda"), tokenizer.pad_token_id, test_loader)
@@ -75,18 +79,33 @@ def test_HF_model():
 
 def test_save_and_load_HF_model():
     """Test HF model saving and loading"""
-    base_model_name = "microsoft/phi-2"
-    config = PhiConfig.from_pretrained(
-        base_model_name,
-        torch_dtype=torch.float16,
+    sparsity = 0.0
+    new_hidden_size = 2506
+    config_name = "sliced_model_config"
+    model_name = "sliced_model"
+    
+    config = SlicedPhi2Config(sparsity, new_hidden_size)
+    config.save_pretrained(config_name)
+    
+    config = SlicedPhi2Config.from_pretrained(
+        config_name,
+        sparsity,
+        new_hidden_size
     )
 
     sliced_model = SlicedPhiForCausalLM(config).to(torch.float16)
-    sliced_model.save_pretrained("sliced_model")
-    sliced_model = SlicedPhiForCausalLM.from_pretrained("sliced_model", None, base_model_name)
+    sliced_model.save_pretrained(model_name)
+    sliced_model = SlicedPhiForCausalLM.from_pretrained(
+        model_name,
+        scheduler=None,
+        config_path=config_name,
+        sparsity=sparsity,
+        new_hidden_size=new_hidden_size
+    )
 
     assert isinstance(sliced_model, SlicedPhiForCausalLM)
-    assert sliced_model.model.config == config
+    assert sliced_model.config.sparsity == sparsity
+    assert sliced_model.config.new_hidden_size == new_hidden_size
 
 
 def compare_weights(model1, model2):
