@@ -24,11 +24,11 @@ class QuarotFP16LlamaAttention(LlamaFlashAttention2):
     def __init__(self, a_bits: int = 16, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.quantizer = FP16ActQuantizer(a_bits)
-        self.q_proj = QuarotFP16Linear.from_float(self.q_proj)
-        self.k_proj = QuarotFP16Linear.from_float(self.k_proj)
-        self.v_proj = QuarotFP16Linear.from_float(self.v_proj)
+        self.q_proj = QuarotFP16Linear.like(self.q_proj)
+        self.k_proj = QuarotFP16Linear.like(self.k_proj)
+        self.v_proj = QuarotFP16Linear.like(self.v_proj)
         self.o_proj_hadamard = OnlineHadamard(self.num_heads)
-        self.o_proj = torch.nn.Sequential(FP16ActQuantizer(a_bits), QuarotFP16Linear.from_float(self.o_proj))
+        self.o_proj = torch.nn.Sequential(FP16ActQuantizer(a_bits), QuarotFP16Linear.like(self.o_proj))
 
     def forward(
         self,
@@ -113,12 +113,12 @@ class QuarotFP16LlamaMLP(LlamaMLP):
     def __init__(self, a_bits: int = 16, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.quantizer = FP16ActQuantizer(a_bits)
-        self.up_proj = QuarotFP16Linear.from_float(self.up_proj)
-        self.gate_proj = QuarotFP16Linear.from_float(self.gate_proj)
+        self.up_proj = QuarotFP16Linear.like(self.up_proj)
+        self.gate_proj = QuarotFP16Linear.like(self.gate_proj)
         self.down_proj = torch.nn.Sequential(
             OnlineHadamard(self.intermediate_size),
             FP16ActQuantizer(a_bits),
-            QuarotFP16Linear.from_float(self.down_proj),
+            QuarotFP16Linear.like(self.down_proj),
         )
 
     def forward(self, x):
