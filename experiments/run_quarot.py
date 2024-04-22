@@ -7,14 +7,16 @@ import os
 
 import lm_eval
 import torch
+import transformers
 import wandb
 from lm_eval import utils as lm_eval_utils
 from lm_eval.api.registry import ALL_TASKS
 from lm_eval.models.huggingface import HFLM
 from lm_eval.tasks import initialize_tasks
 
-from quarot import hf_utils, quant_utils, rotation_utils, rtn_utils
-from quarot.adapters.llama_adapter import LlamaModelAdapter
+from quarot import hf_utils, modeling_llama, rotation_utils, rtn_utils
+from quarot.modeling_llama import QuarotFP16LlamaForCausalLM
+from quarot.quant_utils import WeightQuantizer
 from slicegpt import data_utils, gpu_utils, layernorm_fusion, utils
 from slicegpt.config import config
 
@@ -254,95 +256,23 @@ def quarot_main(args: argparse.Namespace) -> None:
         model.cpu()
         utils.cleanup_memory()
 
-    if args.rotate:
-        # fuse layernorms
-        layernorm_fusion.fuse_modules(model_adapter)  # TODO: fix expected adapter type
+    # fuse layernorms
+    layernorm_fusion.fuse_modules(model_adapter)  # TODO: fix expected adapter type
 
-        # Rotate the model with fused Hadamard transformations.
-        rotation_utils.rotate_model(model_adapter, args.rotation_seed)
-
-        # Wrap the linear blocks with activation quantization wrappers.
-        quant_utils.wrap_linears_with_actquantwrapper(model)
-
-        # Add online Hadamards to the model.
-        rotation_utils.add_online_hadamards(model, args.fp32_had)
-
-        logging.info("Finished applying QuaRot.")
-
-        if args.eval_rotated_model:
-            # For debugging. Consider removing this in the future.
-            reset_model_device()
-            dataset_ppl = gpu_utils.evaluate_ppl(model, model.config.pad_token_id, test_loader)
-            logging.info(f'Rotated ppl: {dataset_ppl:.4f}')
-            wandb.log({"rotated_ppl": dataset_ppl})
-
-    else:
-        quant_utils.wrap_linears_with_actquantwrapper(
-            model
-        )  # Add Activation Wrapper to the model as the rest of the code assumes it is present
+    # Rotate the model with fused Hadamard transformations.
+    rotation_utils.rotate_model(model_adapter, args.rotation_seed)
 
     # Quantize the model weights
-    if args.w_bits < 16:
-        save_dict = {}
-        if args.quarot_model_path:  # Load Quantized Rotated Model
-            raise NotImplementedError("Loading quantized rotated model is not yet implemented!")
-        elif not args.w_rtn:  # GPTQ Weight Quantization
+    if args.w_bits <= 16:
+        if not args.w_rtn:  # GPTQ Weight Quantization
             raise NotImplementedError("GPTQ weight quantization is not yet implemented!")
         else:  # RTN Weight Quantization
             quantizers = rtn_utils.apply_weight_rtn_quantization(
                 model, args.w_bits, args.int8_down_proj, args.w_asym, args.w_clip
             )
-            save_dict["w_quantizers"] = quantizers
 
-        if args.save_dir:
-            raise NotImplementedError("Saving quantized model is not yet implemented!")
-
-    # Add activation and v quantization
-    if args.a_bits < 16 or args.v_bits < 16:
-        quantizeable_modules = quant_utils.get_quantizeable_modules(model)
-        down_proj_groupsize = -1
-        if args.a_groupsize > 0 and isinstance(model_adapter, LlamaModelAdapter):  # TODO: make this general
-            down_proj_groupsize = quant_utils.llama_down_proj_groupsize(model, args.a_groupsize)
-
-        for name in quantizeable_modules:
-            layer_input_bits = args.a_bits
-            layer_groupsize = args.a_groupsize
-            layer_a_sym = not (args.a_asym)
-            layer_a_clip = args.a_clip_ratio
-
-            if 'v_proj' in name and args.v_bits < 16:  # Set the v_proj precision
-                quantizeable_modules[name].output_quantizer.configure(
-                    bits=args.v_bits, groupsize=args.v_groupsize, sym=not (args.v_asym), clip_ratio=args.v_clip_ratio
-                )
-
-            if 'lm_head' in name:  # Skip lm_head quantization
-                layer_input_bits = 16
-
-            if 'down_proj' in name:  # Set the down_proj precision
-                if args.int8_down_proj:
-                    layer_input_bits = 8
-                layer_groupsize = down_proj_groupsize
-
-            quantizeable_modules[name].input_quantizer.configure(
-                bits=layer_input_bits, groupsize=layer_groupsize, sym=layer_a_sym, clip_ratio=layer_a_clip
-            )
-
-    # Add k quantization
-    if args.k_bits < 16:
-        layer_adapters = model_adapter.get_layers()
-        k_quant_config = {
-            'k_bits': args.k_bits,
-            "k_groupsize": args.k_groupsize,
-            "k_sym": not (args.k_asym),
-            "k_clip_ratio": args.k_clip_ratio,
-        }
-        for layer_adapter in layer_adapters:
-            rotation_utils.add_qk_rotation_wrapper_after_function_call_in_forward(
-                layer_adapter.get_self_attn(),
-                layer_adapter.get_rope_function_name(),
-                config=model.config,
-                **k_quant_config,
-            )
+    # Convert the model to a quantizeable model
+    model = convert_model_to_quantizeable(model, quantizers, fake_quant=True)
 
     reset_model_device()
     dataset_ppl = gpu_utils.evaluate_ppl(model, model.config.pad_token_id, test_loader)
@@ -362,6 +292,56 @@ def quarot_main(args: argparse.Namespace) -> None:
     metric_vals['acc_avg'] = round(sum(metric_vals.values()) / len(metric_vals.values()), 4)
     logging.info(f"LM Eval results: {metric_vals}")
     wandb.log(metric_vals)
+
+
+def convert_model_to_quantizeable(
+    model, quantizers: dict[str, WeightQuantizer], fake_quant: bool = True
+) -> QuarotFP16LlamaForCausalLM:
+    '''
+    Convert the model to a quantizeable model by replacing modules with quantizeable equivalents. TODO : make this general.
+    '''
+    old_dict = model.state_dict()
+
+    # module names in the current model given by keys will be renamed to the values
+    key_maps = {"mlp.down_proj": "mlp.down_proj.2", "self_attn.o_proj": "self_attn.o_proj.1"}
+    bad_key_names = {"post_attention_layernorm.weight", "input_layernorm.weight"}
+
+    def _get_new_key(key):
+        new_key = key
+        for old_name, new_name in key_maps.items():
+            new_key = new_key.replace(old_name, new_name)
+        return new_key
+
+    def _keep_key(key):
+        return all(bad_name not in key for bad_name in bad_key_names)
+
+    new_dict = {_get_new_key(key): value for key, value in old_dict.items() if _keep_key(key)}
+    for key, value in quantizers.items():
+        new_key = _get_new_key(key)
+        weight_scales = value.scale
+        new_dict[f"{new_key}.weight_scales"] = weight_scales
+        weight_matrix = new_dict[f"{new_key}.weight"]
+        int_rounded_weight = (weight_matrix / weight_scales).round()
+
+        if fake_quant:
+            new_dict[f"{new_key}.weight"] = int_rounded_weight
+        else:
+            raise NotImplementedError("Real quantization is not yet implemented!")
+
+    model_config = modeling_llama.QuarotLlamaConfig.from_pretrained(
+        "meta-llama/Llama-2-7b-hf", attn_implementation="flash_attention_2"
+    )
+    torch.set_default_dtype(torch.float16)
+    with transformers.modeling_utils.no_init_weights():
+        if fake_quant:
+            new_model = modeling_llama.QuarotFP16LlamaForCausalLM(config=model_config)
+        else:
+            raise NotImplementedError("Real quantization is not yet implemented!")
+
+    result = new_model.load_state_dict(new_dict, strict=False)
+    assert all("had_rem_dim" in key for key in result.missing_keys), result
+    assert len(result.unexpected_keys) == 0, result
+    return new_model
 
 
 if __name__ == "__main__":
