@@ -10,13 +10,12 @@ from transformers import AutoTokenizer, PreTrainedTokenizerBase
 from transformers.models.llama.modeling_llama import LlamaConfig
 from transformers.models.phi.modeling_phi import PhiConfig
 
-from slicegpt.adapters.sliced_llama import SlicedLlamaConfig, SlicedLlamaForCausalLM
-from slicegpt.adapters.sliced_phi import SlicedPhi2Config, SlicedPhiForCausalLM
-from slicegpt.slicing_scheduler import SlicingScheduler
-
+from .adapters.sliced_llama import SlicedLlamaConfig, SlicedLlamaForCausalLM
+from .adapters.sliced_phi import SlicedPhi2Config, SlicedPhiForCausalLM
 from .layernorm_fusion import fuse_modules, replace_layers
 from .model_adapter import ModelAdapter, SlicingConfig
 from .rotate import slice_rotated_model
+from .slicing_scheduler import SlicingScheduler
 
 
 def do_not_initialize(func):
