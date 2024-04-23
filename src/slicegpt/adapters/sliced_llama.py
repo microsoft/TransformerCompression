@@ -13,14 +13,15 @@ class SlicedLlamaConfig(LlamaConfig):
     model_type = "sliced_llama"
     is_composition = True
 
-    def __init__(self, sparsity: float, new_hidden_size: int, **kwargs) -> None:
-        self.sparsity = sparsity
-        self.new_hidden_size = new_hidden_size
+    def __init__(self, **kwargs) -> None:
+        self.sparsity = kwargs.pop("sparsity", None)
+        self.new_hidden_size = kwargs.pop("new_hidden_size", None)
         super().__init__(**kwargs)
 
     @classmethod
     def from_pretrained(cls, config_path: str, sparsity: float, new_hidden_size: int) -> PretrainedConfig:
-        return super().from_pretrained(config_path, sparsity, new_hidden_size)
+        kwargs = {"sparsity": sparsity, "new_hidden_size": new_hidden_size}
+        return super().from_pretrained(config_path, **kwargs)
 
 
 class SlicedLlama(LlamaModel):
