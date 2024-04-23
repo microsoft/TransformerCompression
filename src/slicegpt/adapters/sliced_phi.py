@@ -41,8 +41,6 @@ class SlicedPhiForCausalLM(PhiForCausalLM):
     def __init__(
         self,
         config,
-        sparsity: float,
-        new_hidden_size: int,
         scheduler: SlicingScheduler | None = None,
         *model_args,
         **kwargs,
