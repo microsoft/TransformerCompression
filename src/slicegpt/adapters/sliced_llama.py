@@ -12,7 +12,7 @@ class SlicedLlamaConfig(LlamaConfig):
     model_type = "sliced_llama"
     is_composition = True
 
-    def __init__(self, sparsity = 0.1, new_hidden_size = 1024, **kwargs):
+    def __init__(self, sparsity=0.1, new_hidden_size=1024, **kwargs):
         self.sparsity = sparsity
         self.new_hidden_size = new_hidden_size
         super().__init__(**kwargs)
@@ -20,7 +20,7 @@ class SlicedLlamaConfig(LlamaConfig):
     @classmethod
     def from_pretrained(cls, config_path, sparsity, new_hidden_size):
         return super().from_pretrained(config_path, sparsity, new_hidden_size)
-    
+
 
 class SlicedLlama(LlamaModel):
     def __init__(self, config):
@@ -36,7 +36,15 @@ class SlicedLlama(LlamaModel):
 
 
 class SlicedLlamaForCausalLM(LlamaForCausalLM):
-    def __init__(self, config, scheduler: SlicingScheduler | None = None, sparsity: float = 0.0, new_hidden_size: int = 1024, *model_args, **kwargs):
+    def __init__(
+        self,
+        config,
+        scheduler: SlicingScheduler | None = None,
+        sparsity: float = 0.0,
+        new_hidden_size: int = 1024,
+        *model_args,
+        **kwargs,
+    ):
         super().__init__(config)
         self.model = SlicedLlama(config)
         self.model_adapter = LlamaModelAdapter(self)
@@ -46,7 +54,14 @@ class SlicedLlamaForCausalLM(LlamaForCausalLM):
 
     @classmethod
     def from_pretrained(
-        cls, pretrained_model_name_or_path, scheduler: SlicingScheduler | None, sparsity: float, new_hidden_size: int, config_path: str, *model_args, **kwargs
+        cls,
+        pretrained_model_name_or_path,
+        scheduler: SlicingScheduler | None,
+        sparsity: float,
+        new_hidden_size: int,
+        config_path: str,
+        *model_args,
+        **kwargs,
     ):
         """Overrides the from_pretrained method to accept the scheduler and returns the sliced model"""
         config = SlicedLlamaConfig.from_pretrained(config_path, sparsity, new_hidden_size)

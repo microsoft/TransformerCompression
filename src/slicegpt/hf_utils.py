@@ -4,18 +4,19 @@
 import logging
 import pathlib
 
-from slicegpt.slicing_scheduler import SlicingScheduler
 import torch
 from peft import LoraConfig, get_peft_model
 from transformers import AutoTokenizer, PreTrainedTokenizerBase
+from transformers.models.llama.modeling_llama import LlamaConfig
+from transformers.models.phi.modeling_phi import PhiConfig
+
+from slicegpt.adapters.sliced_llama import SlicedLlamaConfig, SlicedLlamaForCausalLM
+from slicegpt.adapters.sliced_phi import SlicedPhi2Config, SlicedPhiForCausalLM
+from slicegpt.slicing_scheduler import SlicingScheduler
 
 from .layernorm_fusion import fuse_modules, replace_layers
 from .model_adapter import ModelAdapter, SlicingConfig
 from .rotate import slice_rotated_model
-from slicegpt.adapters.sliced_phi import SlicedPhi2Config, SlicedPhiForCausalLM
-from slicegpt.adapters.sliced_llama import SlicedLlamaConfig, SlicedLlamaForCausalLM
-from transformers.models.llama.modeling_llama import LlamaConfig
-from transformers.models.phi.modeling_phi import PhiConfig
 
 
 def do_not_initialize(func):
@@ -180,6 +181,7 @@ def load_sliced_model(
 
     return model_adapter, tokenizer
 
+
 def save_sliced_model(
     model_name: str,
     dtype: torch.dtype,
@@ -198,15 +200,13 @@ def save_sliced_model(
 
         config.save_pretrained("phi_config")
         config_to_save = SlicedPhi2Config.from_pretrained(
-            config_path="phi_config",
-            sparsity=sparsity,
-            new_hidden_size=new_hidden_size
+            config_path="phi_config", sparsity=sparsity, new_hidden_size=new_hidden_size
         )
 
         sliced_model = SlicedPhiForCausalLM(config_to_save, scheduler).to(dtype)
         sliced_model.load_state_dict(model.state_dict(), strict=True, assign=True)
         sliced_model.save_pretrained(save_sliced_model_dir)
-        
+
     elif "meta-llama" in model_name:
         config = LlamaConfig.from_pretrained(
             model_name,
