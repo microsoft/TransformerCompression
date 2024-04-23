@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from transformers.models.phi.modeling_phi import PhiConfig, PhiForCausalLM, PhiModel
+from transformers.configuration_utils import PretrainedConfig
 
 from slicegpt.adapters.phi2_adapter import CompressedPhiDecoderLayer, Phi2ModelAdapter
 from slicegpt.modules import RMSN
@@ -12,13 +13,13 @@ class SlicedPhi2Config(PhiConfig):
     model_type = "sliced_phi2"
     is_composition = True
 
-    def __init__(self, sparsity=0.1, new_hidden_size=1024, **kwargs):
+    def __init__(self, sparsity: float, new_hidden_size: int, **kwargs) -> None:
         self.sparsity = sparsity
         self.new_hidden_size = new_hidden_size
         super().__init__(**kwargs)
 
     @classmethod
-    def from_pretrained(cls, config_path, sparsity, new_hidden_size):
+    def from_pretrained(cls, config_path: str, sparsity: float, new_hidden_size: int) -> PretrainedConfig:
         return super().from_pretrained(config_path, sparsity, new_hidden_size)
 
 
@@ -39,9 +40,9 @@ class SlicedPhiForCausalLM(PhiForCausalLM):
     def __init__(
         self,
         config,
+        sparsity: float,
+        new_hidden_size: int,
         scheduler: SlicingScheduler | None = None,
-        sparsity: float = 0.0,
-        new_hidden_size: int = 1024,
         *model_args,
         **kwargs,
     ):

@@ -165,7 +165,7 @@ def rotate_and_slice_sequential(
     layers = model_adapter.get_layers()
     slicing_scheduler.setup(
         hidden_size=model_adapter.hidden_size,
-        intermediate_size=model_adapter.model.intermediate_size,
+        intermediate_size=model_adapter.intermediate_size,
         layers_num=len(layers),
         parallel_blocks=True,
     )
