@@ -202,7 +202,7 @@ def save_sliced_model(
             config_path="phi_config", sparsity=sparsity, new_hidden_size=new_hidden_size
         )
 
-        sliced_model = SlicedPhiForCausalLM(config_to_save, sparsity, new_hidden_size, scheduler).to(dtype)
+        sliced_model = SlicedPhiForCausalLM(config_to_save, scheduler).to(dtype)
         sliced_model.load_state_dict(model.state_dict(), strict=True, assign=True)
         sliced_model.save_pretrained(save_sliced_model_dir)
 
@@ -218,7 +218,7 @@ def save_sliced_model(
             new_hidden_size=new_hidden_size,
         )
 
-        sliced_model = SlicedLlamaForCausalLM(config_to_save, sparsity, new_hidden_size, scheduler).to(dtype)
+        sliced_model = SlicedLlamaForCausalLM(config_to_save, scheduler).to(dtype)
         sliced_model.load_state_dict(model.state_dict(), strict=True, assign=True)
         sliced_model.save_pretrained(save_sliced_model_dir)
     else:
