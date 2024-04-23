@@ -47,7 +47,9 @@ def test_HF_model():
     )
 
     phi_config.save_pretrained("phi_config")
-    config = SlicedPhi2Config.from_pretrained(config_path="phi_config", sparsity=sparsity, new_hidden_size=new_hidden_size)
+    config = SlicedPhi2Config.from_pretrained(
+        config_path="phi_config", sparsity=sparsity, new_hidden_size=new_hidden_size
+    )
 
     sliced_model = SlicedPhiForCausalLM(config).to(torch.float16)
     sliced_model.load_state_dict(model_adapter.model.state_dict(), strict=True, assign=True)
@@ -83,24 +85,16 @@ def test_save_and_load_HF_model():
     new_hidden_size = 2506
     config_name = "sliced_model_config"
     model_name = "sliced_model"
-    
+
     config = SlicedPhi2Config(sparsity, new_hidden_size)
     config.save_pretrained(config_name)
-    
-    config = SlicedPhi2Config.from_pretrained(
-        config_name,
-        sparsity,
-        new_hidden_size
-    )
+
+    config = SlicedPhi2Config.from_pretrained(config_name, sparsity, new_hidden_size)
 
     sliced_model = SlicedPhiForCausalLM(config).to(torch.float16)
     sliced_model.save_pretrained(model_name)
     sliced_model = SlicedPhiForCausalLM.from_pretrained(
-        model_name,
-        scheduler=None,
-        config_path=config_name,
-        sparsity=sparsity,
-        new_hidden_size=new_hidden_size
+        model_name, scheduler=None, config_path=config_name, sparsity=sparsity, new_hidden_size=new_hidden_size
     )
 
     assert isinstance(sliced_model, SlicedPhiForCausalLM)

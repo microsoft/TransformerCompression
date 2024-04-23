@@ -163,7 +163,7 @@ class ModelAdapter(ABC):
         The hidden size of the model
         """
         raise NotImplementedError
-    
+
     @property
     @abstractmethod
     def intermediate_size(self) -> int:

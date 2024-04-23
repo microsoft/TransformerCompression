@@ -8,8 +8,8 @@ import pathlib
 import shutil
 
 import torch
-
 import wandb
+
 from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate, utils
 from slicegpt.config import config
 from slicegpt.slicing_scheduler import ConstSlicingScheduler
@@ -229,7 +229,16 @@ def slicing_main(args: argparse.Namespace) -> None:
         sliced_model_dir.mkdir(parents=True, exist_ok=True)
 
         # Save the sliced model in HF format for Phi and Llama
-        hf_utils.save_sliced_model(args.model, config.dtype, model, scheduler, sliced_model_dir, args.sparsity, new_embedding_dimension, model_adapter.slicing_conf)
+        hf_utils.save_sliced_model(
+            args.model,
+            config.dtype,
+            model,
+            scheduler,
+            sliced_model_dir,
+            args.sparsity,
+            new_embedding_dimension,
+            model_adapter.slicing_conf,
+        )
 
         # If slicing a local model, also save HF config files in sliced model dir
         if args.model_path:
