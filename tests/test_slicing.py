@@ -86,7 +86,9 @@ def test_save_and_load_HF_model():
     config_name = "sliced_model_config"
     model_name = "sliced_model"
 
-    config = SlicedPhi2Config(sparsity, new_hidden_size)
+    kwargs = {"sparsity": sparsity, "new_hidden_size": new_hidden_size}
+
+    config = SlicedPhi2Config(**kwargs)
     config.save_pretrained(config_name)
 
     config = SlicedPhi2Config.from_pretrained(config_name, sparsity, new_hidden_size)
@@ -110,4 +112,4 @@ def compare_weights(model1, model2):
 
 
 if __name__ == "__main__":
-    test_HF_model()
+    test_save_and_load_HF_model()
