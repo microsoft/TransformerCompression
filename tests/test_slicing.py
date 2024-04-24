@@ -78,16 +78,25 @@ def test_HF_model():
 
     # The perplexity of the sliced model should be the same as the HF model
     assert sliced_ppl == new_model_ppl
-    
+
     # load the sliced model back
     sliced_model = SlicedPhiForCausalLM.from_pretrained(
-        "sliced_phi2_model", scheduler=scheduler, config_path="sliced_phi2_model", sparsity=sparsity, new_hidden_size=new_hidden_size
+        "sliced_phi2_model",
+        scheduler=scheduler,
+        config_path="sliced_phi2_model",
+        sparsity=sparsity,
+        new_hidden_size=new_hidden_size,
     )
-    
+    sliced_model = sliced_model.to(torch.float16)
+
     assert sliced_model is not None
     assert isinstance(sliced_model, SlicedPhiForCausalLM)
     assert sliced_model.config.sparsity == sparsity
     assert sliced_model.config.new_hidden_size == new_hidden_size
+    
+    loaded_model_ppl = gpu_utils.evaluate_ppl(sliced_model.to("cuda"), tokenizer.pad_token_id, test_loader)
+    assert loaded_model_ppl == new_model_ppl
+
 
 def test_save_and_load_HF_model():
     """Test HF model saving and loading"""
@@ -105,10 +114,10 @@ def test_save_and_load_HF_model():
 
     sliced_model = SlicedPhiForCausalLM(config).to(torch.float16)
     sliced_model.save_pretrained(model_name)
-    
+
     scheduler = ConstSlicingScheduler(new_hidden_size)
     sliced_model = SlicedPhiForCausalLM.from_pretrained(
-        model_name, scheduler=scheduler, config_path=config_name, sparsity=sparsity, new_hidden_size=new_hidden_size
+        model_name, scheduler=scheduler, config_path=model_name, sparsity=sparsity, new_hidden_size=new_hidden_size
     )
 
     assert isinstance(sliced_model, SlicedPhiForCausalLM)
