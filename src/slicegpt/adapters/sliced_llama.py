@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
-from transformers.models.llama.modeling_llama import LlamaConfig, LlamaForCausalLM, LlamaModel
 from transformers.configuration_utils import PretrainedConfig
+from transformers.models.llama.modeling_llama import LlamaConfig, LlamaForCausalLM, LlamaModel
 
 from slicegpt.adapters.llama_adapter import CompressedLlamaDecoderLayer, LlamaModelAdapter
 from slicegpt.modules import RMSN
