@@ -8,8 +8,8 @@ import pathlib
 import shutil
 
 import torch
-import wandb
 
+import wandb
 from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate, utils
 from slicegpt.config import config
 from slicegpt.slicing_scheduler import ConstSlicingScheduler
@@ -137,7 +137,7 @@ def slicing_main(args: argparse.Namespace) -> None:
 
     if args.sliced_model_path:
         # load the model from sliced_model_path to compute perplexity and skip rotation and slicing
-        model_adapter, tokenizer = hf_utils.load_sliced_model(
+        model, tokenizer = hf_utils.load_sliced_model(
             args.model,
             args.sliced_model_path,
             sparsity=args.sparsity,
@@ -149,8 +149,7 @@ def slicing_main(args: argparse.Namespace) -> None:
         model_adapter, tokenizer = hf_utils.get_model_and_tokenizer(
             args.model, args.model_path, token=args.hf_token, dtype=config.dtype
         )
-
-    model = model_adapter.model
+        model = model_adapter.model
 
     def reset_model_device() -> None:
         if args.distribute_model:

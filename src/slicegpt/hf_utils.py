@@ -15,7 +15,7 @@ from .adapters.sliced_phi import SlicedPhi2Config, SlicedPhiForCausalLM
 from .layernorm_fusion import fuse_modules, replace_layers
 from .model_adapter import ModelAdapter, SlicingConfig
 from .rotate import slice_rotated_model
-from .slicing_scheduler import SlicingScheduler
+from .slicing_scheduler import ConstSlicingScheduler, SlicingScheduler
 
 
 def do_not_initialize(func):
@@ -107,7 +107,7 @@ def get_model_and_tokenizer(
     model.eval()  # This switches off dropout.
     model_adapter.use_cache = False
 
-    tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True, token=token, local_files_only=local_model)
+    tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True, token=token, local_files_only=local_model)
 
     model_adapter.post_init(tokenizer)
     logging.info("Loading model done")
@@ -115,7 +115,6 @@ def get_model_and_tokenizer(
     return model_adapter, tokenizer
 
 
-@do_not_initialize
 def load_sliced_model(
     model_name: str,
     sliced_model_path: str,
@@ -124,22 +123,37 @@ def load_sliced_model(
     lora_config: LoraConfig | None = None,
     sparsity: float | None = None,
     round_interval: int | None = 1,
-) -> tuple[ModelAdapter, PreTrainedTokenizerBase]:
+) -> tuple[ModelAdapter | torch.nn.Module, PreTrainedTokenizerBase]:
     """
     Load the sliced model and the tokenizer from the given path. If lora_config is supplied as an arg then this
     function will return a PEFT model (post-slicing finetuned model).
     The corresponding model adapter class must be imported before calling this method.
     """
-    my_model_suffix = pathlib.Path(model_name).name
-    my_sliced_model_name = f"{my_model_suffix}_{sparsity}.pt"
-    my_sliced_model_config = f"{my_model_suffix}_{sparsity}.json"
-
+    
     model_adapter, tokenizer = get_model_and_tokenizer(
         model_name,
         model_path=sliced_model_path,
         uninitialized=True,
         token=token,
     )
+    
+    # handle loading sliced HF compatible models
+    if model_name.startswith("microsoft") or model_name.startswith("llama"):
+        new_embedding_dimension = int((1 - sparsity) * model_adapter.hidden_size)
+        new_embedding_dimension -= new_embedding_dimension % round_interval
+        
+        scheduler = ConstSlicingScheduler(new_embedding_dimension)
+
+        sliced_model = SlicedPhiForCausalLM.from_pretrained(
+            sliced_model_path, scheduler=scheduler, config_path=sliced_model_path, sparsity=sparsity, new_hidden_size=new_embedding_dimension
+        )
+        
+        tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True, token=token, local_files_only=True)
+        return sliced_model, tokenizer
+    
+    my_model_suffix = pathlib.Path(model_name).name
+    my_sliced_model_name = f"{my_model_suffix}_{sparsity}.pt"
+    my_sliced_model_config = f"{my_model_suffix}_{sparsity}.json"
 
     replace_layers(model_adapter)
     fuse_modules(model_adapter)
