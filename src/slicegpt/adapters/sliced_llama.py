@@ -65,7 +65,8 @@ class SlicedLlamaForCausalLM(LlamaForCausalLM):
     ):
         """Overrides the from_pretrained method to accept the scheduler and returns the sliced model"""
         config = SlicedLlamaConfig.from_pretrained(config_path, sparsity, new_hidden_size)
-        model = super().from_pretrained(pretrained_model_name_or_path, config=config)
+        kwargs = {"scheduler": scheduler}
+        model = super().from_pretrained(pretrained_model_name_or_path, config=config, **kwargs)
         model.load_state_dict(model.state_dict())
         return model
 

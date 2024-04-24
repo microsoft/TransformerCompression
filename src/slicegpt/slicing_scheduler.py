@@ -40,10 +40,9 @@ class SlicingScheduler(ABC):
         """Return whether working with a parallel blocks models."""
         return self.slicing_conf.parallel_blocks
 
-    def setup(self, *, hidden_size: int, intermediate_size: int, layers_num: int, parallel_blocks: bool) -> None:
+    def setup(self, *, hidden_size: int, layers_num: int, parallel_blocks: bool) -> None:
         """Set up the slicing scheduler with the given model parameters."""
         self.slicing_conf.hidden_size = hidden_size
-        self.slicing_conf.intermediate_size = intermediate_size
         self.slicing_conf.layers_num = layers_num
         self.slicing_conf.parallel_blocks = parallel_blocks
 

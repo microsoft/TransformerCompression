@@ -161,10 +161,6 @@ class LlamaModelAdapter(ModelAdapter):
         return self.config.hidden_size
 
     @property
-    def intermediate_size(self) -> int:
-        return self.config.intermediate_size
-
-    @property
     def should_bake_mean_into_linear(self) -> bool:
         return False
 

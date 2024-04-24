@@ -165,7 +165,6 @@ def rotate_and_slice_sequential(
     layers = model_adapter.get_layers()
     slicing_scheduler.setup(
         hidden_size=model_adapter.hidden_size,
-        intermediate_size=model_adapter.intermediate_size,
         layers_num=len(layers),
         parallel_blocks=True,
     )
@@ -284,7 +283,6 @@ def rotate_and_slice_parallel(
     layers = model_adapter.get_layers()
     slicing_scheduler.setup(
         hidden_size=model_adapter.hidden_size,
-        intermediate_size=model_adapter.intermediate_size,
         layers_num=len(layers),
         parallel_blocks=True,
     )
@@ -447,7 +445,6 @@ def slice_rotated_model(model_adapter: ModelAdapter, slicing_scheduler: SlicingS
             slicing_scheduler = ConstSlicingScheduler(model_adapter.slicing_conf.const_dimension)
             slicing_scheduler.setup(
                 hidden_size=model_adapter.hidden_size,
-                intermediate_size=model_adapter.intermediate_size,
                 layers_num=len(layers),
                 parallel_blocks=model_adapter.parallel_blocks,
             )

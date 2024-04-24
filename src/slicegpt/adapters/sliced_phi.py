@@ -21,7 +21,7 @@ class SlicedPhi2Config(PhiConfig):
     @classmethod
     def from_pretrained(cls, config_path: str, sparsity: float, new_hidden_size: int) -> PretrainedConfig:
         kwargs = {"sparsity": sparsity, "new_hidden_size": new_hidden_size}
-        return super().from_pretrained(config_path, **kwargs)
+        return super().from_pretrained(config_path, local_files_only=True, **kwargs)
 
 
 class SlicedPhi(PhiModel):
@@ -65,7 +65,8 @@ class SlicedPhiForCausalLM(PhiForCausalLM):
     ):
         """Overrides the from_pretrained method to accept the scheduler and returns the sliced model"""
         config = SlicedPhi2Config.from_pretrained(config_path, sparsity, new_hidden_size)
-        model = super().from_pretrained(pretrained_model_name_or_path, config=config)
+        kwargs = {"scheduler": scheduler}
+        model = super().from_pretrained(pretrained_model_name_or_path, config=config, **kwargs)
         model.load_state_dict(model.state_dict())
         return model
 
