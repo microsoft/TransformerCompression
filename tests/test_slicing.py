@@ -69,7 +69,7 @@ def test_HF_model():
 
     sliced_ppl = gpu_utils.evaluate_ppl(model_adapter.model.to("cuda"), tokenizer.pad_token_id, test_loader)
 
-    sliced_model =  SlicedPhiForCausalLM(config, scheduler).to(torch.float16)
+    sliced_model = SlicedPhiForCausalLM(config, scheduler).to(torch.float16)
     sliced_model = sliced_model.to(torch.float16)
     sliced_model.load_state_dict(model_adapter.model.state_dict(), strict=True, assign=True)
 
@@ -93,7 +93,7 @@ def test_save_and_load_HF_model():
 
     config = SlicedPhi2Config.from_pretrained(config_name, sparsity, new_hidden_size)
 
-    sliced_model =  SlicedPhiForCausalLM(config).to(torch.float16)
+    sliced_model = SlicedPhiForCausalLM(config).to(torch.float16)
     sliced_model.save_pretrained(model_name)
     sliced_model = SlicedPhiForCausalLM.from_pretrained(
         model_name, scheduler=None, config_path=config_name, sparsity=sparsity, new_hidden_size=new_hidden_size

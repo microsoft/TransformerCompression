@@ -102,7 +102,6 @@ class TestOPTAdapter(ModelAdapterTestBase):
         config = OPTConfig(
             vocab_size=32,
             hidden_size=8,
-            intermediate_size=32,
             num_hidden_layers=2,
             ffn_dim=32,
             max_position_embeddings=16,

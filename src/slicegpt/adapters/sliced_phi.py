@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
-from transformers.models.phi.modeling_phi import PhiConfig, PhiForCausalLM, PhiModel
 from transformers.configuration_utils import PretrainedConfig
+from transformers.models.phi.modeling_phi import PhiConfig, PhiForCausalLM, PhiModel
 
 from slicegpt.adapters.phi2_adapter import CompressedPhiDecoderLayer, Phi2ModelAdapter
 from slicegpt.modules import RMSN
