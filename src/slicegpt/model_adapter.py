@@ -163,7 +163,6 @@ class ModelAdapter(ABC):
         The hidden size of the model
         """
         raise NotImplementedError
-    
 
     @property
     @abstractmethod
@@ -435,7 +434,6 @@ class SlicingConfig:
     """Slicing configuration such as individual layer dimensions and whether to slice head."""
 
     hidden_size: int = 0
-    intermediate_size: int = 0
     layers_num: int = 0
     do_slice_head: bool = False
     parallel_blocks: bool = False
