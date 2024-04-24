@@ -127,8 +127,6 @@ class TestLlamaAdapter(ModelAdapterTestBase):
 class TestPhi2Adapter(ModelAdapterTestBase):
     def create_adapter(self) -> Phi2ModelAdapter:
         # a tiny phi, just to test adapter.
-        config = PhiConfig(
-            vocab_size=32, hidden_size=8, num_hidden_layers=2, num_attention_heads=2
-        )
+        config = PhiConfig(vocab_size=32, hidden_size=8, num_hidden_layers=2, num_attention_heads=2)
         model = PhiForCausalLM(config)
         return Phi2ModelAdapter(model)

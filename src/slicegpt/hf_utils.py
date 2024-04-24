@@ -129,28 +129,39 @@ def load_sliced_model(
     function will return a PEFT model (post-slicing finetuned model).
     The corresponding model adapter class must be imported before calling this method.
     """
-    
+
     model_adapter, tokenizer = get_model_and_tokenizer(
         model_name,
         model_path=sliced_model_path,
         uninitialized=True,
         token=token,
     )
-    
+
     # handle loading sliced HF compatible models
     if model_name.startswith("microsoft") or model_name.startswith("llama"):
         new_embedding_dimension = int((1 - sparsity) * model_adapter.hidden_size)
         new_embedding_dimension -= new_embedding_dimension % round_interval
-        
+
         scheduler = ConstSlicingScheduler(new_embedding_dimension)
+        
+        layers = model_adapter.get_layers()
+        scheduler.setup(
+            hidden_size=model_adapter.hidden_size,
+            layers_num=len(layers),
+            parallel_blocks=True,
+        )
 
         sliced_model = SlicedPhiForCausalLM.from_pretrained(
-            sliced_model_path, scheduler=scheduler, config_path=sliced_model_path, sparsity=sparsity, new_hidden_size=new_embedding_dimension
+            sliced_model_path,
+            scheduler=scheduler,
+            config_path=sliced_model_path,
+            sparsity=sparsity,
+            new_hidden_size=new_embedding_dimension,
         )
-        
+
         tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True, token=token, local_files_only=True)
         return sliced_model, tokenizer
-    
+
     my_model_suffix = pathlib.Path(model_name).name
     my_sliced_model_name = f"{my_model_suffix}_{sparsity}.pt"
     my_sliced_model_config = f"{my_model_suffix}_{sparsity}.json"
@@ -219,6 +230,14 @@ def save_sliced_model(
         sliced_model = SlicedPhiForCausalLM(config_to_save, scheduler).to(dtype)
         sliced_model.load_state_dict(model.state_dict(), strict=True, assign=True)
         sliced_model.save_pretrained(save_sliced_model_dir)
+        
+        sliced_model = SlicedPhiForCausalLM.from_pretrained(
+            save_sliced_model_dir,
+            scheduler=scheduler,
+            config_path=save_sliced_model_dir,
+            sparsity=sparsity,
+            new_hidden_size=new_hidden_size,
+        )
 
     elif "meta-llama" in model_name:
         config = LlamaConfig.from_pretrained(
