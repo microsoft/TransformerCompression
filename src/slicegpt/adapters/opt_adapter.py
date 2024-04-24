@@ -6,6 +6,7 @@
 # Copyright 2022 The Fairseq Authors and The HuggingFace Inc. team. All rights reserved.
 from typing import cast
 
+from slicegpt.modules import RMSN
 import torch
 from torch import FloatTensor, Tensor, matmul
 from torch.nn import LayerNorm, Linear, Module
@@ -22,6 +23,10 @@ class CompressedOPTDecoderLayer(OPTDecoderLayer):
     but with the addition of a shortcut_Q attributes.
     We also support the input rotation and mean subtraction in this class (if needed).
     """
+    def __init__(self, config: OPTConfig, replace_layernorm: bool = False):
+        super().__init__(config)
+        if replace_layernorm:
+            self.input_layernorm = RMSN(config.hidden_size)
 
     def forward(
         self,
@@ -176,10 +181,6 @@ class OPTModelAdapter(ModelAdapter):
     @property
     def hidden_size(self) -> int:
         return self.config.hidden_size
-    
-    @property
-    def intermediate_size(self) -> int:
-        return self.config.intermediate_size
 
     @property
     def should_bake_mean_into_linear(self) -> bool:
