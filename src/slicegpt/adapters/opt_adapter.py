@@ -6,7 +6,6 @@
 # Copyright 2022 The Fairseq Authors and The HuggingFace Inc. team. All rights reserved.
 from typing import cast
 
-from slicegpt.modules import RMSN
 import torch
 from torch import FloatTensor, Tensor, matmul
 from torch.nn import LayerNorm, Linear, Module
@@ -15,6 +14,7 @@ from transformers import PretrainedConfig
 from transformers.models.opt.modeling_opt import OPTConfig, OPTDecoderLayer, OPTForCausalLM
 
 from slicegpt.model_adapter import LayerAdapter, ModelAdapter
+from slicegpt.modules import RMSN
 
 
 class CompressedOPTDecoderLayer(OPTDecoderLayer):
@@ -23,6 +23,7 @@ class CompressedOPTDecoderLayer(OPTDecoderLayer):
     but with the addition of a shortcut_Q attributes.
     We also support the input rotation and mean subtraction in this class (if needed).
     """
+
     def __init__(self, config: OPTConfig, replace_layernorm: bool = False):
         super().__init__(config)
         if replace_layernorm:

@@ -72,7 +72,7 @@ def test_HF_model():
     sliced_model = SlicedPhiForCausalLM(config, scheduler).to(torch.float16)
     sliced_model = sliced_model.to(torch.float16)
     sliced_model.load_state_dict(model_adapter.model.state_dict(), strict=True, assign=True)
-    sliced_model.save_pretrained("sliced_phi2_model")
+    sliced_model.save_pretrained("sliced_phi2_model123")
 
     new_model_ppl = gpu_utils.evaluate_ppl(sliced_model.to("cuda"), tokenizer.pad_token_id, test_loader)
 
@@ -93,7 +93,7 @@ def test_HF_model():
     assert isinstance(sliced_model, SlicedPhiForCausalLM)
     assert sliced_model.config.sparsity == sparsity
     assert sliced_model.config.new_hidden_size == new_hidden_size
-    
+
     loaded_model_ppl = gpu_utils.evaluate_ppl(sliced_model.to("cuda"), tokenizer.pad_token_id, test_loader)
     assert loaded_model_ppl == new_model_ppl
 
@@ -130,7 +130,3 @@ def compare_weights(model1, model2):
         if not torch.equal(p1.data, p2.data):
             return False
     return True
-
-
-if __name__ == "__main__":
-    test_HF_model()

@@ -143,7 +143,7 @@ def load_sliced_model(
         new_embedding_dimension -= new_embedding_dimension % round_interval
 
         scheduler = ConstSlicingScheduler(new_embedding_dimension)
-        
+
         layers = model_adapter.get_layers()
         scheduler.setup(
             hidden_size=model_adapter.hidden_size,
@@ -230,14 +230,6 @@ def save_sliced_model(
         sliced_model = SlicedPhiForCausalLM(config_to_save, scheduler).to(dtype)
         sliced_model.load_state_dict(model.state_dict(), strict=True, assign=True)
         sliced_model.save_pretrained(save_sliced_model_dir)
-        
-        sliced_model = SlicedPhiForCausalLM.from_pretrained(
-            save_sliced_model_dir,
-            scheduler=scheduler,
-            config_path=save_sliced_model_dir,
-            sparsity=sparsity,
-            new_hidden_size=new_hidden_size,
-        )
 
     elif "meta-llama" in model_name:
         config = LlamaConfig.from_pretrained(

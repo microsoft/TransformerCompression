@@ -166,7 +166,7 @@ def rotate_and_slice_sequential(
     slicing_scheduler.setup(
         hidden_size=model_adapter.hidden_size,
         layers_num=len(layers),
-        parallel_blocks=True,
+        parallel_blocks=False,
     )
 
     # rotate and slice embeddings
