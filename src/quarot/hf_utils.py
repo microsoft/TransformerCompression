@@ -9,34 +9,7 @@ from transformers import AutoTokenizer, PreTrainedTokenizerBase
 
 from .model_adapter import ModelAdapter
 
-
-def do_not_initialize(func):
-    """
-    A decorator that prevents initialization of torch.nn modules.
-    """
-
-    def skip(*args, **kwargs) -> None:
-        pass
-
-    def wrapper(*args, **kwargs):
-        kaiming_fn = torch.nn.init.kaiming_uniform_
-        uniform_fn = torch.nn.init.uniform_
-        normal_fn = torch.nn.init.normal_
-
-        torch.nn.init.kaiming_uniform_ = skip
-        torch.nn.init.uniform_ = skip
-        torch.nn.init.normal_ = skip
-
-        result = func(*args, **kwargs)
-
-        torch.nn.init.kaiming_uniform_ = kaiming_fn
-        torch.nn.init.uniform_ = uniform_fn
-        torch.nn.init.normal_ = normal_fn
-
-        return result
-
-    return wrapper
-
+from slicegpt.hf_utils import do_not_initialize
 
 @do_not_initialize
 def get_model_and_tokenizer(

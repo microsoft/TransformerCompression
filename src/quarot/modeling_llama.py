@@ -1,3 +1,6 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
 from typing import Optional, Tuple
 
 import torch
@@ -10,8 +13,7 @@ from transformers.models.llama.modeling_llama import (
 )
 from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
 
-from quarot.nn import FP16ActQuantizer, OnlineHadamard, QuarotFP16Linear
-from quarot.quant_utils import PackedQuantizedTensor
+from quarot.nn import DummyActQuantizer, OnlineHadamard, QuarotFP16Linear
 from slicegpt.modules import RMSN
 
 ALL_LAYERNORM_LAYERS.append(RMSN)
@@ -21,25 +23,17 @@ class QuarotLlamaConfig(LlamaConfig):
     model_type = "llama_quarot"
 
 
-class BasicQuantizer(torch.nn.Module):
-    def forward(self, x):
-        # take all the shape of x up to last dim
-        shape = x.shape[:-1] + (1,)
-        scales_x = torch.ones(shape, device=x.device)
-        return PackedQuantizedTensor(x, scales_x)
-
-
 class QuarotLlamaMLP(LlamaMLP):
     def __init__(self, config, act_quantization=False, online_had=False, *args, **kwargs):
         super().__init__(config, *args, **kwargs)
         self.act_quantization = act_quantization
         self.online_had = online_had
-        self.input_quantizer = BasicQuantizer()
+        self.input_quantizer = DummyActQuantizer()
         self.up_proj = QuarotFP16Linear.like(self.up_proj)
         self.gate_proj = QuarotFP16Linear.like(self.gate_proj)
         self.down_proj = QuarotFP16Linear.like(self.down_proj)
         self.online_down_proj_hadamard = OnlineHadamard(self.intermediate_size)
-        self.down_proj_input_quantizer = BasicQuantizer()
+        self.down_proj_input_quantizer = DummyActQuantizer()
 
     def forward(self, x):
         # Quantize inputs to mlp
@@ -62,7 +56,7 @@ class QuarotLlamaMLP(LlamaMLP):
 class QuarotFP16LlamaFlashAttention2(LlamaFlashAttention2):
     def __init__(self, config, act_quantization=False, online_had=False, *args, **kwargs):
         super().__init__(config, *args, **kwargs)
-        self.input_quantizer = BasicQuantizer()
+        self.input_quantizer = DummyActQuantizer()
         self.act_quantization = act_quantization
         self.online_had = online_had
         self.q_proj = QuarotFP16Linear.like(self.q_proj)
@@ -70,7 +64,7 @@ class QuarotFP16LlamaFlashAttention2(LlamaFlashAttention2):
         self.v_proj = QuarotFP16Linear.like(self.v_proj)
         self.o_proj = QuarotFP16Linear.like(self.o_proj)
         self.online_o_proj_hadamard = OnlineHadamard(self.num_heads)
-        self.o_proj_input_quantizer = BasicQuantizer()
+        self.o_proj_input_quantizer = DummyActQuantizer()
 
     def forward(
         self,
@@ -87,9 +81,7 @@ class QuarotFP16LlamaFlashAttention2(LlamaFlashAttention2):
 
         bsz, q_len, _ = hidden_states.size()
 
-        ########################################################
-        # QuaRot: quantize hidden states at input of attention #
-        ########################################################
+        # QuaRot: quantize hidden states at input of attention
         hidden_states = self.input_quantizer(hidden_states)
 
         query_states = self.q_proj(hidden_states)
@@ -129,17 +121,13 @@ class QuarotFP16LlamaFlashAttention2(LlamaFlashAttention2):
         else:
             attn_output = cache_out(query_states)
 
-        ###########################################
-        # QuaRot: apply online hadamard if needed #
-        ###########################################
+        # QuaRot: apply online hadamard if needed
         if self.online_had:
             attn_output = self.online_o_proj_hadamard(attn_output.transpose(-1, -2)).transpose(-1, -2)
 
         attn_output = attn_output.reshape(bsz, q_len, self.hidden_size).contiguous()
 
-        ################################################
-        # QuaRot: quantize inputs of output projection #
-        ################################################
+        # QuaRot: quantize inputs of output projection
         attn_output = self.o_proj_input_quantizer(attn_output)
         attn_output = self.o_proj(attn_output)
 
