@@ -144,6 +144,7 @@ def slicing_main(args: argparse.Namespace) -> None:
             round_interval=args.round_interval,
             token=args.hf_token,
         )
+        model = model.to(config.dtype)
     else:
         # load one of the pre-trained models
         model_adapter, tokenizer = hf_utils.get_model_and_tokenizer(
