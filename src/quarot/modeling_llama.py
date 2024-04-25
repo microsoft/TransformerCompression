@@ -11,6 +11,7 @@ from transformers.models.llama.modeling_llama import (
 from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
 
 from quarot.nn import FP16ActQuantizer, OnlineHadamard, QuarotFP16Linear
+from quarot.quant_utils import PackedQuantizedTensor
 from slicegpt.modules import RMSN
 
 ALL_LAYERNORM_LAYERS.append(RMSN)
@@ -20,15 +21,56 @@ class QuarotLlamaConfig(LlamaConfig):
     model_type = "llama_quarot"
 
 
-class QuarotFP16LlamaAttention(LlamaFlashAttention2):
-    def __init__(self, a_bits: int = 16, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.quantizer = FP16ActQuantizer(a_bits)
+class BasicQuantizer(torch.nn.Module):
+    def forward(self, x):
+        # take all the shape of x up to last dim
+        shape = x.shape[:-1] + (1,)
+        scales_x = torch.ones(shape, device=x.device)
+        return PackedQuantizedTensor(x, scales_x)
+
+
+class QuarotLlamaMLP(LlamaMLP):
+    def __init__(self, config, act_quantization=False, online_had=False, *args, **kwargs):
+        super().__init__(config, *args, **kwargs)
+        self.act_quantization = act_quantization
+        self.online_had = online_had
+        self.input_quantizer = BasicQuantizer()
+        self.up_proj = QuarotFP16Linear.like(self.up_proj)
+        self.gate_proj = QuarotFP16Linear.like(self.gate_proj)
+        self.down_proj = QuarotFP16Linear.like(self.down_proj)
+        self.online_down_proj_hadamard = OnlineHadamard(self.intermediate_size)
+        self.down_proj_input_quantizer = BasicQuantizer()
+
+    def forward(self, x):
+        # Quantize inputs to mlp
+        x = self.input_quantizer(x)
+
+        # Calculate activations
+        x = self.act_fn(self.gate_proj(x)) * self.up_proj(x)
+
+        # Apply online hadamard if needed
+        if self.online_had:
+            x = self.online_down_proj_hadamard(x)
+
+        # Quantize inputs to down_proj
+        x = self.down_proj_input_quantizer(x)
+
+        # Return final activations
+        return self.down_proj(x)
+
+
+class QuarotFP16LlamaFlashAttention2(LlamaFlashAttention2):
+    def __init__(self, config, act_quantization=False, online_had=False, *args, **kwargs):
+        super().__init__(config, *args, **kwargs)
+        self.input_quantizer = BasicQuantizer()
+        self.act_quantization = act_quantization
+        self.online_had = online_had
         self.q_proj = QuarotFP16Linear.like(self.q_proj)
         self.k_proj = QuarotFP16Linear.like(self.k_proj)
         self.v_proj = QuarotFP16Linear.like(self.v_proj)
-        self.o_proj_hadamard = OnlineHadamard(self.num_heads)
-        self.o_proj = torch.nn.Sequential(FP16ActQuantizer(a_bits), QuarotFP16Linear.like(self.o_proj))
+        self.o_proj = QuarotFP16Linear.like(self.o_proj)
+        self.online_o_proj_hadamard = OnlineHadamard(self.num_heads)
+        self.o_proj_input_quantizer = BasicQuantizer()
 
     def forward(
         self,
@@ -45,7 +87,10 @@ class QuarotFP16LlamaAttention(LlamaFlashAttention2):
 
         bsz, q_len, _ = hidden_states.size()
 
-        hidden_states = self.quantizer(hidden_states)
+        ########################################################
+        # QuaRot: quantize hidden states at input of attention #
+        ########################################################
+        hidden_states = self.input_quantizer(hidden_states)
 
         query_states = self.q_proj(hidden_states)
         key_states = self.k_proj(hidden_states)
@@ -84,8 +129,18 @@ class QuarotFP16LlamaAttention(LlamaFlashAttention2):
         else:
             attn_output = cache_out(query_states)
 
-        attn_output = self.o_proj_hadamard(attn_output.transpose(-1, -2)).transpose(-1, -2)
+        ###########################################
+        # QuaRot: apply online hadamard if needed #
+        ###########################################
+        if self.online_had:
+            attn_output = self.online_o_proj_hadamard(attn_output.transpose(-1, -2)).transpose(-1, -2)
+
         attn_output = attn_output.reshape(bsz, q_len, self.hidden_size).contiguous()
+
+        ################################################
+        # QuaRot: quantize inputs of output projection #
+        ################################################
+        attn_output = self.o_proj_input_quantizer(attn_output)
         attn_output = self.o_proj(attn_output)
 
         if not output_attentions:
@@ -94,116 +149,15 @@ class QuarotFP16LlamaAttention(LlamaFlashAttention2):
         return attn_output, attn_weights, past_key_value
 
 
-# class QuarotLlamaAttention(QuarotFP16LlamaAttention):
-
-#     def __init__(self, *args, **kwargs):
-#         super().__init__(*args, **kwargs)
-#         self.quantizer = quarot.nn.Quantizer()
-#         self.q_proj = quarot.nn.Linear4bit.from_float(self.q_proj)
-#         self.k_proj = quarot.nn.Linear4bit.from_float(self.k_proj)
-#         self.v_proj = quarot.nn.Linear4bit.from_float(self.v_proj)
-#         self.o_proj_hadamard = quarot.nn.OnlineHadamard(self.num_heads)
-#         self.o_proj = torch.nn.Sequential(
-#             quarot.nn.Quantizer(),
-#             quarot.nn.Linear4bit.from_float(self.o_proj)
-#         )
-
-
-class QuarotFP16LlamaMLP(LlamaMLP):
-    def __init__(self, a_bits: int = 16, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.quantizer = FP16ActQuantizer(a_bits)
-        self.up_proj = QuarotFP16Linear.like(self.up_proj)
-        self.gate_proj = QuarotFP16Linear.like(self.gate_proj)
-        self.down_proj = torch.nn.Sequential(
-            OnlineHadamard(self.intermediate_size),
-            FP16ActQuantizer(a_bits),
-            QuarotFP16Linear.like(self.down_proj),
-        )
-
-    def forward(self, x):
-        x = self.quantizer(x)
-        return super().forward(x)
-
-
-# class QuarotLlamaMLP(LlamaMLP):
-#     def __init__(self, *args, **kwargs):
-#         super().__init__(*args, **kwargs)
-#         self.quantizer = quarot.nn.Quantizer()
-#         self.up_proj = quarot.nn.Linear4bit.from_float(self.up_proj)
-#         self.gate_proj = quarot.nn.Linear4bit.from_float(self.gate_proj)
-#         self.down_proj = torch.nn.Sequential(
-#             quarot.nn.OnlineHadamard(self.intermediate_size),
-#             quarot.nn.Quantizer(),
-#             quarot.nn.Linear4bit.from_float(self.down_proj)
-#         )
-
-#     def forward(self, x):
-#         x = self.quantizer(x)
-#         return super().forward(x)
-
-
-class QuarotFP16LlamaForCausalLM(LlamaForCausalLM):
-    def __init__(self, a_bits: int = 16, config=None):
+class QuarotLlamaForCausalLM(LlamaForCausalLM):
+    def __init__(self, online_had_mlp=False, online_had_attn=False, config=None):
         super().__init__(config)
         assert config._attn_implementation == "flash_attention_2"
         self.model.norm = RMSN(config.hidden_size, eps=config.rms_norm_eps)
         for layer_idx, layer in enumerate(self.model.layers):
-            layer.self_attn = QuarotFP16LlamaAttention(a_bits, config=config, layer_idx=layer_idx)
+            layer.self_attn = QuarotFP16LlamaFlashAttention2(
+                online_had=online_had_attn, config=config, layer_idx=layer_idx
+            )
             layer.input_layernorm = RMSN(config.hidden_size, eps=config.rms_norm_eps)
             layer.post_attention_layernorm = RMSN(config.hidden_size, eps=config.rms_norm_eps)
-            layer.mlp = QuarotFP16LlamaMLP(a_bits, config=config)
-
-
-# class QuarotLlamaForCausalLM(LlamaForCausalLM):
-# def __init__(self, config):
-#     super().__init__(config)
-#     assert config._attn_implementation == "flash_attention_2"
-#     self.norm = quarot.nn.RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-#     for layer_idx, layer in enumerate(self.model.layers):
-#         layer.self_attn = QuarotLlamaAttention(config=config, layer_idx=layer_idx)
-#         layer.input_layernorm = quarot.nn.RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-#         layer.post_attention_layernorm = quarot.nn.RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-#         layer.mlp = QuarotLlamaMLP(config=config)
-#     self.cache_dtype = "int4"
-#     self._expected_max_length = None
-
-
-# def build_cache(self, batch_size, page_size, max_length):
-#     device = self.model.layers[0].self_attn.v_proj.weight.device
-#     dtype = self.cache_dtype or self.model.layers[0].self_attn.v_proj.weight.dtype
-
-#     num_heads = self.config.num_key_value_heads
-#     model_dim = self.config.hidden_size
-#     head_dim = model_dim // num_heads
-#     disable_quant = self.cache_dtype == "float16"
-#     return quarot.transformers.MultiLayerPagedKVCache4Bit(
-#         batch_size=batch_size,
-#         page_size=page_size,
-#         max_seq_len=max_length,
-#         device=device,
-#         n_layers=len(self.model.layers),
-#         num_heads=num_heads,
-#         head_dim=head_dim,
-#         disable_quant=disable_quant,
-#         hadamard_dtype=None if disable_quant else torch.float16
-#     )
-
-# def _get_logits_processor(self, generation_config, *args, **kwargs):
-#     # This is a hack to get the max length from generation_config.
-#     # Doing it here because max_length might not be set before this
-#     # method is called.
-#     self._expected_max_length = generation_config.max_length # This value will be reset at the next forward call
-#     return super()._get_logits_processor(generation_config, *args, **kwargs)
-
-
-# def forward(self, input_ids, *args, past_key_values=None, **kwargs):
-#     if past_key_values is None:
-#         max_length = self._expected_max_length or input_ids.shape[1]
-#         self._expected_max_length = None # Reset this value.
-#         past_key_values = self.build_cache(
-#             input_ids.shape[0],
-#             page_size=max_length,  # For now working with single page per batch.
-#             max_length=max_length)
-#     out = super().forward(input_ids, *args, past_key_values=past_key_values, **kwargs)
-#     return out
+            layer.mlp = QuarotLlamaMLP(online_had=online_had_mlp, config=config)
