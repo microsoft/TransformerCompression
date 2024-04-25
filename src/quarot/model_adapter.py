@@ -113,14 +113,6 @@ class LayerAdapter(ABC):
         """
         raise NotImplementedError
 
-    @abstractmethod
-    def get_rope_function_name(self) -> str:
-        """
-        Returns the name of the rotary positional embedding (RoPE) function in the layer.
-        TODO: This is Llama-2 specific, how to generalize?
-        """
-        raise NotImplementedError
-
 
 class ModelAdapter(ABC):
     """
@@ -202,6 +194,7 @@ class ModelAdapter(ABC):
         """
         raise NotImplementedError
 
+    # QuaRot specific.
     @property
     @abstractmethod
     def quarot_layer_type(self) -> type:
@@ -273,6 +266,7 @@ class ModelAdapter(ABC):
         """
         raise NotImplementedError
 
+    # QuaRot specific.
     @property
     def no_split_module_classes(self) -> list[str] | None:
         """

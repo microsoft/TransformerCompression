@@ -50,6 +50,11 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
         "--ppl-eval-nsamples", type=int, default=128, help="Number of samples to evaluate the perplexity on."
     )
     parser.add_argument("--eval-baseline", action="store_true", help="Evaluate the baseline model.")
+    parser.add_argument(
+        "--distribute-model",
+        action="store_true",
+        help="Use accelerate to put the model on multiple GPUs for evaluation. It is recommended to use it for models with 30B parameters and above.",
+    )
     parser.add_argument('--hf-token', type=str, default=os.getenv('HF_TOKEN', None))
     parser.add_argument('--wandb-project', type=str, default="quarot", help="wandb project name.")
     parser.add_argument('--no-wandb', action="store_true", help="Disable wandb.")
@@ -95,6 +100,9 @@ def process_quarot_args(args):
     if args.device:
         config.device = torch.device(args.device)
 
+    if args.distribute_model:
+        raise NotImplementedError("Distributed evaluation is not supported yet.")
+
     config.dtype = torch.float16
 
 
@@ -120,13 +128,6 @@ def quarot_main(args: argparse.Namespace) -> None:
 
     model = model_adapter.model
 
-    def reset_model_device() -> None:
-        if args.distribute_model:
-            # distribute model across available GPUs
-            gpu_utils.distribute_model(model_adapter)
-        else:
-            model.to(config.device)
-
     dataset = data_utils.get_dataset(args.cal_dataset)
     test_dataset = dataset["test"]
     test_loader = data_utils.prepare_test_dataloader(
@@ -135,7 +136,7 @@ def quarot_main(args: argparse.Namespace) -> None:
 
     # original ppl
     if args.eval_baseline:
-        reset_model_device()
+        model.to(config.device)
         dataset_ppl = gpu_utils.evaluate_ppl(model, model.config.pad_token_id, test_loader)
         logging.info(f'Original ppl: {dataset_ppl:.4f}')
         wandb.log({"original_ppl": dataset_ppl})
@@ -148,7 +149,7 @@ def quarot_main(args: argparse.Namespace) -> None:
     # Rotate the model with fused Hadamard transformations.
     rotation_utils.rotate_model(model_adapter, args.rotation_seed)
 
-    model_config = QuarotLlamaConfig.from_pretrained("meta-llama/Llama-2-7b-hf", dtype=torch.float16)
+    model_config = QuarotLlamaConfig.from_pretrained(args.model, dtype=config.dtype)
     model_config._attn_implementation = "flash_attention_2"
     with transformers.modeling_utils.no_init_weights():
         # initialise quarot model

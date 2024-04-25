@@ -51,15 +51,9 @@ class LlamaLayerAdapter(LayerAdapter):
     def get_mlp_output(self) -> Linear:
         return self.layer.mlp.down_proj
 
-    # The below methods are QuaRot specific.
+    # QuaRot specific.
     def get_v_proj(self) -> Linear:
         return self.layer.self_attn.v_proj
-
-    def get_rope_function_name(self) -> str:
-        return "apply_rotary_pos_emb"
-
-    def get_self_attn(self) -> Module:
-        return self.layer.self_attn
 
 
 class LlamaModelAdapter(ModelAdapter):
@@ -107,6 +101,7 @@ class LlamaModelAdapter(ModelAdapter):
     def layer_adapter_type(self) -> type:
         return LlamaLayerAdapter
 
+    # QuaRot specific
     @property
     def quarot_layer_type(self) -> type:
         return LlamaDecoderLayer
