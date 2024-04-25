@@ -1,11 +1,13 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
+import pytest
 import torch
 
 from quarot.nn.quantizer import DummyActQuantizer
 
 
+@pytest.mark.quarot
 def test_dummy_quantizer():
     """Sanity checks for emulated quantization."""
 

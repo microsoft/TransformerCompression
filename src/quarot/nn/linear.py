@@ -4,6 +4,10 @@ from quarot.quant_utils import PackedQuantizedTensor
 
 
 class QuarotFP16Linear(torch.nn.Module):
+    """
+    Linear module for emulating quantized weights and activations. All tensors are stored in FP16.
+    """
+
     def __init__(self, in_features, out_features, bias=False, dtype=torch.float16):
         super().__init__()
         self.in_features = in_features
@@ -29,11 +33,12 @@ class QuarotFP16Linear(torch.nn.Module):
 
         return x
 
-    @staticmethod
+    @classmethod
     def like(
+        cls: type,
         module: torch.nn.Linear,
     ) -> 'QuarotFP16Linear':
         '''
         Generate a new QuarotFP16Linear module with the same shapes & bias flag as a given Linear module.
         '''
-        return QuarotFP16Linear(module.in_features, module.out_features, bias=module.bias is not None)
+        return cls(module.in_features, module.out_features, bias=module.bias is not None)

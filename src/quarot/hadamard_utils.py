@@ -21,62 +21,42 @@ from .hadamard_tensors import (
 )
 
 
-def get_hadK(n, transpose=False):
-    hadK, K = None, None
-    if n % 172 == 0:  # llama-2-7b up
-        assert is_pow2(n // 172)
-        K = 172
-        hadK = get_had172().T if transpose else get_had172()
-    elif n % 156 == 0:  # llama-1-30b 3x hidden
-        assert is_pow2(n // 156)
-        K = 156
-        hadK = get_had156().T if transpose else get_had156()
-    elif n % 140 == 0:  # llama-1-30b intermediate
-        assert is_pow2(n // 140)
-        K = 140
-        hadK = get_had140().T if transpose else get_had140()
-    elif n % 108 == 0:  # llama-1-13b intermediate
-        assert is_pow2(n // 108)
-        K = 108
-        hadK = get_had108().T if transpose else get_had108()
-    elif n % 60 == 0:  # llama-1-13b 3x hidden
-        assert is_pow2(n // 60)
-        K = 60
-        hadK = get_had60().T if transpose else get_had60()
-    elif n % 52 == 0:  # llama-1-13b 1x hidden
-        assert is_pow2(n // 52)
-        K = 52
-        hadK = get_had52().T if transpose else get_had52()
-    elif n % 36 == 0:
-        assert is_pow2(n // 36)
-        K = 36
-        hadK = get_had36().T if transpose else get_had36()
-    elif n % 28 == 0:
-        assert is_pow2(n // 28)
-        K = 28
-        hadK = get_had28().T if transpose else get_had28()
-    elif n % 40 == 0:
-        assert is_pow2(n // 40)
-        K = 40
-        hadK = get_had40().T if transpose else get_had40()
-    elif n % 20 == 0:
-        assert is_pow2(n // 20)
-        K = 20
-        hadK = get_had20().T if transpose else get_had20()
-    elif n % 12 == 0:
-        assert is_pow2(n // 12)
-        K = 12
-        hadK = get_had12().T if transpose else get_had12()
-    else:
-        assert is_pow2(n)
-        K = 1
+def get_hadK(n: int) -> tuple[torch.Tensor, int]:
+    if is_pow2(n):
+        return None, 1
 
-    return hadK, K
+    Ks = [172, 156, 140, 108, 60, 52, 40, 36, 28, 20, 12]
+    for K in Ks:
+        if n % K == 0:
+            assert is_pow2(n // K)
+            return get_hadamard_tensor(K), K
+
+    raise ValueError(f"Unsupported Hadamard dimension: {n}")
 
 
-def matmul_hadU(X, transpose=False):
+def get_hadamard_tensor(dim: int) -> torch.Tensor:
+    hadamard_functions = {
+        172: get_had172,
+        156: get_had156,
+        140: get_had140,
+        108: get_had108,
+        60: get_had60,
+        52: get_had52,
+        40: get_had40,
+        36: get_had36,
+        28: get_had28,
+        20: get_had20,
+        12: get_had12,
+    }
+    return hadamard_functions[dim]()
+
+
+def matmul_hadU(X: torch.Tensor) -> torch.Tensor:
+    """
+    Performs a Hadamard transform on the last dimension of X.
+    """
     n = X.shape[-1]
-    hadK, K = get_hadK(n, transpose)
+    hadK, K = get_hadK(n)
     input = X.clone().view(-1, n, 1)
     output = input.clone()
     while input.shape[1] > K:
@@ -98,11 +78,7 @@ def matmul_hadU(X, transpose=False):
     return input.view(X.shape) / torch.tensor(n).sqrt()
 
 
-def matmul_hadUt(X):
-    return matmul_hadU(X, transpose=True)
-
-
-def random_hadamard_matrix(size: int, seed: int = 0):
+def random_hadamard_matrix(size: int, seed: int = 0) -> torch.Tensor:
     """
     Generates a random Hadamard matrix of size `size`. See https://cornell-relaxml.github.io/quip-sharp/ , Section "Randomized Hadamard Transformation" for details.
     """
@@ -114,6 +90,9 @@ def random_hadamard_matrix(size: int, seed: int = 0):
 
 
 def matmul_hadU_cuda(X: torch.tensor, hadK: torch.tensor, K: int) -> torch.tensor:
+    """
+    Performs a Hadamard transform on the last dimension of X using an efficient CUDA implementation.
+    """
     n = X.shape[-1]
     if K == 1:
         return hadamard_transform(X.contiguous(), 1.0 / torch.tensor(n).sqrt())
@@ -124,11 +103,7 @@ def matmul_hadU_cuda(X: torch.tensor, hadK: torch.tensor, K: int) -> torch.tenso
     return input.reshape(X.shape)
 
 
-def matmul_hadUt_cuda(X, hadK, K):
-    return matmul_hadU_cuda(X, hadK, K, transpose=True)
-
-
-def apply_exact_had_to_linear(module: torch.nn.Linear, had_dim: int = -1, output: bool = False):
+def apply_hadamard(module: torch.nn.Linear, had_dim: int = -1, output: bool = False):
     assert isinstance(module, torch.nn.Linear)
     in_features, out_features = module.in_features, module.out_features
 
@@ -144,7 +119,7 @@ def apply_exact_had_to_linear(module: torch.nn.Linear, had_dim: int = -1, output
         if output:
             had_K, K = get_hadK(out_features)
             W_ = matmul_hadU_cuda(W_.t(), had_K, K).t()
-        if not output:
+        else:
             had_K, K = get_hadK(in_features)
             W_ = matmul_hadU_cuda(W_, had_K, K)
     else:

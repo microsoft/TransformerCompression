@@ -11,8 +11,7 @@ python3 -m venv .venv
 
 # Install dependencies
 pip install --upgrade pip setuptools wheel
-pip install packaging # TODO: remove this once fast_hadamard_transform package bug is resolved
-pip install -e .[dev]
+pip install -e .[dev] # TODO: get pip install -e .[dev,quarot] to work so that tests can pass in PR build.
 
 ./test.sh
 

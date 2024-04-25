@@ -1,5 +1,10 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
+#
+# This file contains derivations from
+# https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
+# Copyright 2022 EleutherAI and the HuggingFace Inc. team. All rights reserved.
+# https://www.apache.org/licenses/LICENSE-2.0
 
 from typing import Optional, Tuple
 

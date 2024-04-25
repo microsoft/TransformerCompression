@@ -14,7 +14,7 @@ from lm_eval.api.registry import ALL_TASKS
 from lm_eval.models.huggingface import HFLM
 from lm_eval.tasks import initialize_tasks
 
-from quarot import hf_utils, rotation_utils
+from quarot import hf_utils, rotation
 from quarot.modeling_llama import QuarotLlamaConfig, QuarotLlamaForCausalLM
 from slicegpt import data_utils, gpu_utils, layernorm_fusion, utils
 from slicegpt.config import config
@@ -147,7 +147,7 @@ def quarot_main(args: argparse.Namespace) -> None:
     layernorm_fusion.fuse_modules(model_adapter)  # TODO: fix expected adapter type
 
     # Rotate the model with fused Hadamard transformations.
-    rotation_utils.rotate_model(model_adapter, args.rotation_seed)
+    rotation.rotate_model(model_adapter, args.rotation_seed)
 
     model_config = QuarotLlamaConfig.from_pretrained(args.model, dtype=config.dtype)
     model_config._attn_implementation = "flash_attention_2"

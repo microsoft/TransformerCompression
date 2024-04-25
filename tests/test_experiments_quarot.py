@@ -34,7 +34,7 @@ def verify_run_quarot_no_quant(model: str, expected_ppl: float) -> None:
     # TODO: test load a quarot model
 
 
-@pytest.mark.quarot
+@pytest.mark.experiment
 @pytest.mark.gpu
 def test_llama2_7b():
     """Test run_quarot.py with the meta-llama/Llama-2-7b model."""
