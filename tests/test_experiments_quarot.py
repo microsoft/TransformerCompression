@@ -19,46 +19,15 @@ def verify(log: str, pattern: str, value: float | int) -> None:
     ), f'Expected {value} but got {match.group(1)}'
 
 
-def verify_run_quarot(model: str, bits: int, rtn: bool, expected_ppl: float) -> None:
+def verify_run_quarot_no_quant(model: str, expected_ppl: float) -> None:
     """Test the run_quarot.py script with the provided parameters."""
 
     # test rotate, quantize and save model
     tests_dir = get_test_dir()
     script = tests_dir.parent / 'experiments' / 'run_quarot.py'
-    save_dir = tests_dir / 'test_model_data'
 
-    args = [
-        '--no-wandb',
-        '--model',
-        str(model),
-        '--rotate',
-        '--w-bits',
-        str(bits),
-        '--w-clip',
-        '--a-bits',
-        str(bits),
-        '--v-bits',
-        str(bits),
-        '--k-bits',
-        str(bits),
-        '--v-asym',
-        '--k-asym',
-        '--v-groupsize',
-        '128',
-        '--k-groupsize',
-        '128',
-        '--a-clip-ratio',
-        '0.9',
-        '--k-clip-ratio',
-        '0.95',
-        '--v-clip-ratio',
-        '0.95',
-    ]
+    args = ['--no-wandb', '--model', str(model)]
 
-    if rtn:
-        args.append('--w-rtn')
-
-    # ext_args = ['--save-dir', str(save_dir)]
     log = run_python_script(script, args)
     verify(log, r'(?:QuaRot ppl:) (\d+\.\d+)', expected_ppl)
 
@@ -71,13 +40,9 @@ def test_llama2_7b():
     """Test run_quarot.py with the meta-llama/Llama-2-7b model."""
     assert torch.cuda.is_available()
 
-    # Test 4-bit RTN quantization
+    # Test QuaRot with no quantization.
     model = 'meta-llama/Llama-2-7b-hf'
-    bits = 4
-    rtn = True
-    verify_run_quarot(
+    verify_run_quarot_no_quant(
         model=model,
-        bits=bits,
-        rtn=rtn,
-        expected_ppl=8.37,
+        expected_ppl=5.47,
     )

@@ -159,8 +159,8 @@ def quarot_main(args: argparse.Namespace) -> None:
 
     quarot_llama.to(config.device)
     dataset_ppl = gpu_utils.evaluate_ppl(quarot_llama, quarot_llama.config.pad_token_id, test_loader)
-    logging.info(f'Rotated ppl: {dataset_ppl:.4f}')
-    wandb.log({"rotated_ppl": dataset_ppl})
+    logging.info(f'QuaRot ppl: {dataset_ppl:.4f}')
+    wandb.log({"quarot_ppl": dataset_ppl})
 
     if not args.lm_eval:
         return
