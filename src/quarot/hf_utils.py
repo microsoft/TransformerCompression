@@ -7,9 +7,10 @@ import pathlib
 import torch
 from transformers import AutoTokenizer, PreTrainedTokenizerBase
 
+from slicegpt.hf_utils import do_not_initialize
+
 from .model_adapter import ModelAdapter
 
-from slicegpt.hf_utils import do_not_initialize
 
 @do_not_initialize
 def get_model_and_tokenizer(

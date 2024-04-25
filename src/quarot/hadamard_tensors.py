@@ -3,6 +3,7 @@
 # hadamard matrices from http://www.neilsloane.com/hadamard/index.html
 import torch
 
+
 def get_had12():
     return torch.FloatTensor([
         [+1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
