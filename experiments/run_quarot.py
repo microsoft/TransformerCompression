@@ -15,7 +15,7 @@ from lm_eval.models.huggingface import HFLM
 from lm_eval.tasks import initialize_tasks
 
 from quarot import hf_utils, modeling_llama, rotation_utils, rtn_utils
-from quarot.modeling_llama import QuarotFP16LlamaForCausalLM
+from quarot.modeling_llama import QuarotLlamaConfig, QuarotLlamaForCausalLM
 from quarot.quant_utils import WeightQuantizer
 from slicegpt import data_utils, gpu_utils, layernorm_fusion, utils
 from slicegpt.config import config
@@ -219,6 +219,8 @@ def quarot_main(args: argparse.Namespace) -> None:
     logging.info(f"PyTorch device: {config.device}")
     logging.info(f"Number of available cuda devices: {torch.cuda.device_count()}")
 
+    torch.set_default_dtype(torch.float16)
+
     try:
         wandb.init(project=args.wandb_project, config=args, mode='disabled' if args.no_wandb else None)
     except wandb.UsageError as e:
@@ -262,22 +264,36 @@ def quarot_main(args: argparse.Namespace) -> None:
     # Rotate the model with fused Hadamard transformations.
     rotation_utils.rotate_model(model_adapter, args.rotation_seed)
 
-    # Quantize the model weights
-    if args.w_bits <= 16:
-        if not args.w_rtn:  # GPTQ Weight Quantization
-            raise NotImplementedError("GPTQ weight quantization is not yet implemented!")
-        else:  # RTN Weight Quantization
-            quantizers = rtn_utils.apply_weight_rtn_quantization(
-                model, args.w_bits, args.int8_down_proj, args.w_asym, args.w_clip
-            )
+    model_config = QuarotLlamaConfig.from_pretrained("meta-llama/Llama-2-7b-hf", dtype=torch.float16)
+    model_config._attn_implementation = "flash_attention_2"
+    with transformers.modeling_utils.no_init_weights():
+        # initialise quarot model
+        quarot_llama = QuarotLlamaForCausalLM(online_had_mlp=True, online_had_attn=True, config=model_config)
 
-    # Convert the model to a quantizeable model
-    model = convert_model_to_quantizeable(model, quantizers, fake_quant=True)
+        # load the rotated weights into the quarot model
+        quarot_llama.load_state_dict(model_adapter.model.state_dict(), strict=False)
 
-    reset_model_device()
-    dataset_ppl = gpu_utils.evaluate_ppl(model, model.config.pad_token_id, test_loader)
-    logging.info(f'QuaRot ppl: {dataset_ppl:.4f}')
-    wandb.log({"quarot_ppl": dataset_ppl})
+    quarot_llama.cuda()
+    dataset_ppl = gpu_utils.evaluate_ppl(quarot_llama, quarot_llama.config.pad_token_id, test_loader)
+    logging.info(f'Original ppl: {dataset_ppl:.4f}')
+    wandb.log({"original_ppl": dataset_ppl})
+
+    # # Quantize the model weights
+    # if args.w_bits <= 16:
+    #     if not args.w_rtn:  # GPTQ Weight Quantization
+    #         raise NotImplementedError("GPTQ weight quantization is not yet implemented!")
+    #     else:  # RTN Weight Quantization
+    #         quantizers = rtn_utils.apply_weight_rtn_quantization(
+    #             model, args.w_bits, args.int8_down_proj, args.w_asym, args.w_clip
+    #         )
+
+    # # Convert the model to a quantizeable model
+    # model = convert_model_to_quantizeable(model, quantizers, fake_quant=True)
+
+    # reset_model_device()
+    # dataset_ppl = gpu_utils.evaluate_ppl(model, model.config.pad_token_id, test_loader)
+    # logging.info(f'QuaRot ppl: {dataset_ppl:.4f}')
+    # wandb.log({"quarot_ppl": dataset_ppl})
 
     if not args.lm_eval:
         return
@@ -294,54 +310,54 @@ def quarot_main(args: argparse.Namespace) -> None:
     wandb.log(metric_vals)
 
 
-def convert_model_to_quantizeable(
-    model, quantizers: dict[str, WeightQuantizer], fake_quant: bool = True
-) -> QuarotFP16LlamaForCausalLM:
-    '''
-    Convert the model to a quantizeable model by replacing modules with quantizeable equivalents. TODO : make this general.
-    '''
-    old_dict = model.state_dict()
+# def convert_model_to_quantizeable(
+#     model, quantizers: dict[str, WeightQuantizer], fake_quant: bool = True
+# ) -> QuarotFP16LlamaForCausalLM:
+#     '''
+#     Convert the model to a quantizeable model by replacing modules with quantizeable equivalents. TODO : make this general.
+#     '''
+#     old_dict = model.state_dict()
 
-    # module names in the current model given by keys will be renamed to the values
-    key_maps = {"mlp.down_proj": "mlp.down_proj.2", "self_attn.o_proj": "self_attn.o_proj.1"}
-    bad_key_names = {"post_attention_layernorm.weight", "input_layernorm.weight"}
+#     # module names in the current model given by keys will be renamed to the values
+#     key_maps = {"mlp.down_proj": "mlp.down_proj.2", "self_attn.o_proj": "self_attn.o_proj.1"}
+#     bad_key_names = {"post_attention_layernorm.weight", "input_layernorm.weight"}
 
-    def _get_new_key(key):
-        new_key = key
-        for old_name, new_name in key_maps.items():
-            new_key = new_key.replace(old_name, new_name)
-        return new_key
+#     def _get_new_key(key):
+#         new_key = key
+#         for old_name, new_name in key_maps.items():
+#             new_key = new_key.replace(old_name, new_name)
+#         return new_key
 
-    def _keep_key(key):
-        return all(bad_name not in key for bad_name in bad_key_names)
+#     def _keep_key(key):
+#         return all(bad_name not in key for bad_name in bad_key_names)
 
-    new_dict = {_get_new_key(key): value for key, value in old_dict.items() if _keep_key(key)}
-    for key, value in quantizers.items():
-        new_key = _get_new_key(key)
-        weight_scales = value.scale
-        new_dict[f"{new_key}.weight_scales"] = weight_scales
-        weight_matrix = new_dict[f"{new_key}.weight"]
-        int_rounded_weight = (weight_matrix / weight_scales).round()
+#     new_dict = {_get_new_key(key): value for key, value in old_dict.items() if _keep_key(key)}
+#     for key, value in quantizers.items():
+#         new_key = _get_new_key(key)
+#         weight_scales = value.scale
+#         new_dict[f"{new_key}.weight_scales"] = weight_scales
+#         weight_matrix = new_dict[f"{new_key}.weight"]
+#         int_rounded_weight = (weight_matrix / weight_scales).round()
 
-        if fake_quant:
-            new_dict[f"{new_key}.weight"] = int_rounded_weight
-        else:
-            raise NotImplementedError("Real quantization is not yet implemented!")
+#         if fake_quant:
+#             new_dict[f"{new_key}.weight"] = int_rounded_weight
+#         else:
+#             raise NotImplementedError("Real quantization is not yet implemented!")
 
-    model_config = modeling_llama.QuarotLlamaConfig.from_pretrained(
-        "meta-llama/Llama-2-7b-hf", attn_implementation="flash_attention_2"
-    )
-    torch.set_default_dtype(torch.float16)
-    with transformers.modeling_utils.no_init_weights():
-        if fake_quant:
-            new_model = modeling_llama.QuarotFP16LlamaForCausalLM(config=model_config)
-        else:
-            raise NotImplementedError("Real quantization is not yet implemented!")
+#     model_config = modeling_llama.QuarotLlamaConfig.from_pretrained(
+#         "meta-llama/Llama-2-7b-hf", attn_implementation="flash_attention_2"
+#     )
+#     torch.set_default_dtype(torch.float16)
+#     with transformers.modeling_utils.no_init_weights():
+#         if fake_quant:
+#             new_model = modeling_llama.QuarotFP16LlamaForCausalLM(config=model_config)
+#         else:
+#             raise NotImplementedError("Real quantization is not yet implemented!")
 
-    result = new_model.load_state_dict(new_dict, strict=False)
-    assert all("had_rem_dim" in key for key in result.missing_keys), result
-    assert len(result.unexpected_keys) == 0, result
-    return new_model
+#     result = new_model.load_state_dict(new_dict, strict=False)
+#     assert all("had_rem_dim" in key for key in result.missing_keys), result
+#     assert len(result.unexpected_keys) == 0, result
+#     return new_model
 
 
 if __name__ == "__main__":
