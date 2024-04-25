@@ -113,7 +113,7 @@ class ModelAdapter(ABC):
     To implement a new model adapter, implement the interface defined in this class
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.slicing_conf: SlicingConfig | None = None
 
     @property

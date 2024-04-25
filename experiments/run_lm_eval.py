@@ -7,14 +7,15 @@ import logging
 import os
 
 import lm_eval
+from slicegpt.model_adapter import ModelAdapter
 import torch
-import wandb
 from lm_eval import tasks
 from lm_eval import utils as lm_eval_utils
 from lm_eval.api.registry import ALL_TASKS
 from lm_eval.models.huggingface import HFLM
 from lm_eval.tasks import initialize_tasks
 
+import wandb
 from slicegpt import gpu_utils, hf_utils, utils
 from slicegpt.config import config
 
@@ -120,29 +121,34 @@ def eval_main(args: argparse.Namespace) -> None:
     if args.sliced_model_path:
         # load the sliced model
         logging.info(f"Loading sliced {args.model} model from {args.sliced_model_path} with sparsity {args.sparsity}")
-        model_adapter, tokenizer = hf_utils.load_sliced_model(
+        model, tokenizer = hf_utils.load_sliced_model(
             args.model,
             args.sliced_model_path,
             sparsity=args.sparsity,
             token=args.hf_token,
             round_interval=args.round_interval,
         )
+        if isinstance(model, ModelAdapter):
+            model = model.model
+        else:
+            model = model.to(config.dtype)
     else:
         # load the original model
         logging.info(f"Loading {args.model} model")
         model_adapter, tokenizer = hf_utils.get_model_and_tokenizer(args.model, args.model_path, token=args.hf_token)
+        model = model_adapter.model
 
     # the lm eval harness ties the weights, but this should not be done for sliced models unless the lm_head was sliced
-    model_adapter.model.tie_weights = lambda: None
+    model.model.tie_weights = lambda: None
 
     if args.distribute_model:
         # distribute model across available GPUs
         gpu_utils.distribute_model(model_adapter)
     else:
-        model_adapter.model.to(config.device)
+        model.to(config.device)
 
     ### LM Eval Harness ###
-    hflm = HFLM(pretrained=model_adapter.model, tokenizer=tokenizer, batch_size=args.batch_size)
+    hflm = HFLM(pretrained=model, tokenizer=tokenizer, batch_size=args.batch_size)
 
     if args.tasks is None:
         task_names = tasks.ALL_TASKS

@@ -16,6 +16,7 @@ from transformers import PretrainedConfig, PreTrainedTokenizerBase
 from transformers.models.phi.modeling_phi import PhiConfig, PhiDecoderLayer, PhiForCausalLM
 
 from slicegpt.model_adapter import LayerAdapter, ModelAdapter
+from slicegpt.modules import RMSN
 
 
 class CompressedPhiDecoderLayer(PhiDecoderLayer):
@@ -24,6 +25,11 @@ class CompressedPhiDecoderLayer(PhiDecoderLayer):
     https://huggingface.co/microsoft/phi-2/blob/main/modeling_phi.py
     but with the addition of a shortcut_Q attribute. This attribute is used to rotate the residual tensors.
     """
+
+    def __init__(self, config: PhiConfig, layer_idx: int, replace_layernorm: bool = False):
+        super().__init__(config, layer_idx)
+        if replace_layernorm:
+            self.input_layernorm = RMSN(config.hidden_size)
 
     def forward(
         self,

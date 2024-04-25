@@ -14,6 +14,7 @@ from transformers import PretrainedConfig, PreTrainedTokenizerBase
 from transformers.models.llama.modeling_llama import LlamaConfig, LlamaDecoderLayer, LlamaForCausalLM, LlamaRMSNorm
 
 from slicegpt.model_adapter import LayerAdapter, ModelAdapter
+from slicegpt.modules import RMSN
 
 
 class CompressedLlamaDecoderLayer(LlamaDecoderLayer):
@@ -22,6 +23,11 @@ class CompressedLlamaDecoderLayer(LlamaDecoderLayer):
     (https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py#L376)
     but with the addition of a shortcut_Q attribute. This attribute is used to rotate the residual tensors.
     """
+
+    def __init__(self, config: LlamaConfig, layer_idx: int, replace_layernorm: bool = False):
+        super().__init__(config, layer_idx)
+        if replace_layernorm:
+            self.input_layernorm = RMSN(config.hidden_size)
 
     def forward(
         self,

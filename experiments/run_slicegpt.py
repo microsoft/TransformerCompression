@@ -8,8 +8,8 @@ import pathlib
 import shutil
 
 import torch
-import wandb
 
+import wandb
 from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate, utils
 from slicegpt.config import config
 from slicegpt.slicing_scheduler import ConstSlicingScheduler
@@ -137,20 +137,20 @@ def slicing_main(args: argparse.Namespace) -> None:
 
     if args.sliced_model_path:
         # load the model from sliced_model_path to compute perplexity and skip rotation and slicing
-        model_adapter, tokenizer = hf_utils.load_sliced_model(
+        model, tokenizer = hf_utils.load_sliced_model(
             args.model,
             args.sliced_model_path,
             sparsity=args.sparsity,
             round_interval=args.round_interval,
             token=args.hf_token,
         )
+        model = model.to(config.dtype)
     else:
         # load one of the pre-trained models
         model_adapter, tokenizer = hf_utils.get_model_and_tokenizer(
             args.model, args.model_path, token=args.hf_token, dtype=config.dtype
         )
-
-    model = model_adapter.model
+        model = model_adapter.model
 
     def reset_model_device() -> None:
         if args.distribute_model:
@@ -228,14 +228,17 @@ def slicing_main(args: argparse.Namespace) -> None:
         sliced_model_dir = pathlib.Path(args.save_dir)
         sliced_model_dir.mkdir(parents=True, exist_ok=True)
 
-        sliced_model_name = sliced_model_dir / f'{pathlib.Path(args.model).name}_{args.sparsity}.pt'
-
-        # Save the sliced model
-        torch.save(model.state_dict(), sliced_model_name)
-
-        # Save the slicing config
-        config_path = sliced_model_name.with_suffix('.json')
-        config_path.write_text(model_adapter.slicing_conf.to_json_string())
+        # Save the sliced model in HF format for Phi and Llama
+        hf_utils.save_sliced_model(
+            args.model,
+            config.dtype,
+            model,
+            scheduler,
+            sliced_model_dir,
+            args.sparsity,
+            new_embedding_dimension,
+            model_adapter.slicing_conf,
+        )
 
         # If slicing a local model, also save HF config files in sliced model dir
         if args.model_path:

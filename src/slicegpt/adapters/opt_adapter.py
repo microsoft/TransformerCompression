@@ -14,6 +14,7 @@ from transformers import PretrainedConfig
 from transformers.models.opt.modeling_opt import OPTConfig, OPTDecoderLayer, OPTForCausalLM
 
 from slicegpt.model_adapter import LayerAdapter, ModelAdapter
+from slicegpt.modules import RMSN
 
 
 class CompressedOPTDecoderLayer(OPTDecoderLayer):
@@ -22,6 +23,11 @@ class CompressedOPTDecoderLayer(OPTDecoderLayer):
     but with the addition of a shortcut_Q attributes.
     We also support the input rotation and mean subtraction in this class (if needed).
     """
+
+    def __init__(self, config: OPTConfig, replace_layernorm: bool = False):
+        super().__init__(config)
+        if replace_layernorm:
+            self.input_layernorm = RMSN(config.hidden_size)
 
     def forward(
         self,

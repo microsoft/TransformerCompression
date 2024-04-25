@@ -26,7 +26,7 @@ def rotate_attention_inputs(layer_adapter: LayerAdapter, Q: torch.Tensor) -> Non
 def slice_attention_inputs(layer_adapter: LayerAdapter, new_embedding_dimension: int) -> None:
     # Slice the WQ, WK and WV matrices of the self-attention layer.
     for W in layer_adapter.get_attention_inputs():
-        W.weight.data = W.weight.data[:, :new_embedding_dimension]
+        W.weight.data = W.weight.data[:, :new_embedding_dimension].contiguous()
         W.in_features = new_embedding_dimension
 
     layer_adapter.layer.attn_shortcut_Q = nn.Parameter(layer_adapter.layer.attn_shortcut_Q[:new_embedding_dimension, :])
@@ -47,7 +47,7 @@ def rotate_attention_output(layer_adapter: LayerAdapter, Q: torch.Tensor) -> Non
 def slice_attention_output(layer_adapter: LayerAdapter, new_embedding_dimension: int) -> None:
     # Slice output matrix of the self-attention layer.
     W = layer_adapter.get_attention_output()
-    W.weight.data = W.weight.data[:new_embedding_dimension, :]
+    W.weight.data = W.weight.data[:new_embedding_dimension, :].contiguous()
     if W.bias is not None:
         W.bias.data = W.bias.data[:new_embedding_dimension]
     W.out_features = new_embedding_dimension
@@ -64,7 +64,7 @@ def rotate_mlp_input(layer_adapter: LayerAdapter, Q: torch.Tensor) -> None:
 def slice_mlp_input(layer_adapter: LayerAdapter, new_embedding_dimension: int) -> None:
     # Slice the MLP input weights.
     for W in layer_adapter.get_mlp_inputs():
-        W.weight.data = W.weight.data[:, :new_embedding_dimension]
+        W.weight.data = W.weight.data[:, :new_embedding_dimension].contiguous()
         W.in_features = new_embedding_dimension
 
 
@@ -82,7 +82,7 @@ def rotate_mlp_output(layer_adapter: LayerAdapter, Q: torch.Tensor) -> None:
 def slice_mlp_output(layer_adapter: LayerAdapter, new_embedding_dimension: int) -> None:
     # Slice the MLP output weights and bias.
     W = layer_adapter.get_mlp_output()
-    W.weight.data = W.weight.data[:new_embedding_dimension, :]
+    W.weight.data = W.weight.data[:new_embedding_dimension, :].contiguous()
     if W.bias is not None:
         W.bias.data = W.bias.data[:new_embedding_dimension]
     W.out_features = new_embedding_dimension
@@ -102,7 +102,7 @@ def rotate_embeddings(model_adapter: ModelAdapter, Q: torch.Tensor) -> None:
 def slice_embeddings(model_adapter: ModelAdapter, new_embedding_dimensions: dict[int, int]) -> None:
     # Slice the embeddings.
     for i, W in enumerate(model_adapter.get_embeddings()):
-        W.weight.data = W.weight.data[:, : new_embedding_dimensions[i]]
+        W.weight.data = W.weight.data[:, : new_embedding_dimensions[i]].contiguous()
         W.embedding_dim = new_embedding_dimensions[i]
 
 
@@ -117,7 +117,7 @@ def rotate_head(model_adapter: ModelAdapter, Q: torch.Tensor) -> None:
 def slice_head(model_adapter: ModelAdapter, new_embedding_dimension: int) -> None:
     # Slice the head.
     lm_head = model_adapter.get_lm_head()
-    lm_head.weight.data = lm_head.weight.data[:, :new_embedding_dimension]
+    lm_head.weight.data = lm_head.weight.data[:, :new_embedding_dimension].contiguous()
     lm_head.in_features = new_embedding_dimension
 
 
@@ -163,7 +163,11 @@ def rotate_and_slice_sequential(
             ignore_masks.append(batch["attention_mask"])
 
     layers = model_adapter.get_layers()
-    slicing_scheduler.setup(hidden_size=model_adapter.hidden_size, layers_num=len(layers), parallel_blocks=False)
+    slicing_scheduler.setup(
+        hidden_size=model_adapter.hidden_size,
+        layers_num=len(layers),
+        parallel_blocks=False,
+    )
 
     # rotate and slice embeddings
     eig_val, Q = pca_calc(inps, ignore_masks)
@@ -277,7 +281,11 @@ def rotate_and_slice_parallel(
             ignore_masks.append(batch["attention_mask"])
 
     layers = model_adapter.get_layers()
-    slicing_scheduler.setup(hidden_size=model_adapter.hidden_size, layers_num=len(layers), parallel_blocks=True)
+    slicing_scheduler.setup(
+        hidden_size=model_adapter.hidden_size,
+        layers_num=len(layers),
+        parallel_blocks=True,
+    )
 
     # rotate and slice embeddings
     _, Q = pca_calc(inps, ignore_masks)
@@ -465,17 +473,21 @@ def slice_rotated_model(model_adapter: ModelAdapter, slicing_scheduler: SlicingS
 
         if model_adapter.parallel_blocks:  # parallel case
             layer.attn_shortcut_Q = nn.Parameter(
-                layer.attn_shortcut_Q[:, : slicing_scheduler.get_attention_output_dimension(i, match_head_dim=True)]
+                layer.attn_shortcut_Q[
+                    :, : slicing_scheduler.get_attention_output_dimension(i, match_head_dim=True)
+                ].contiguous()
             )
             slice_attention_output(
                 layer_adapter, slicing_scheduler.get_attention_output_dimension(i, match_head_dim=True)
             )
         else:  # sequential case
             layer.attn_shortcut_Q = nn.Parameter(
-                layer.attn_shortcut_Q[:, : slicing_scheduler.get_attention_output_dimension(i, match_head_dim=False)]
+                layer.attn_shortcut_Q[
+                    :, : slicing_scheduler.get_attention_output_dimension(i, match_head_dim=False)
+                ].contiguous()
             )
             layer.mlp_shortcut_Q = nn.Parameter(
-                layer.mlp_shortcut_Q[:, : slicing_scheduler.get_mlp_output_dimension(i)]
+                layer.mlp_shortcut_Q[:, : slicing_scheduler.get_mlp_output_dimension(i)].contiguous()
             )
 
             # slice attention weights 1st dimension
