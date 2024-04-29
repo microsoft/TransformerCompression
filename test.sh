@@ -8,4 +8,4 @@ set -e
 pre-commit run --all-files --hook-stage manual --verbose
 
 # Run tests
-python3 -m pytest -m "not (gpu or experiment or quarot)" # TODO: get quarot (non-gpu) tests to work in PR build.
+python3 -m pytest -m "not (gpu or experiment)"

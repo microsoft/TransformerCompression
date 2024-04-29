@@ -11,7 +11,7 @@ python3 -m venv .venv
 
 # Install dependencies
 pip install --upgrade pip setuptools wheel
-pip install -e .[dev] # TODO: get pip install -e .[dev,quarot] to work so that tests can pass in PR build.
+pip install -e .[dev]
 
 ./test.sh
 

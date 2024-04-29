@@ -15,7 +15,7 @@ from slicegpt.rotate import (
     rotate_mlp_output,
 )
 
-from .hadamard_utils import apply_hadamard, random_hadamard_matrix
+from .hadamard_utils import apply_hadamard, apply_hadamard_headwise, random_hadamard_matrix
 from .model_adapter import ModelAdapter
 
 
@@ -42,8 +42,8 @@ def rotate_model(model_adapter: ModelAdapter, seed: int = 0) -> None:
         rotate_attention_output(layer_adapter, Q)
         rotate_mlp_input(layer_adapter, Q)
         rotate_mlp_output(layer_adapter, Q)
-        apply_hadamard(layer_adapter.get_mlp_output(), had_dim=-1, output=False)
-        apply_hadamard(layer_adapter.get_v_proj(), had_dim=head_dim, output=True)
-        apply_hadamard(layer_adapter.get_attention_output(), had_dim=-1, output=False)
+        apply_hadamard(layer_adapter.get_mlp_output())
+        apply_hadamard_headwise(layer_adapter.get_v_proj(), head_dim=head_dim)
+        apply_hadamard(layer_adapter.get_attention_output())
 
     utils.cleanup_memory()
