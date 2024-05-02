@@ -14,7 +14,7 @@ from lm_eval.api.registry import ALL_TASKS
 from lm_eval.models.huggingface import HFLM
 from lm_eval.tasks import initialize_tasks
 
-from quarot import hf_utils, rotation
+from quarot import hf_utils, rotation, rtn
 from quarot.modeling_llama import QuarotLlamaConfig, QuarotLlamaForCausalLM
 from slicegpt import data_utils, gpu_utils, layernorm_fusion, utils
 from slicegpt.config import config
@@ -67,6 +67,11 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
 
     # Rotation Arguments
     parser.add_argument(
+        '--rotate',
+        action="store_true",
+        help='Rotate the model.',
+    )
+    parser.add_argument(
         '--rotation-seed',
         type=int,
         default=0,
@@ -77,6 +82,19 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
         action="store_true",
         default=False,
         help='Apply Hadamard rotation in FP32 (default: False means FP16)',
+    )
+
+    # Weight Quantization Arguments
+    parser.add_argument(
+        '--w-rtn',
+        action="store_true",
+        help='Quantize weights using RTN.',
+    )
+    parser.add_argument(
+        '--w-bits',
+        type=int,
+        default=4,
+        help='Number of bits to quantize the weights to.',
     )
 
     # LM Eval Arguments
@@ -146,17 +164,27 @@ def quarot_main(args: argparse.Namespace) -> None:
     # fuse layernorms
     layernorm_fusion.fuse_modules(model_adapter)  # TODO: fix expected adapter type
 
-    # Rotate the model with fused Hadamard transformations.
-    rotation.rotate_model(model_adapter, args.rotation_seed)
+    if args.rotate:
+        # Rotate the model with fused Hadamard transformations.
+        rotation.rotate_model(model_adapter, args.rotation_seed)
 
     model_config = QuarotLlamaConfig.from_pretrained(args.model, dtype=config.dtype)
     model_config._attn_implementation = "flash_attention_2"
     with transformers.modeling_utils.no_init_weights():
-        # initialise quarot model
-        quarot_llama = QuarotLlamaForCausalLM(online_had_mlp=True, online_had_attn=True, config=model_config)
+        # initialize quarot model
+        online_had_mlp = True if args.rotate else False
+        online_had_attn = True if args.rotate else False
+        quarot_llama = QuarotLlamaForCausalLM(
+            online_had_mlp=online_had_mlp, online_had_attn=online_had_attn, config=model_config
+        )
 
         # load the rotated weights into the quarot model
         quarot_llama.load_state_dict(model_adapter.model.state_dict(), strict=False)
+
+    if args.w_rtn:
+        print(f"Quantizing weights to INT{args.w_bits} using RTN.")
+        rtn.quantize_model_rtn(quarot_llama, bits=args.w_bits)
+        print("Quantization complete.")
 
     quarot_llama.to(config.device)
     dataset_ppl = gpu_utils.evaluate_ppl(quarot_llama, quarot_llama.config.pad_token_id, test_loader)
