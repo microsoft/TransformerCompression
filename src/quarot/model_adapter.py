@@ -2,12 +2,9 @@
 # Licensed under the MIT license.
 from __future__ import annotations
 
-import copy
 import inspect
-import json
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
-from dataclasses import asdict, dataclass, field
 from typing import Any, final
 
 import torch
@@ -17,11 +14,11 @@ from transformers import PretrainedConfig, PreTrainedTokenizerBase
 
 """
 To add support for a new model, you need to create a new adapter class that inherits from ModelAdapter, and a new 
-adapter class that inherits from LayerAdapter. The ModelAdapter class tells sliceGPT how to interact with the model, 
+adapter class that inherits from LayerAdapter. The ModelAdapter class tells QuaRot how to interact with the model, 
 an instance of which is stored at self.model. For example, how to access each of the layers of the model. Similarly, 
-the LayerAdapter class tells sliceGPT how to interact with each layer of the model. For example, how to access the 
+the LayerAdapter class tells QuaRot how to interact with each layer of the model. For example, how to access the 
 attention and MLP components of the layer, and how to update the arguments to the layer's forward method.
-See src/slicegpt/adapters/llama_adapter.py for an example of how to implement these classes.
+See src/quarot/adapters/llama_adapter.py for an example of how to implement these classes.
 """
 
 
@@ -107,20 +104,26 @@ class LayerAdapter(ABC):
             args[: self.hidden_states_args_position] + (hidden_states,) + args[self.hidden_states_args_position + 1 :]
         )
 
+    # The below are QuaRot specific. Consider renaming these to something more general if non Llama-2 architectures name
+    # these differently.
+    @abstractmethod
+    def get_v_proj(self) -> Linear:
+        """
+        Returns the Linear layer (nn.module) that is the v projection in the attention component.
+        """
+        raise NotImplementedError
+
 
 class ModelAdapter(ABC):
     """
-    To implement a new model adapter, implement the interface defined in this class
+    To implement a new model adapter, implement the interface defined in this class.
     """
-
-    def __init__(self):
-        self.slicing_conf: SlicingConfig | None = None
 
     @property
     @abstractmethod
     def model(self) -> Module:
         """
-        The original model that slicegpt interacts with.
+        The original model that quarot interacts with.
         """
         raise NotImplementedError
 
@@ -129,14 +132,6 @@ class ModelAdapter(ABC):
     def config(self) -> PretrainedConfig:
         """
         The model config
-        """
-        raise NotImplementedError
-
-    @property
-    @abstractmethod
-    def config_type(self) -> type:
-        """
-        Type of the config class
         """
         raise NotImplementedError
 
@@ -195,17 +190,18 @@ class ModelAdapter(ABC):
     @abstractmethod
     def layer_adapter_type(self) -> type:
         """
-        Type of the class implementing the sliceGPT.LayerAdapter interface
+        Type of the class implementing the QuaRot.LayerAdapter interface
         """
         raise NotImplementedError
 
+    # QuaRot specific.
     @property
     @abstractmethod
-    def compressed_layer_type(self) -> type:
+    def quarot_layer_type(self) -> type:
         """
-        Type of the compressed transformer layer defined by the user;
+        Type of the quarot transformer layer defined by the user;
         subclasses the transformer layer class;
-        contains the adapted forward() method for the compressed model
+        contains the adapted forward() method for the quarot model
         """
         raise NotImplementedError
 
@@ -225,13 +221,6 @@ class ModelAdapter(ABC):
         """
         Returns the logits for the model on the given input_ids. For example, this might look like:
             `self._model(input_ids=input_ids).logits`
-        """
-        raise NotImplementedError
-
-    @abstractmethod
-    def convert_layer_to_compressed(self, layer: Module, layer_idx: int | None) -> Module:
-        """
-        Replace the given layer with a compressed version of the layer.
         """
         raise NotImplementedError
 
@@ -277,25 +266,14 @@ class ModelAdapter(ABC):
         """
         raise NotImplementedError
 
+    # QuaRot specific.
     @property
     def no_split_module_classes(self) -> list[str] | None:
         """
         A list of strings specifying the class names of modules that should not be split.
         See https://huggingface.co/docs/accelerate/concept_guides/big_model_inference for more details.
         """
-        return [self.original_layer_type.__name__, self.compressed_layer_type.__name__]
-
-    @final
-    def convert_layer_to_compressed_and_register_buffers(self, layer: Module, layer_idx: int | None) -> Module:
-        """
-        Replace the given layer with a compressed version of the layer. Also register the shortcut_Q matrices
-        to be used in Compressed transformer layer's forward() method to be updated during slicing.
-        """
-        compressed_layer = self.convert_layer_to_compressed(layer, layer_idx)
-        if not self.parallel_blocks:
-            compressed_layer.register_parameter('mlp_shortcut_Q', None)
-        compressed_layer.register_parameter('attn_shortcut_Q', None)
-        return compressed_layer
+        return [self.original_layer_type.__name__, self.quarot_layer_type.__name__]
 
     def post_init(self, tokenizer: PreTrainedTokenizerBase) -> None:
         """
@@ -427,64 +405,3 @@ class ModelAdapter(ABC):
         See `from_model` for more details.
         """
         raise NotImplementedError
-
-
-@dataclass
-class SlicingConfig:
-    """Slicing configuration such as individual layer dimensions and whether to slice head."""
-
-    hidden_size: int = 0
-    layers_num: int = 0
-    do_slice_head: bool = False
-    parallel_blocks: bool = False
-
-    # use dict[int, int] instead of list[int] to allow for arbitrary order updates and default dicts
-    embedding_dimensions: dict[int, int] = field(default_factory=dict)
-
-    attention_input_dimensions: dict[int, int] = field(default_factory=dict)
-    attention_output_dimensions: dict[int, int] = field(default_factory=dict)
-
-    mlp_input_dimensions: dict[int, int] = field(default_factory=dict)
-    mlp_output_dimensions: dict[int, int] = field(default_factory=dict)
-
-    head_dimension: int | None = None
-
-    const_dimension: int | None = None  # to be able to load models without config, sliced with const sparsity
-
-    @staticmethod
-    def from_dict(d: dict) -> 'SlicingConfig':
-        """Return a SliceConfig object constructed from the provided dictionary."""
-
-        def convert_dict_keys_to_int(d: Any) -> Any:
-            # recursively convert all numeric string keys to int
-            if not isinstance(d, dict):
-                return d
-
-            if all(isinstance(k, str) and k.isnumeric() for k in d.keys()):
-                d = {int(k): v for k, v in d.items()}
-            else:
-                d = {k: convert_dict_keys_to_int(v) for k, v in d.items()}
-
-            return d
-
-        return SlicingConfig(**convert_dict_keys_to_int(d))
-
-    @staticmethod
-    def from_json_string(json_str: str) -> 'SlicingConfig':
-        """Return a SliceConfig object constructed from the provided JSON string."""
-        return SlicingConfig.from_dict(json.loads(json_str))
-
-    def to_dict(self) -> dict:
-        """Return a dictionary representation of this object."""
-        # workaround until 'dataclasses.asdict support defaultdict fields #32056' is in the Python release used
-        self.embedding_dimensions = {k: v for k, v in self.embedding_dimensions.items()}
-
-        return asdict(self)
-
-    def to_json_string(self) -> str:
-        """Return a JSON representation of this object."""
-        return json.dumps(self.to_dict())
-
-    def clone(self) -> 'SlicingConfig':
-        """Return a clone of this object."""
-        return copy.deepcopy(self)
