@@ -182,9 +182,9 @@ def quarot_main(args: argparse.Namespace) -> None:
         quarot_llama.load_state_dict(model_adapter.model.state_dict(), strict=False)
 
     if args.w_rtn:
-        print(f"Quantizing weights to INT{args.w_bits} using RTN.")
+        logging.info(f"Quantizing weights to INT{args.w_bits} using RTN.")
         rtn.quantize_model_rtn(quarot_llama, bits=args.w_bits)
-        print("Quantization complete.")
+        logging.info("Quantization complete.")
 
     quarot_llama.to(config.device)
     dataset_ppl = gpu_utils.evaluate_ppl(quarot_llama, quarot_llama.config.pad_token_id, test_loader)
