@@ -44,7 +44,7 @@ def quantize_module_rtn(
             weight = weight.unsqueeze(-1)
 
             # Quantize weights
-            candidate_quantized_weights = torch.clamp(torch.round(weight / candidate_scales), -(max_int+1), max_int)
+            candidate_quantized_weights = torch.clamp(torch.round(weight / candidate_scales), -(max_int + 1), max_int)
 
             # Dequantize weights
             reconstructed_weights = candidate_quantized_weights * candidate_scales
@@ -59,7 +59,7 @@ def quantize_module_rtn(
     # Quantize the weights
     if symmetric:
         weight = weight.squeeze(-1)
-        W_quantized = torch.clamp(torch.round(weight / weight_scales), -(max_int+1), max_int)
+        W_quantized = torch.clamp(torch.round(weight / weight_scales), -(max_int + 1), max_int)
     else:
         raise NotImplementedError("Asymmetric quantization not implemented yet.")
 
