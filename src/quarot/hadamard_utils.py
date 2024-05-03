@@ -115,11 +115,12 @@ def _apply_fast_hadamard(X: torch.tensor, hadK: torch.tensor) -> torch.tensor:
     n = X.shape[-1]
     K = hadK.shape[0]
     scale = 1.0 / torch.tensor(n).sqrt()
+    X = X.contiguous()
     if K == 1:
-        return hadamard_transform(X.contiguous(), scale)
+        return hadamard_transform(X, scale)
 
     input = X.view(-1, K, n // K)
-    input = hadamard_transform(input.contiguous(), scale)
+    input = hadamard_transform(input, scale)
     input = hadK.to(input.device).to(input.dtype) @ input
     return input.reshape(X.shape)
 
