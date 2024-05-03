@@ -23,16 +23,12 @@ license = {text = "MIT"}
 dependencies = [
     "accelerate",
     "datasets==2.14.7",
-    "einops",
-    "huggingface-hub==0.20.2",
-    "lm-eval==0.4.1",
     "ml-collections",
     "numpy",
-    "sentencepiece",
     "torch",
     "tqdm",
     "transformers==4.37",
-    "wandb",
+    "peft==0.6.0",
 ]
 
 [project.optional-dependencies]
@@ -43,10 +39,16 @@ dev = [
     "pytest>=7.4.2",
 ]
 
+experiment = [
+    "lm-eval==0.4.1",
+    "wandb",
+]
+
 finetune = [
     "syne-tune[gpsearchers]==0.10.0",
-    "peft==0.6.0"
 ]
+
+all = ["transformercompression[dev,experiment,finetune]"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
