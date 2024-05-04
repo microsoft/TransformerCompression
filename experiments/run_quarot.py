@@ -161,12 +161,14 @@ def quarot_main(args: argparse.Namespace) -> None:
         model.cpu()
         utils.cleanup_memory()
 
-    # fuse layernorms
-    layernorm_fusion.fuse_modules(model_adapter)  # TODO: fix expected adapter type
-
     if args.rotate:
+        # fuse layernorms
+        layernorm_fusion.fuse_modules(model_adapter)  # TODO: fix expected adapter type
+
         # Rotate the model with fused Hadamard transformations.
         rotation.rotate_model(model_adapter, args.rotation_seed)
+    else:
+        raise NotImplementedError("Only with-rotation quantization is working right now.")  # TODO: fix
 
     model_config = QuarotLlamaConfig.from_pretrained(args.model, dtype=config.dtype)
     model_config._attn_implementation = "flash_attention_2"
