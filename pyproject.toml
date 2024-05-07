@@ -22,7 +22,7 @@ requires-python = ">=3.10"
 license = {text = "MIT"}
 dependencies = [
     "accelerate",
-    "datasets==2.14.7",
+    "datasets==2.18.0",
     "ml-collections",
     "numpy",
     "torch",
