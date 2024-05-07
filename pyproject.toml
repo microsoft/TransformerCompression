@@ -27,7 +27,7 @@ dependencies = [
     "numpy",
     "torch",
     "tqdm",
-    "transformers==4.37",
+    "transformers==4.40.1",
     "peft==0.9.0",
 ]
 
