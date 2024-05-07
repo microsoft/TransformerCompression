@@ -143,14 +143,30 @@ class QuarotFP16LlamaFlashAttention2(LlamaFlashAttention2):
 
 
 class QuarotLlamaForCausalLM(LlamaForCausalLM):
-    def __init__(self, online_had_mlp=False, online_had_attn=False, config=None):
+    def __init__(
+        self,
+        online_had_mlp: bool = False,
+        online_had_attn: bool = False,
+        rms_norm: bool = False,
+        config: QuarotLlamaConfig = None,
+    ) -> None:
+        """
+        Args:
+            online_had_mlp: Whether to use an online Hadamard at the input of down_proj in the MLP, required if the model has been rotated with QuaRot.
+            online_had_attn: Whether to use an online Hadamard at the input of out_proj in attention, required if the model has been rotated with QuaRot.
+            rms_norm: Whether the model has rms_norm (instead of layernorm) normalizations. This is True if the base model's layernorms have been fused.
+            config: The model config.
+        """
         super().__init__(config)
         assert config._attn_implementation == "flash_attention_2"
-        self.model.norm = RMSN(config.hidden_size, eps=config.rms_norm_eps)
+        if rms_norm:
+            self.model.norm = RMSN(config.hidden_size, eps=config.rms_norm_eps)
+
         for layer_idx, layer in enumerate(self.model.layers):
             layer.self_attn = QuarotFP16LlamaFlashAttention2(
                 online_had=online_had_attn, config=config, layer_idx=layer_idx
             )
-            layer.input_layernorm = RMSN(config.hidden_size, eps=config.rms_norm_eps)
-            layer.post_attention_layernorm = RMSN(config.hidden_size, eps=config.rms_norm_eps)
             layer.mlp = QuarotLlamaMLP(online_had=online_had_mlp, config=config)
+            if rms_norm:
+                layer.input_layernorm = RMSN(config.hidden_size, eps=config.rms_norm_eps)
+                layer.post_attention_layernorm = RMSN(config.hidden_size, eps=config.rms_norm_eps)

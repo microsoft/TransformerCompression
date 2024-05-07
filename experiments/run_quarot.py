@@ -167,8 +167,6 @@ def quarot_main(args: argparse.Namespace) -> None:
 
         # Rotate the model with fused Hadamard transformations.
         rotation.rotate_model(model_adapter, args.rotation_seed)
-    else:
-        raise NotImplementedError("Only with-rotation quantization is working right now.")  # TODO: fix
 
     model_config = QuarotLlamaConfig.from_pretrained(args.model, dtype=config.dtype)
     model_config._attn_implementation = "flash_attention_2"
@@ -176,8 +174,9 @@ def quarot_main(args: argparse.Namespace) -> None:
         # initialize quarot model
         online_had_mlp = True if args.rotate else False
         online_had_attn = True if args.rotate else False
+        rms_norm = True if args.rotate else False
         quarot_llama = QuarotLlamaForCausalLM(
-            online_had_mlp=online_had_mlp, online_had_attn=online_had_attn, config=model_config
+            online_had_mlp=online_had_mlp, online_had_attn=online_had_attn, rms_norm=rms_norm, config=model_config
         )
 
         # load the rotated weights into the quarot model
