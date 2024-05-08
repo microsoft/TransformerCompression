@@ -107,7 +107,7 @@ def get_model_and_tokenizer(
     model.eval()  # This switches off dropout.
     model_adapter.use_cache = False
 
-    tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True, token=token, local_files_only=local_model)
+    tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True, token=token, local_files_only=local_model)
 
     model_adapter.post_init(tokenizer)
     logging.info("Loading model done")
