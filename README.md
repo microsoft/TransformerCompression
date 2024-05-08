@@ -12,7 +12,7 @@ The code is arranged as a package `slicegpt` in `/src`, and scripts to replicate
 `/experiments`. To install the `slicegpt` package, we recommend
 
 ```
-    pip install -e . 
+    pip install -e .[experiment]
 ```
 
 ## Running SliceGPT
@@ -39,7 +39,7 @@ manually or using a key vault. Alternatively, set the environment variable `HF_T
 To install additional dependencies required for post-slicing recovery fine-tuning (RFT):
 
 ```
-    pip install -e .[finetune]
+    pip install -e .[experiment,finetune]
 ```
 
 The following replicates the experiments in the paper (LoRA hyperparams valid for all Llama-2 and Phi-2 models): 
