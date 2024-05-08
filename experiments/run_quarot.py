@@ -97,6 +97,20 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
         help='Number of bits to quantize the weights to.',
     )
 
+    # Activation Quantization Arguments
+    parser.add_argument(
+        '--a-bits',
+        type=int,
+        default=16,
+        help='Number of bits to quantize the weights to.',
+    )
+    parser.add_argument(
+        '--a-clip-ratio',
+        type=float,
+        default=1.0,
+        help='Clip ratio for activation quantization: new_max = max * clip_ratio.',
+    )
+
     # LM Eval Arguments
     parser.add_argument("--lm-eval", action="store_true", help="Evaluate the model on LM Eval tasks.")
     parser.add_argument(
@@ -176,7 +190,12 @@ def quarot_main(args: argparse.Namespace) -> None:
         online_had_attn = True if args.rotate else False
         rms_norm = True if args.rotate else False
         quarot_llama = QuarotLlamaForCausalLM(
-            online_had_mlp=online_had_mlp, online_had_attn=online_had_attn, rms_norm=rms_norm, config=model_config
+            online_had_mlp=online_had_mlp,
+            online_had_attn=online_had_attn,
+            rms_norm=rms_norm,
+            act_bits=args.a_bits,
+            act_clip_ratio=args.a_clip_ratio,
+            config=model_config,
         )
 
         # load the rotated weights into the quarot model

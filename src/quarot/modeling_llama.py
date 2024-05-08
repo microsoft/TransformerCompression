@@ -18,7 +18,8 @@ from transformers.models.llama.modeling_llama import (
 )
 from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
 
-from quarot.nn import DummyActQuantizer, OnlineHadamard, QuarotFP16Linear
+from quarot.nn import OnlineHadamard, QuarotFP16Linear
+from quarot.nn.quantizer import ActQuantizer, DummyActQuantizer
 from slicegpt.modules import RMSN
 
 ALL_LAYERNORM_LAYERS.append(RMSN)
@@ -29,16 +30,27 @@ class QuarotLlamaConfig(LlamaConfig):
 
 
 class QuarotLlamaMLP(LlamaMLP):
-    def __init__(self, config, act_quantization=False, online_had=False, *args, **kwargs):
+    def __init__(
+        self,
+        config: QuarotLlamaConfig,
+        act_bits: int = 16,
+        act_clip_ratio: float = 1.0,
+        online_had: bool = False,
+        *args,
+        **kwargs,
+    ):
         super().__init__(config, *args, **kwargs)
-        self.act_quantization = act_quantization
         self.online_had = online_had
-        self.input_quantizer = DummyActQuantizer()
         self.up_proj = QuarotFP16Linear.like(self.up_proj)
         self.gate_proj = QuarotFP16Linear.like(self.gate_proj)
         self.down_proj = QuarotFP16Linear.like(self.down_proj)
         self.online_down_proj_hadamard = OnlineHadamard(self.intermediate_size)
-        self.down_proj_input_quantizer = DummyActQuantizer()
+        if act_bits < 16:
+            self.input_quantizer = ActQuantizer(act_bits, symmetric=True, clip_ratio=act_clip_ratio)
+            self.down_proj_input_quantizer = ActQuantizer(act_bits, symmetric=True, clip_ratio=act_clip_ratio)
+        else:
+            self.input_quantizer = DummyActQuantizer()
+            self.down_proj_input_quantizer = DummyActQuantizer()
 
     def forward(self, x):
         # Quantize inputs to mlp
@@ -148,6 +160,8 @@ class QuarotLlamaForCausalLM(LlamaForCausalLM):
         online_had_mlp: bool = False,
         online_had_attn: bool = False,
         rms_norm: bool = False,
+        act_bits: int = 16,
+        act_clip_ratio: float = 1.0,
         config: QuarotLlamaConfig = None,
     ) -> None:
         """
@@ -166,7 +180,9 @@ class QuarotLlamaForCausalLM(LlamaForCausalLM):
             layer.self_attn = QuarotFP16LlamaFlashAttention2(
                 online_had=online_had_attn, config=config, layer_idx=layer_idx
             )
-            layer.mlp = QuarotLlamaMLP(online_had=online_had_mlp, config=config)
+            layer.mlp = QuarotLlamaMLP(
+                config=config, act_bits=act_bits, act_clip_ratio=act_clip_ratio, online_had=online_had_mlp
+            )
             if rms_norm:
                 layer.input_layernorm = RMSN(config.hidden_size, eps=config.rms_norm_eps)
                 layer.post_attention_layernorm = RMSN(config.hidden_size, eps=config.rms_norm_eps)

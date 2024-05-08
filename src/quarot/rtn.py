@@ -50,7 +50,8 @@ def calculate_scales(
         max_weight = torch.max(weight, torch.zeros_like(weight)).max(dim=1, keepdim=True).values
         min_weight = torch.min(weight, torch.zeros_like(weight)).min(dim=1, keepdim=True).values
     else:
-        raise NotImplementedError("Tensor-wise quantization not implemented yet.")
+        max_weight = torch.max(weight, torch.zeros_like(weight)).max()
+        min_weight = torch.min(weight, torch.zeros_like(weight)).min()
 
     if symmetric:
         max_weight = torch.maximum(max_weight, -min_weight).clamp(min=1e-5)
