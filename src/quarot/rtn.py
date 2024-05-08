@@ -1,17 +1,48 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
 import torch
 from tqdm import tqdm
 
 from quarot.nn.linear import QuarotFP16Linear
 
 
-def quantize_module_rtn(
-    module: QuarotFP16Linear, bits: int, symmetric: bool = True, perchannel: bool = True, clip_weights=True
-) -> None:
+def calculate_max_int(bits: int, symmetric: bool = True) -> torch.Tensor:
     """
-    Quantize the weights of a QuarotFP16Linear module to INT<bits> using the Round-to-Nearest scheme, storing the weights in torch.float16. The weight
-    scales are stored in the module's weight_scales buffer, and are also stored in torch.float16.
+    Calculate the maximum representable integer value given the number of bits and the quantization scheme.
     """
-    weight = module.weight.data
+    if symmetric:
+        max_int = torch.tensor(2 ** (bits - 1) - 1)
+    else:
+        raise NotImplementedError("Asymmetric quantization not implemented yet.")
+    return max_int
+
+
+def quantize_weight_rtn(weight: torch.Tensor, scale: torch.Tensor, bits: int, symmetric: bool = True) -> torch.Tensor:
+    """
+    Quantize a weight tensor to INT<bits> using the given scale.
+    """
+    device = weight.device
+    weight = weight.cuda()
+    scale = scale.cuda()
+
+    if symmetric:
+        max_int = calculate_max_int(bits, symmetric).to(device=weight.device)
+        quantized_weight = torch.clamp(torch.round(weight / scale), -(max_int + 1), max_int)
+    else:
+        raise NotImplementedError("Asymmetric quantization not implemented yet.")
+
+    quantized_weight = quantized_weight.to(device)
+    return quantized_weight
+
+
+def calculate_scales(
+    weight: torch.Tensor, bits: int, symmetric: bool = True, perchannel: bool = True, clip_weights=True
+) -> torch.Tensor:
+    """
+    Calculate the scales for quantizing a weight tensor to INT<bits> using the Round-to-Nearest scheme. If clip_weights is True,
+    the scales are found using a grid search to minimize the quantization error.
+    """
     device = weight.device
     weight = weight.cuda()
 
@@ -23,19 +54,19 @@ def quantize_module_rtn(
 
     if symmetric:
         max_weight = torch.maximum(max_weight, -min_weight).clamp(min=1e-5)
-        max_int = torch.tensor(2 ** (bits - 1) - 1, device=weight.device)
+        max_int = calculate_max_int(bits, symmetric).to(device=weight.device)
         weight_scales = max_weight / max_int
     else:
         raise NotImplementedError("Asymmetric quantization not implemented yet.")
 
     if clip_weights:
-        # Perform a grid search to find the best weight scales according to the error between the original weights and the
-        # quantized-then-dequantized weights.
-        max_shrink_factor = 0.8
-        grid_size = 100
+        # Perform a grid search to find the best weight scales according to quantization error.
+        # TODO: This vectorized implementation gives OOM for Llama-2 70B.
+        max_shrink_factor = 0.80
+        n_steps = int(100 * (max_shrink_factor)) + 1
         error_norm = 2.4
 
-        shrink_factors = 1 - torch.arange(int(max_shrink_factor * grid_size)) / grid_size
+        shrink_factors = torch.linspace(1.0, 1 - max_shrink_factor, n_steps)
         candidate_max_weights = shrink_factors.to(weight.device) * max_weight
 
         if symmetric:
@@ -44,7 +75,7 @@ def quantize_module_rtn(
             weight = weight.unsqueeze(-1)
 
             # Quantize weights
-            candidate_quantized_weights = torch.clamp(torch.round(weight / candidate_scales), -(max_int + 1), max_int)
+            candidate_quantized_weights = quantize_weight_rtn(weight, candidate_scales, bits, symmetric)
 
             # Dequantize weights
             reconstructed_weights = candidate_quantized_weights * candidate_scales
@@ -56,20 +87,24 @@ def quantize_module_rtn(
         best_scale_indices = torch.argmin(quantization_errors, dim=-1)
         weight_scales = torch.gather(candidate_scales.squeeze(1), 1, best_scale_indices.unsqueeze(1))
 
-    # Quantize the weights
-    if symmetric:
-        weight = weight.squeeze(-1)
-        W_quantized = torch.clamp(torch.round(weight / weight_scales), -(max_int + 1), max_int)
-    else:
-        raise NotImplementedError("Asymmetric quantization not implemented yet.")
+    weight = weight.to(device)
+    weight_scales = weight_scales.to(device)
+    return weight_scales
 
-    # Set the int-quantized weights and the scales
-    module.weight.data = W_quantized
+
+def quantize_module_rtn(
+    module: QuarotFP16Linear, bits: int, symmetric: bool = True, perchannel: bool = True, clip_weights: bool = True
+) -> None:
+    """
+    Quantize the weights of a QuarotFP16Linear module to INT<bits> using the Round-to-Nearest scheme, storing the weights in torch.float16. The weight
+    scales are stored in the module's weight_scales buffer, and are also stored in torch.float16.
+    """
+    weight = module.weight
+    weight_scales = calculate_scales(weight, bits, symmetric, perchannel, clip_weights)
+    quantized_weight = quantize_weight_rtn(weight, weight_scales, bits, symmetric)
+
+    module.weight.data = quantized_weight
     module.weight_scales = weight_scales
-
-    # Move the weights back to the original device
-    module.weight.data = module.weight.data.to(device)
-    module.weight_scales = module.weight_scales.to(device)
 
 
 def quantize_model_rtn(
