@@ -15,6 +15,7 @@ from quarot.rtn import calculate_scales, quantize_weight_rtn
         (3, torch.tensor([[-1.0, 1.0, 2.0, 3.0], [-0.5, 1.0, 2.0, -3.0]]), torch.tensor([[1.0], [1.0]])),
         (3, torch.tensor([[-1.0, 1.0, 1.0, 1.5], [-0.5, 1.0, 1.0, -1.5]]), torch.tensor([[0.5], [0.5]])),
         (4, torch.tensor([[-1.0, 1.0, 2.0, 3.5], [-0.5, 1.0, 2.0, -7.0]]), torch.tensor([[0.5], [1.0]])),
+        (8, torch.tensor([[-1.0, 1.0, 2.0, 31.75], [-0.5, 1.0, 2.0, -63.5], [-0.5, 1.0, 2.0, -127.0]]), torch.tensor([[0.25], [0.5], [1.0]])),
     ],
 )
 def test_calculate_scales(bits, weight, expected_scales):
@@ -29,6 +30,7 @@ def test_calculate_scales(bits, weight, expected_scales):
     [
         (3, torch.tensor([[1.1, -2.3, 3.4], [-1.5, 2.6, -2.9]]), torch.tensor([[1.0, -2.0, 3.0], [-2.0, 3.0, -3.0]])),
         (4, torch.tensor([[1.1, -2.3, 3.5], [-1.5, 2.6, -7.0]]), torch.tensor([[2.0, -5.0, 7.0], [-2.0, 3.0, -7.0]])),
+        (8, torch.tensor([[1.1, -2.3, 31.75], [-1.5, 2.6, -63.5], [-1.5, 2.6, -127.0]]), torch.tensor([[4.0, -9.0, 127.0], [-3.0, 5.0, -127.0], [-2.0, 3.0, -127.0]])),
     ],
 )
 def test_quantize_weight_rtn(bits, weight, expected_quantized_weight):

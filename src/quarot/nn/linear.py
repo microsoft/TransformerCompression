@@ -22,11 +22,10 @@ class QuarotFP16Linear(torch.nn.Module):
     def forward(self, x: PackedQuantizedTensor) -> torch.tensor:
         x, scales_x = x.quantized_x, x.scales_x
 
-        # perform matmul with the emulated quantized tensors
-        x = x @ self.weight.T
-
-        # symmetric dequantization
-        x = (x * scales_x) * self.weight_scales.T
+        # Perform matmul by first de-quantizing the activations and weights, and then multiplying.
+        # This is done for numerical stability. Note that in real quantization, the quantized weights and activations
+        # would be multiplied first using kernels, and then by the scales. 
+        x = (x * scales_x) @ (self.weight.T * self.weight_scales.T)
 
         if self.bias is not None:
             x = x + self.bias

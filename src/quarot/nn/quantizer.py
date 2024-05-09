@@ -9,5 +9,5 @@ class DummyActQuantizer(torch.nn.Module):
     def forward(self, x: torch.Tensor) -> PackedQuantizedTensor:
         # take all the shape of x up to last dim
         shape = x.shape[:-1] + (1,)
-        scales_x = torch.ones(shape, device=x.device)
+        scales_x = torch.ones(shape, device=x.device, dtype=x.dtype)
         return PackedQuantizedTensor(x, scales_x)
