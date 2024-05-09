@@ -28,7 +28,6 @@ dependencies = [
     "torch",
     "tqdm",
     "transformers==4.40.1",
-    "peft==0.9.0",
 ]
 
 [project.optional-dependencies]
@@ -46,6 +45,7 @@ experiment = [
 
 finetune = [
     "syne-tune[gpsearchers]==0.10.0",
+    "peft==0.6.0",
 ]
 
 all = ["transformercompression[dev,experiment,finetune]"]
