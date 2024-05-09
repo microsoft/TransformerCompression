@@ -24,7 +24,7 @@ class QuarotFP16Linear(torch.nn.Module):
 
         # Perform matmul by first de-quantizing the activations and weights, and then multiplying.
         # This is done for numerical stability. Note that in real quantization, the quantized weights and activations
-        # would be multiplied first using kernels, and then by the scales. 
+        # would be multiplied first using kernels, and then by the scales.
         x = (x * scales_x) @ (self.weight.T * self.weight_scales.T)
 
         if self.bias is not None:
