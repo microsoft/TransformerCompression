@@ -13,17 +13,19 @@ def calculate_min_max_int(bits: int, symmetric: bool = True) -> tuple[torch.Tens
     """
     if symmetric:
         max_int = torch.tensor(2 ** (bits - 1) - 1)
-        min_int = - (max_int + 1)
+        min_int = -(max_int + 1)
     else:
         max_int = torch.tensor(2**bits - 1)
         min_int = torch.zeros(1)
     return min_int, max_int
 
 
-def calculate_min_max_weight(weight: torch.Tensor, symmetric: bool = True, perchannel: bool = True) -> tuple[torch.Tensor, torch.Tensor]:
+def calculate_min_max_weight(
+    weight: torch.Tensor, symmetric: bool = True, perchannel: bool = True
+) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Calculate the minimum and maximum weights in a weight tensor. If perchannel, these are calculated per-row. If symmetric, the max weight is
-    the larger of max weight or the absolute value of min weight. 
+    the larger of max weight or the absolute value of min weight.
     """
     if perchannel:
         max_weight = torch.max(weight, torch.zeros_like(weight)).max(dim=-1, keepdim=True).values
@@ -34,7 +36,7 @@ def calculate_min_max_weight(weight: torch.Tensor, symmetric: bool = True, perch
 
     if symmetric:
         max_weight = torch.maximum(max_weight, torch.abs(min_weight)).clamp(min=1e-5)
-    
+
     return min_weight, max_weight
 
 
@@ -106,7 +108,9 @@ def calculate_scales_asymmetric(
     return weight_scales, weight_offsets
 
 
-def quantize_weight_rtn(weight: torch.Tensor, scale: torch.Tensor, offset: torch.Tensor | None, bits: int, symmetric: bool = True) -> torch.Tensor:
+def quantize_weight_rtn(
+    weight: torch.Tensor, scale: torch.Tensor, offset: torch.Tensor | None, bits: int, symmetric: bool = True
+) -> torch.Tensor:
     """
     Quantize a weight tensor to INT<bits> using the given scale and offset.
     """

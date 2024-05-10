@@ -24,10 +24,7 @@ class ActQuantizer(torch.nn.Module):
         self.clip_ratio = clip_ratio
 
     def forward(self, x: torch.Tensor) -> PackedQuantizedTensor:
-        x_scales = (
-            calculate_scales_symmetric(x, self.bits, perchannel=True, clip_weights=False)
-            * self.clip_ratio
-        )
+        x_scales = calculate_scales_symmetric(x, self.bits, perchannel=True, clip_weights=False) * self.clip_ratio
         quantized_x = quantize_weight_rtn(x, x_scales, None, self.bits, symmetric=True)
         return PackedQuantizedTensor(quantized_x, x_scales)
 

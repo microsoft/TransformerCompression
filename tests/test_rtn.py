@@ -4,7 +4,7 @@
 import pytest
 import torch
 
-from quarot.rtn import calculate_scales_symmetric, quantize_weight_rtn, calculate_scales_asymmetric
+from quarot.rtn import calculate_scales_asymmetric, calculate_scales_symmetric, quantize_weight_rtn
 
 
 @pytest.mark.quarot
