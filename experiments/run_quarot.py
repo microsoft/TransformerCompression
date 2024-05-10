@@ -116,7 +116,7 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
     parser.add_argument(
         '--tasks',
         nargs='+',
-        default=["piqa", "hellaswag", "arc_easy", "arc_challenge", "winogrande", "lambada"],
+        default=["piqa", "hellaswag", "arc_easy", "arc_challenge", "winogrande", "lambada_openai"],
     )
     parser.add_argument(
         '--lm-eval-batch-size', type=int, default=128, help='Batch size for evaluating with lm eval harness.'
@@ -214,7 +214,7 @@ def quarot_main(args: argparse.Namespace) -> None:
     if not args.lm_eval:
         return
 
-    hflm = HFLM(pretrained=model, tokenizer=tokenizer, batch_size=args.lm_eval_batch_size)
+    hflm = HFLM(pretrained=quarot_llama, tokenizer=tokenizer, batch_size=args.lm_eval_batch_size)
 
     initialize_tasks()
     task_names = lm_eval_utils.pattern_match(args.tasks, ALL_TASKS)
