@@ -47,8 +47,8 @@ def calculate_scales(
     weight = weight.cuda()
 
     if perchannel:
-        max_weight = torch.max(weight, torch.zeros_like(weight)).max(dim=1, keepdim=True).values
-        min_weight = torch.min(weight, torch.zeros_like(weight)).min(dim=1, keepdim=True).values
+        max_weight = torch.max(weight, torch.zeros_like(weight)).max(dim=-1, keepdim=True).values
+        min_weight = torch.min(weight, torch.zeros_like(weight)).min(dim=-1, keepdim=True).values
     else:
         max_weight = torch.max(weight, torch.zeros_like(weight)).max()
         min_weight = torch.min(weight, torch.zeros_like(weight)).min()

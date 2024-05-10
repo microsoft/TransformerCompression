@@ -93,7 +93,7 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
     parser.add_argument(
         '--w-bits',
         type=int,
-        default=4,
+        default=16,
         help='Number of bits to quantize the weights to.',
     )
 

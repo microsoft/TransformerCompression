@@ -71,17 +71,20 @@ class QuarotLlamaMLP(LlamaMLP):
 
 
 class QuarotFP16LlamaFlashAttention2(LlamaFlashAttention2):
-    def __init__(self, config, act_quantization=False, online_had=False, *args, **kwargs):
+    def __init__(self, config, act_bits: int = 16, act_clip_ratio: float = 1.0, online_had=False, *args, **kwargs):
         super().__init__(config, *args, **kwargs)
-        self.input_quantizer = DummyActQuantizer()
-        self.act_quantization = act_quantization
         self.online_had = online_had
         self.q_proj = QuarotFP16Linear.like(self.q_proj)
         self.k_proj = QuarotFP16Linear.like(self.k_proj)
         self.v_proj = QuarotFP16Linear.like(self.v_proj)
         self.o_proj = QuarotFP16Linear.like(self.o_proj)
         self.online_o_proj_hadamard = OnlineHadamard(self.num_heads)
-        self.o_proj_input_quantizer = DummyActQuantizer()
+        if act_bits < 16:
+            self.input_quantizer = ActQuantizer(act_bits, symmetric=True, clip_ratio=act_clip_ratio)
+            self.o_proj_input_quantizer = ActQuantizer(act_bits, symmetric=True, clip_ratio=act_clip_ratio)
+        else:
+            self.input_quantizer = DummyActQuantizer()
+            self.o_proj_input_quantizer = DummyActQuantizer()
 
     def forward(
         self,
@@ -178,7 +181,11 @@ class QuarotLlamaForCausalLM(LlamaForCausalLM):
 
         for layer_idx, layer in enumerate(self.model.layers):
             layer.self_attn = QuarotFP16LlamaFlashAttention2(
-                online_had=online_had_attn, config=config, layer_idx=layer_idx
+                config=config,
+                act_bits=act_bits,
+                act_clip_ratio=act_clip_ratio,
+                online_had=online_had_attn,
+                layer_idx=layer_idx,
             )
             layer.mlp = QuarotLlamaMLP(
                 config=config, act_bits=act_bits, act_clip_ratio=act_clip_ratio, online_had=online_had_mlp
