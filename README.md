@@ -87,6 +87,7 @@ Notes:
 
 The following models from Hugging Face hub are currently supported
 - [microsoft/phi-2](https://huggingface.co/microsoft/phi-2)
+- [microsoft/Phi-3-mini-4k-instruct](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct)
 - [meta-llama/Llama-2-7b-hf](https://huggingface.co/meta-llama/Llama-2-7b)
 - [meta-llama/Llama-2-13b-hf](https://huggingface.co/meta-llama/Llama-2-13b)
 - [meta-llama/Llama-2-70b-hf](https://huggingface.co/meta-llama/Llama-2-70b)
