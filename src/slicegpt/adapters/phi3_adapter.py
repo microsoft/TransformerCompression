@@ -1,37 +1,51 @@
-# Copyright (c) Microsoft Corporation.
-# Licensed under the MIT license.
+# coding=utf-8
+# Copyright 2024 Microsoft and the HuggingFace Inc. team. All rights reserved.
 #
-# This file contains derivations from
-# https://github.com/huggingface/transformers/blob/main/src/transformers/models/phi/modeling_phi.py
-# Copyright 2023 Microsoft and the HuggingFace Inc. team. All rights reserved.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
-# License updated to MIT license since 7e10f3e in https://huggingface.co/microsoft/phi-2/blob/main/LICENSE
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+import warnings
+from typing import Any, Optional, Tuple
 
 import torch
 from torch import FloatTensor, LongTensor, Tensor, matmul
-from torch.nn import LayerNorm, Linear, Module
+from torch.nn import Linear, Module
 from transformers import PretrainedConfig, PreTrainedTokenizerBase
-from transformers.models.phi.modeling_phi import PhiConfig, PhiDecoderLayer, PhiForCausalLM
+from transformers.models.phi3.modeling_phi3 import Phi3Config, Phi3DecoderLayer, Phi3ForCausalLM, Phi3RMSNorm
 
 from slicegpt.model_adapter import LayerAdapter, ModelAdapter
 
 
-class CompressedPhiDecoderLayer(PhiDecoderLayer):
+class CompressedPhi3DecoderLayer(Phi3DecoderLayer):
     """
-    This class simulates the PhiDecoderlayer class from PhiModel (PhiForCausalLM)
-    https://huggingface.co/microsoft/phi-2/blob/main/modeling_phi.py
+    This class simulates the Phi3DecoderLayer class from transformers
+    (https://github.com/huggingface/transformers/blob/main/src/transformers/models/phi3/modeling_phi3.py#L817)
     but with the addition of a shortcut_Q attribute. This attribute is used to rotate the residual tensors.
     """
 
     def forward(
         self,
-        hidden_states: Tensor,
-        attention_mask: Tensor | None = None,
-        position_ids: LongTensor | None = None,
-        output_attentions: bool | None = False,
-        use_cache: bool | None = False,
-        past_key_value: tuple[Tensor] | None = None,
-    ) -> tuple:
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        output_attentions: Optional[bool] = False,
+        use_cache: Optional[bool] = False,
+        **kwargs,
+    ) -> Tuple[Any]:
+        if "padding_mask" in kwargs:
+            warnings.warn(
+                "Passing `padding_mask` is deprecated and will be removed in v4.37. "
+                "Please make sure use `attention_mask` instead.`"
+            )
         """
         Args:
             hidden_states (`torch.FloatTensor`):
@@ -42,7 +56,7 @@ class CompressedPhiDecoderLayer(PhiDecoderLayer):
                 Indices of positions of each input sequence tokens in the position embeddings. Selected in the range
                 `[0, config.n_positions - 1]`. [What are position IDs?](../glossary#position-ids)
             output_attentions (`bool`, *optional*):
-                Whether to return the attentions tensors of all attention layers. See `attentions` under
+                Whether or not to return the attentions tensors of all attention layers. See `attentions` under
                 returned tensors for more detail.
             use_cache (`bool`, *optional*):
                 If set to `True`, `past_key_values` key value states are returned and can be used to speed up decoding
@@ -63,15 +77,22 @@ class CompressedPhiDecoderLayer(PhiDecoderLayer):
             output_attentions=output_attentions,
             use_cache=use_cache,
         )
-        attn_outputs = self.resid_dropout(attn_outputs)
-
-        feed_forward_hidden_states = self.resid_dropout(self.mlp(hidden_states))
 
         if self.attn_shortcut_Q is not None:
             rotated_residual = matmul(residual, self.attn_shortcut_Q)
-            hidden_states = attn_outputs + feed_forward_hidden_states + rotated_residual
+            hidden_states = rotated_residual + self.resid_attn_dropout(attn_outputs)
         else:
-            hidden_states = attn_outputs + feed_forward_hidden_states + residual
+            hidden_states = residual + self.resid_attn_dropout(attn_outputs)
+
+        residual = hidden_states
+        hidden_states = self.post_attention_layernorm(hidden_states)
+        hidden_states = self.mlp(hidden_states)
+
+        if self.mlp_shortcut_Q is not None:
+            rotated_residual = matmul(residual, self.mlp_shortcut_Q)
+            hidden_states = rotated_residual + self.resid_mlp_dropout(hidden_states)
+        else:
+            hidden_states = residual + self.resid_mlp_dropout(hidden_states)
 
         outputs = (hidden_states,)
 
@@ -84,10 +105,10 @@ class CompressedPhiDecoderLayer(PhiDecoderLayer):
         return outputs
 
 
-class Phi2LayerAdapter(LayerAdapter):
-    def __init__(self, layer: PhiDecoderLayer) -> None:
+class Phi3LayerAdapter(LayerAdapter):
+    def __init__(self, layer: Phi3DecoderLayer) -> None:
         super().__init__()
-        self._layer: PhiDecoderLayer = layer
+        self._layer: Phi3DecoderLayer = layer
 
     @property
     def layer(self) -> Module:
@@ -105,25 +126,25 @@ class Phi2LayerAdapter(LayerAdapter):
         return self.layer.input_layernorm
 
     def get_second_layernorm(self) -> Module:
-        return None
+        return self.layer.post_attention_layernorm
 
     def get_attention_inputs(self) -> list[Linear]:
-        return [self.layer.self_attn.q_proj, self.layer.self_attn.k_proj, self.layer.self_attn.v_proj]
+        return [self.layer.self_attn.qkv_proj]
 
     def get_attention_output(self) -> Linear:
-        return self.layer.self_attn.dense
+        return self.layer.self_attn.o_proj
 
     def get_mlp_inputs(self) -> list[Linear]:
-        return [self.layer.mlp.fc1]
+        return [self.layer.mlp.gate_up_proj]
 
     def get_mlp_output(self) -> Linear:
-        return self.layer.mlp.fc2
+        return self.layer.mlp.down_proj
 
 
-class Phi2ModelAdapter(ModelAdapter):
-    def __init__(self, model: PhiForCausalLM) -> None:
+class Phi3ModelAdapter(ModelAdapter):
+    def __init__(self, model: Phi3ForCausalLM) -> None:
         super().__init__()
-        self._model: PhiForCausalLM = model
+        self._model: Phi3ForCausalLM = model
 
     @property
     def model(self) -> Module:
@@ -135,14 +156,15 @@ class Phi2ModelAdapter(ModelAdapter):
 
     @property
     def config_type(self) -> type:
-        return PhiConfig
+        return Phi3Config
 
     @property
     def parallel_blocks(self) -> bool:
-        return True
+        return False
 
     @property
     def seqlen(self) -> int:
+        # if no sliding window, max_position_embeddings is same as original_max_position_embeddings
         return self.config.max_position_embeddings
 
     @property
@@ -151,23 +173,23 @@ class Phi2ModelAdapter(ModelAdapter):
 
     @property
     def should_bake_mean_into_linear(self) -> bool:
-        return True
+        return False
 
     @property
     def original_layer_type(self) -> type:
-        return PhiDecoderLayer
+        return Phi3DecoderLayer
 
     @property
     def original_layer_norm_type(self) -> type:
-        return LayerNorm
+        return Phi3RMSNorm
 
     @property
     def layer_adapter_type(self) -> type:
-        return Phi2LayerAdapter
+        return Phi3LayerAdapter
 
     @property
     def compressed_layer_type(self) -> type:
-        return CompressedPhiDecoderLayer
+        return CompressedPhi3DecoderLayer
 
     @property
     def use_cache(self) -> bool:
@@ -198,17 +220,12 @@ class Phi2ModelAdapter(ModelAdapter):
         return [self.model.model.embed_tokens]
 
     def get_pre_head_layernorm(self) -> Module:
-        pre_head_layernorm = self.model.model.final_layernorm
-        assert pre_head_layernorm is not None
+        pre_head_layernorm = self.model.model.norm
+        assert isinstance(pre_head_layernorm, self.original_layer_norm_type)
         return pre_head_layernorm
 
     def get_lm_head(self) -> Linear:
         return self.model.lm_head
-
-    def post_init(self, tokenizer: PreTrainedTokenizerBase) -> None:
-        # Phi-2 doesn't have a pad token by default
-        tokenizer.pad_token = tokenizer.eos_token
-        self.config.pad_token_id = tokenizer.pad_token_id
 
     @classmethod
     def _from_pretrained(
@@ -220,15 +237,15 @@ class Phi2ModelAdapter(ModelAdapter):
         local_files_only: bool = False,
         token: str | bool | None = None,
     ) -> ModelAdapter | None:
-        if model_name != "microsoft/phi-2":
+        if not model_name.startswith("microsoft/Phi-3-mini-4k-instruct"):
             return None
 
-        model = PhiForCausalLM.from_pretrained(
+        model = Phi3ForCausalLM.from_pretrained(
             model_path, torch_dtype=dtype, token=token, local_files_only=local_files_only
         )
         model.config.torch_dtype = dtype
 
-        return Phi2ModelAdapter(model)
+        return Phi3ModelAdapter(model)
 
     @classmethod
     def _from_uninitialized(
@@ -240,18 +257,18 @@ class Phi2ModelAdapter(ModelAdapter):
         local_files_only: bool = False,
         token: str | bool | None = None,
     ) -> ModelAdapter | None:
-        if model_name != "microsoft/phi-2":
+        if not model_name.startswith("microsoft/Phi-3-mini-4k-instruct"):
             return None
 
-        class UninitializedPhiForCausalLM(PhiForCausalLM):
+        class UninitializedPhi3ForCausalLM(Phi3ForCausalLM):
             def _init_weights(self, _) -> None:
                 # Prevent weight initialization
                 pass
 
-        config = PhiConfig.from_pretrained(
+        config = Phi3Config.from_pretrained(
             model_path, torch_dtype=dtype, token=token, local_files_only=local_files_only
         )
-        model = UninitializedPhiForCausalLM(config)
+        model = UninitializedPhi3ForCausalLM(config)
         model = model.to(dtype=dtype)
 
-        return Phi2ModelAdapter(model)
+        return Phi3ModelAdapter(model)

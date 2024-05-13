@@ -10,11 +10,13 @@ from torch import Tensor
 from torch.nn import Module, Parameter
 from transformers.models.llama.modeling_llama import LlamaConfig, LlamaForCausalLM
 from transformers.models.opt.modeling_opt import OPTConfig, OPTForCausalLM
+from transformers.models.phi3.modeling_phi3 import Phi3Config, Phi3ForCausalLM
 from transformers.models.phi.modeling_phi import PhiConfig, PhiForCausalLM
 
 from slicegpt.adapters.llama_adapter import LlamaModelAdapter
 from slicegpt.adapters.opt_adapter import OPTModelAdapter
 from slicegpt.adapters.phi2_adapter import Phi2ModelAdapter
+from slicegpt.adapters.phi3_adapter import Phi3ModelAdapter
 from slicegpt.model_adapter import ModelAdapter
 
 
@@ -133,3 +135,19 @@ class TestPhi2Adapter(ModelAdapterTestBase):
         )
         model = PhiForCausalLM(config)
         return Phi2ModelAdapter(model)
+
+
+class TestPhi3Adapter(ModelAdapterTestBase):
+    def create_adapter(self) -> Phi3ModelAdapter:
+        config = Phi3Config(
+            vocab_size=32,
+            hidden_size=8,
+            intermediate_size=32,
+            num_hidden_layers=2,
+            num_attention_heads=2,
+            max_position_embeddings=16,
+            # must set 0 <= pad_token_id <= vocab_size unless set to None in config
+            pad_token_id=None,
+        )
+        model = Phi3ForCausalLM(config)
+        return Phi3ModelAdapter(model)

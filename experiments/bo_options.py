@@ -81,5 +81,33 @@ def lora_target_map(model: str):
                     'lm_head',
                 ],
             }
+        case 'microsoft/Phi-3-mini-4k-instruct':
+            return {
+                'qkv_proj': ['qkv_proj'],
+                'attn_head': ['qkv_proj', 'o_proj'],
+                'attn_head_and_mlp': [
+                    'qkv_proj',
+                    'o_proj',
+                    'gate_up_proj',
+                    'down_proj',
+                ],
+                'attn_head_and_mlp_with_Q': [
+                    'qkv_proj',
+                    'o_proj',
+                    'attn_shortcut_Q',
+                    'gate_up_proj',
+                    'down_proj',
+                    'mlp_shortcut_Q',
+                ],
+                'attn_head_mlp_lm_head_with_Q': [
+                    'qkv_proj',
+                    'o_proj',
+                    'attn_shortcut_Q',
+                    'gate_up_proj',
+                    'down_proj',
+                    'mlp_shortcut_Q',
+                    'lm_head',
+                ],
+            }
         case _:
             raise RuntimeError(f'Lora target map undefined for model={model}')
