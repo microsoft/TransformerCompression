@@ -18,6 +18,24 @@ from lm_eval.tasks import initialize_tasks
 from slicegpt import gpu_utils, hf_utils, utils
 from slicegpt.config import config
 
+TASK_METRIC_MAP = {
+    "mmlu_abstract_algebra": "acc,none",
+    "mmlu_business_ethics": "acc,none",
+    "mmlu_college_computer_science": "acc,none",
+    "mmlu_college_mathematics": "acc,none",
+    "mmlu_conceptual_physics": "acc,none",
+    "mmlu_formal_logic": "acc,none",
+    "mmlu_machine_learning": "acc,none",
+    "mmlu_miscellaneous": "acc,none",
+    "mmlu_philosophy": "acc,none",
+    "mmlu_global_facts": "acc,none",
+    "arc_challenge": "acc_norm,none",
+    "arc_easy": "acc_norm,none",
+    "hellaswag": "acc_norm,none",
+    "piqa": "acc_norm,none",
+    "winogrande": "acc,none",
+}
+
 
 def eval_arg_parser(interactive: bool = True) -> argparse.Namespace:
     initialize_tasks()
@@ -78,9 +96,7 @@ def process_eval_args(args: argparse.Namespace):
 
 def calculate_avg_accuracy(task_names: str, results: dict) -> float:
     n_tasks = len(task_names)
-    acc_cumul = sum(
-        result.get('acc_norm,none', result['acc,none']) for task, result in results.items() if 'mmlu' not in task
-    )
+    acc_cumul = sum(result.get(TASK_METRIC_MAP[task]) for task, result in results.items() if 'mmlu' not in task)
 
     questions_per_mmlu_task = {
         task_name: lm_eval.tasks.get_task_dict([task_name])[task_name].dataset["test"].num_rows
@@ -93,7 +109,7 @@ def calculate_avg_accuracy(task_names: str, results: dict) -> float:
 
     # Calculate average accuracy for mmlu tasks, weighted by number of questions in each task
     acc_mmlu = sum(
-        result.get('acc_norm,none', result['acc,none']) * questions_per_mmlu_task[task]
+        result.get(TASK_METRIC_MAP[task]) * questions_per_mmlu_task[task]
         for task, result in results.items()
         if 'mmlu' in task
     )
@@ -151,17 +167,28 @@ def eval_main(args: argparse.Namespace) -> None:
 
     logging.info(f"Selected Tasks: {task_names}")
 
+    for task in task_names:
+        if task not in TASK_METRIC_MAP:
+            raise NotImplementedError(
+                f"Please specify the metric to use for {task} in TASK_METRIC_MAP. Available info {TASK_METRIC_MAP}"
+            )
+
     results = lm_eval.simple_evaluate(hflm, tasks=task_names, num_fewshot=args.num_fewshot, batch_size=args.batch_size)[
         'results'
     ]
 
-    metric_vals = {task: round(result.get('acc_norm,none', result['acc,none']), 4) for task, result in results.items()}
+    logging.info(results)
+    wandb.log(results)
+
+    with open(f"{args.save_dir}/full_results_{args.num_fewshot}_shot.json", "w") as f:
+        json.dump(results, f)
+
+    metric_vals = {task: round(result.get(TASK_METRIC_MAP[task]), 4) for task, result in results.items()}
     acc_avg = calculate_avg_accuracy(task_names, results)
     metric_vals['average'] = round(acc_avg, 4)
     with open(f"{args.save_dir}/{args.num_fewshot}_shot_task_results.json", "w") as f:
         json.dump(metric_vals, f)
 
-    wandb.log(results)
     wandb.log({'acc_avg': acc_avg})
 
     logging.info(json.dumps(metric_vals, indent=4))
