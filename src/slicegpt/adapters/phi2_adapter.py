@@ -7,8 +7,6 @@
 #
 # License updated to MIT license since 7e10f3e in https://huggingface.co/microsoft/phi-2/blob/main/LICENSE
 
-from typing import cast
-
 import torch
 from torch import FloatTensor, LongTensor, Tensor, matmul
 from torch.nn import LayerNorm, Linear, Module
@@ -183,9 +181,7 @@ class Phi2ModelAdapter(ModelAdapter):
         return self.model(input_ids=input_ids).logits
 
     def convert_layer_to_compressed(self, layer: Module, layer_idx: int | None) -> Module:
-        compressed_layer = self.compressed_layer_type(cast(self.config_type, self.config), layer_idx).to(
-            self.config.torch_dtype
-        )
+        compressed_layer = self.compressed_layer_type(self.config, layer_idx).to(self.config.torch_dtype)
         compressed_layer.load_state_dict(layer.state_dict(), strict=True)
         return compressed_layer
 
@@ -201,7 +197,7 @@ class Phi2ModelAdapter(ModelAdapter):
     def get_embeddings(self) -> list[Module]:
         return [self.model.model.embed_tokens]
 
-    def get_pre_head_layernorm(self) -> type:
+    def get_pre_head_layernorm(self) -> Module:
         pre_head_layernorm = self.model.model.final_layernorm
         assert pre_head_layernorm is not None
         return pre_head_layernorm

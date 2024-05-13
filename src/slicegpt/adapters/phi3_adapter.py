@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import warnings
-from typing import Any, Optional, Tuple, cast
+from typing import Any, Optional, Tuple
 
 import torch
 from torch import FloatTensor, LongTensor, Tensor, matmul
@@ -203,9 +203,7 @@ class Phi3ModelAdapter(ModelAdapter):
         return self.model(input_ids=input_ids).logits
 
     def convert_layer_to_compressed(self, layer: Module, layer_idx: int | None) -> Module:
-        compressed_layer = self.compressed_layer_type(cast(self.config_type, self.config), layer_idx).to(
-            self.config.torch_dtype
-        )
+        compressed_layer = self.compressed_layer_type(self.config, layer_idx).to(self.config.torch_dtype)
         compressed_layer.load_state_dict(layer.state_dict(), strict=True)
         return compressed_layer
 
@@ -221,7 +219,7 @@ class Phi3ModelAdapter(ModelAdapter):
     def get_embeddings(self) -> list[Module]:
         return [self.model.model.embed_tokens]
 
-    def get_pre_head_layernorm(self) -> type:
+    def get_pre_head_layernorm(self) -> Module:
         pre_head_layernorm = self.model.model.norm
         assert isinstance(pre_head_layernorm, self.original_layer_norm_type)
         return pre_head_layernorm
