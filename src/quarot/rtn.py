@@ -54,7 +54,7 @@ def calculate_scales_symmetric(
 
     # Calculate the scales
     max_int = max_int.to(device=weight.device)
-    weight_scales = max_weight / max_int
+    scale = max_weight / max_int
 
     if clip_weights:
         # Perform a grid search to find the best weight scales according to quantization error.
@@ -79,33 +79,45 @@ def calculate_scales_symmetric(
         # Compute quantization error and find the best scale for each weight
         quantization_errors = torch.sum(torch.abs(reconstructed_weights - weight).pow_(error_norm), 1)
         best_scale_indices = torch.argmin(quantization_errors, dim=-1)
-        weight_scales = torch.gather(candidate_scales.squeeze(1), 1, best_scale_indices.unsqueeze(1))
+        scale = torch.gather(candidate_scales.squeeze(1), 1, best_scale_indices.unsqueeze(1))
 
     weight = weight.to(device)
-    weight_scales = weight_scales.to(device)
+    scale = scale.to(device)
 
-    return weight_scales
+    return scale
 
 
 def calculate_scales_asymmetric(
-    weight: torch.Tensor, bits: int, perchannel: bool = True
+    weight: torch.Tensor, bits: int, perchannel: bool = True, clip_ratio: float = 1.0, groupsize: int | None = None
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Calculate the scales and offsets for asymmetric quantization a weight tensor to INT<bits> using the Round-to-Nearest scheme.
     """
     device = weight.device
     weight = weight.cuda()
+
+    if groupsize:
+        init_shape = weight.shape
+        weight = weight.reshape(-1, weight.shape[-2], weight.shape[-1] // groupsize, groupsize)
+
     min_weight, max_weight = calculate_min_max_weight(weight, symmetric=False, perchannel=perchannel)
+    min_weight *= clip_ratio
+    max_weight *= clip_ratio
+
     _, max_int = calculate_min_max_int(bits, symmetric=False)
 
     # Calculate scales and offsets
-    weight_scales = (max_weight - min_weight) / max_int
-    weight_offsets = torch.round(-min_weight / weight_scales)
+    scale = (max_weight - min_weight) / max_int
+    offset = torch.round(-min_weight / scale)
+
+    if groupsize:
+        scale = scale.repeat(1, 1, 1, groupsize).reshape(init_shape)
+        offset = offset.repeat(1, 1, 1, groupsize).reshape(init_shape)
 
     weight = weight.to(device)
-    weight_scales = weight_scales.to(device)
-    weight_offsets = weight_offsets.to(device)
-    return weight_scales, weight_offsets
+    scale = scale.to(device)
+    offset = offset.to(device)
+    return scale, offset
 
 
 def quantize_weight_rtn(
@@ -132,7 +144,12 @@ def quantize_weight_rtn(
 
 
 def quantize_module_rtn(
-    module: QuarotFP16Linear, bits: int, symmetric: bool = True, perchannel: bool = True, clip_weights: bool = True
+    module: QuarotFP16Linear,
+    bits: int,
+    symmetric: bool = True,
+    perchannel: bool = True,
+    clip_weights: bool = True,
+    groupsize: int | None = None,
 ) -> None:
     """
     Quantize the weights of a QuarotFP16Linear module to INT<bits> using the Round-to-Nearest scheme, storing the weights in torch.float16. The weight
@@ -141,18 +158,23 @@ def quantize_module_rtn(
     weight = module.weight
     offset = None
     if symmetric:
-        weight_scales = calculate_scales_symmetric(weight, bits, perchannel, clip_weights)
+        scale = calculate_scales_symmetric(weight, bits, perchannel, clip_weights)
     else:
-        weight_scales, offset = calculate_scales_asymmetric(weight, bits, perchannel)
+        scale, offset = calculate_scales_asymmetric(weight, bits, perchannel, groupsize)
 
-    quantized_weight = quantize_weight_rtn(weight, weight_scales, offset, bits, symmetric)
+    quantized_weight = quantize_weight_rtn(weight, scale, offset, bits, symmetric)
 
     module.weight.data = quantized_weight
-    module.weight_scales = weight_scales
+    module.weight_scales = scale
 
 
 def quantize_model_rtn(
-    model, bits: int, symmetric: bool = True, perchannel: bool = True, clip_weights: bool = True
+    model,
+    bits: int,
+    symmetric: bool = True,
+    perchannel: bool = True,
+    clip_weights: bool = True,
+    groupsize: int | None = None,
 ) -> None:
     """
     Quantize the weights of a model using the Round-to-Nearest scheme.
@@ -166,10 +188,10 @@ def quantize_model_rtn(
     """
     layers = model.model.layers
     for layer in tqdm(layers, desc="Quantizing layers", unit="layer"):
-        quantize_module_rtn(layer.mlp.up_proj, bits, symmetric, perchannel, clip_weights)
-        quantize_module_rtn(layer.mlp.gate_proj, bits, symmetric, perchannel, clip_weights)
-        quantize_module_rtn(layer.mlp.down_proj, bits, symmetric, perchannel, clip_weights)
-        quantize_module_rtn(layer.self_attn.q_proj, bits, symmetric, perchannel, clip_weights)
-        quantize_module_rtn(layer.self_attn.k_proj, bits, symmetric, perchannel, clip_weights)
-        quantize_module_rtn(layer.self_attn.v_proj, bits, symmetric, perchannel, clip_weights)
-        quantize_module_rtn(layer.self_attn.o_proj, bits, symmetric, perchannel, clip_weights)
+        quantize_module_rtn(layer.mlp.up_proj, bits, symmetric, perchannel, clip_weights, groupsize)
+        quantize_module_rtn(layer.mlp.gate_proj, bits, symmetric, perchannel, clip_weights, groupsize)
+        quantize_module_rtn(layer.mlp.down_proj, bits, symmetric, perchannel, clip_weights, groupsize)
+        quantize_module_rtn(layer.self_attn.q_proj, bits, symmetric, perchannel, clip_weights, groupsize)
+        quantize_module_rtn(layer.self_attn.k_proj, bits, symmetric, perchannel, clip_weights, groupsize)
+        quantize_module_rtn(layer.self_attn.v_proj, bits, symmetric, perchannel, clip_weights, groupsize)
+        quantize_module_rtn(layer.self_attn.o_proj, bits, symmetric, perchannel, clip_weights, groupsize)

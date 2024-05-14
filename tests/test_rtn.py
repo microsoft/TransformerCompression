@@ -42,8 +42,8 @@ def test_calculate_scales_symmetric(bits, weight, expected_scales):
     ],
 )
 def test_weight_rtn_symmetric(bits, weight, expected_quantized_weight):
-    scale = calculate_scales_symmetric(weight, bits, perchannel=True, clip_weights=False)
-    quantized_weight = quantize_weight_rtn(weight, scale, None, bits, symmetric=True)
+    scales = calculate_scales_symmetric(weight, bits, perchannel=True, clip_weights=False)
+    quantized_weight = quantize_weight_rtn(weight, scales, None, bits, symmetric=True)
     assert torch.allclose(quantized_weight, expected_quantized_weight)
 
 
@@ -78,5 +78,49 @@ def test_calculate_scales_asymmetric(bits, weight, expected_scales, expected_off
 )
 def test_weight_rtn_asymmetric(bits, weight, expected_quantized_weight):
     scale, offset = calculate_scales_asymmetric(weight, bits, perchannel=True)
+    quantized_weight = quantize_weight_rtn(weight, scale, offset, bits, symmetric=False)
+    assert torch.allclose(quantized_weight, expected_quantized_weight)
+
+
+@pytest.mark.quarot
+@pytest.mark.gpu
+@pytest.mark.parametrize(
+    "bits, groupsize, weight, expected_scales, expected_offsets",
+    [
+        (3, 3, torch.tensor([[-4.0, 2.0, 3.0]]), torch.tensor([[1.0, 1.0, 1.0]]), torch.tensor([4.0, 4.0, 4.0])),
+        (
+            3,
+            3,
+            torch.tensor([[-4.0, 2.0, 3.0], [-2.0, 1.1, 1.5]]),
+            torch.tensor([[1.0, 1.0, 1.0], [0.5, 0.5, 0.5]]),
+            torch.tensor([[4.0, 4.0, 4.0], [4.0, 4.0, 4.0]]),
+        ),
+        (
+            4,
+            2,
+            torch.tensor([[-5.0, 2.5, 3.0, 15.0]]),
+            torch.tensor([[0.5, 0.5, 1.0, 1.0]]),
+            torch.tensor([10.0, 10.0, 0.0, 0.0]),
+        ),
+    ],
+)
+def test_calculate_scales_asymmetric_groupwise(bits, groupsize, weight, expected_scales, expected_offsets):
+    scales, offsets = calculate_scales_asymmetric(weight, bits, perchannel=True, groupsize=groupsize)
+    assert torch.allclose(scales, expected_scales)
+    assert torch.allclose(offsets, expected_offsets)
+
+
+@pytest.mark.quarot
+@pytest.mark.gpu
+@pytest.mark.parametrize(
+    "bits, groupsize, weight, expected_quantized_weight",
+    [
+        (3, 3, torch.tensor([[-4.0, 2.0, 3.0]]), torch.tensor([[0.0, 6.0, 7.0]])),
+        (3, 3, torch.tensor([[-4.0, 2.0, 3.0], [-2.0, 1.1, 1.5]]), torch.tensor([[0.0, 6.0, 7.0], [0.0, 6.0, 7.0]])),
+        (4, 2, torch.tensor([[-5.0, 2.5, 3.0, 15.0]]), torch.tensor([[0.0, 15.0, 3.0, 15.0]])),
+    ],
+)
+def test_weight_rtn_asymmetric_groupwise(bits, groupsize, weight, expected_quantized_weight):
+    scale, offset = calculate_scales_asymmetric(weight, bits, perchannel=True, groupsize=groupsize)
     quantized_weight = quantize_weight_rtn(weight, scale, offset, bits, symmetric=False)
     assert torch.allclose(quantized_weight, expected_quantized_weight)
