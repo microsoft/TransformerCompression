@@ -210,7 +210,7 @@ class LlamaModelAdapter(ModelAdapter):
         return self.model.lm_head
 
     def post_init(self, tokenizer: PreTrainedTokenizerBase) -> None:
-        # Llama-2 doesn't have a pad token by default
+        # Llama-2 and Llama-3 don't have a pad tokens by default
         tokenizer.pad_token = tokenizer.eos_token
         self.config.pad_token_id = tokenizer.pad_token_id
 
@@ -224,7 +224,7 @@ class LlamaModelAdapter(ModelAdapter):
         local_files_only: bool = False,
         token: str | bool | None = None,
     ) -> ModelAdapter | None:
-        if not model_name.startswith("meta-llama/Llama-2"):
+        if not (model_name.startswith("meta-llama/Llama-2") or model_name.startswith("meta-llama/Meta-Llama-3")):
             return None
 
         model = LlamaForCausalLM.from_pretrained(
@@ -244,7 +244,7 @@ class LlamaModelAdapter(ModelAdapter):
         local_files_only: bool = False,
         token: str | bool | None = None,
     ) -> ModelAdapter | None:
-        if not model_name.startswith("meta-llama/Llama-2"):
+        if not (model_name.startswith("meta-llama/Llama-2") or model_name.startswith("meta-llama/Meta-Llama-3")):
             return None
 
         class UninitializedLlamaForCausalLM(LlamaForCausalLM):

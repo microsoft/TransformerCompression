@@ -44,7 +44,7 @@ def lora_target_map(model: str):
                     'lm_head',
                 ],
             }
-        case 'meta-llama/Llama-2-7b-hf' | 'meta-llama/Llama-2-13b-hf' | 'meta-llama/Llama-2-70b-hf':
+        case 'meta-llama/Llama-2-7b-hf' | 'meta-llama/Llama-2-13b-hf' | 'meta-llama/Llama-2-70b-hf' | 'meta-llama/Meta-Llama-3-8B' | 'meta-llama/Meta-Llama-3-8B-Instruct' | 'meta-llama/Meta-Llama-3-70B' | 'meta-llama/Meta-Llama-3-70B-Instruct':
             return {
                 'qkv_proj': ['k_proj', 'q_proj', 'v_proj'],
                 'attn_head': ['k_proj', 'q_proj', 'v_proj', 'o_proj'],
