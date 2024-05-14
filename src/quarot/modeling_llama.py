@@ -19,7 +19,7 @@ from transformers.models.llama.modeling_llama import (
 from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
 
 from quarot.nn import OnlineHadamard, QuarotFP16Linear
-from quarot.nn.quantizer import ActQuantizer, DummyActQuantizer
+from quarot.nn.quantizer import ActQuantizer, DummyActQuantizer, KVQuantizerDequantizer
 from slicegpt.modules import RMSN
 
 ALL_LAYERNORM_LAYERS.append(RMSN)
@@ -71,7 +71,21 @@ class QuarotLlamaMLP(LlamaMLP):
 
 
 class QuarotFP16LlamaFlashAttention2(LlamaFlashAttention2):
-    def __init__(self, config, act_bits: int = 16, act_clip_ratio: float = 1.0, online_had=False, *args, **kwargs):
+    def __init__(
+        self,
+        config,
+        act_bits: int = 16,
+        act_clip_ratio: float = 1.0,
+        k_bits: int = 16,
+        k_clip_ratio: float = 1.0,
+        k_groupsize: int | None = None,
+        v_bits: int = 16,
+        v_clip_ratio: float = 1.0,
+        v_groupsize: int | None = None,
+        online_had=False,
+        *args,
+        **kwargs,
+    ):
         super().__init__(config, *args, **kwargs)
         self.online_had = online_had
         self.q_proj = QuarotFP16Linear.like(self.q_proj)
@@ -79,12 +93,29 @@ class QuarotFP16LlamaFlashAttention2(LlamaFlashAttention2):
         self.v_proj = QuarotFP16Linear.like(self.v_proj)
         self.o_proj = QuarotFP16Linear.like(self.o_proj)
         self.online_o_proj_hadamard = OnlineHadamard(self.num_heads)
+        self.online_k_hadamard = OnlineHadamard(self.head_dim)
+        self.online_q_hadamard = OnlineHadamard(self.head_dim)
+
         if act_bits < 16:
             self.input_quantizer = ActQuantizer(act_bits, symmetric=True, clip_ratio=act_clip_ratio)
             self.o_proj_input_quantizer = ActQuantizer(act_bits, symmetric=True, clip_ratio=act_clip_ratio)
         else:
             self.input_quantizer = DummyActQuantizer()
             self.o_proj_input_quantizer = DummyActQuantizer()
+
+        if k_bits < 16:
+            self.k_quantizer = KVQuantizerDequantizer(
+                k_bits, symmetric=False, clip_ratio=k_clip_ratio, groupsize=k_groupsize
+            )
+        else:
+            self.k_quantizer = lambda x: x
+
+        if v_bits < 16:
+            self.v_quantizer = KVQuantizerDequantizer(
+                v_bits, symmetric=False, clip_ratio=v_clip_ratio, groupsize=v_groupsize
+            )
+        else:
+            self.v_quantizer = lambda x: x
 
     def forward(
         self,
@@ -121,6 +152,15 @@ class QuarotFP16LlamaFlashAttention2(LlamaFlashAttention2):
         query_states, key_states = apply_rotary_pos_emb(
             query_states, key_states, cos, sin, position_ids, unsqueeze_dim=2
         )
+
+        # QuaRot: apply online hadamard to queries and keys
+        if self.online_had:
+            query_states = self.online_q_hadamard(query_states)
+            key_states = self.online_k_hadamard(key_states)
+
+        # QuaRot: quantize and dequantize keys and values
+        key_states = self.k_quantizer(key_states)
+        value_states = self.v_quantizer(value_states)
 
         past_key_value = getattr(self, "past_key_value", past_key_value)
         assert past_key_value is not None
@@ -165,6 +205,12 @@ class QuarotLlamaForCausalLM(LlamaForCausalLM):
         rms_norm: bool = False,
         act_bits: int = 16,
         act_clip_ratio: float = 1.0,
+        k_bits: int = 16,
+        k_clip_ratio: float = 1.0,
+        k_groupsize: int | None = None,
+        v_bits: int = 16,
+        v_clip_ratio: float = 1.0,
+        v_groupsize: int | None = None,
         config: QuarotLlamaConfig = None,
     ) -> None:
         """
@@ -184,6 +230,12 @@ class QuarotLlamaForCausalLM(LlamaForCausalLM):
                 config=config,
                 act_bits=act_bits,
                 act_clip_ratio=act_clip_ratio,
+                k_bits=k_bits,
+                k_clip_ratio=k_clip_ratio,
+                k_groupsize=k_groupsize,
+                v_bits=v_bits,
+                v_clip_ratio=v_clip_ratio,
+                v_groupsize=v_groupsize,
                 online_had=online_had_attn,
                 layer_idx=layer_idx,
             )

@@ -111,12 +111,50 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
         help='Clip ratio for activation quantization: new_max = max * clip_ratio.',
     )
 
+    # KV Quantization Arguments
+    parser.add_argument(
+        '--k-bits',
+        type=int,
+        default=16,
+        help='Number of bits to quantize the keys to.',
+    )
+    parser.add_argument(
+        '--k-clip-ratio',
+        type=float,
+        default=1.0,
+        help='Clip ratio for keys quantization: new_max = max * clip_ratio.',
+    )
+    parser.add_argument(
+        '--k-groupsize',
+        type=int,
+        default=None,
+        help='Group size for groupwise keys quantization.',
+    )
+    parser.add_argument(
+        '--v-bits',
+        type=int,
+        default=16,
+        help='Number of bits to quantize the values to.',
+    )
+    parser.add_argument(
+        '--v-clip-ratio',
+        type=float,
+        default=1.0,
+        help='Clip ratio for values quantization: new_max = max * clip_ratio.',
+    )
+    parser.add_argument(
+        '--v-groupsize',
+        type=int,
+        default=None,
+        help='Group size for groupwise values quantization.',
+    )
+
     # LM Eval Arguments
     parser.add_argument("--lm-eval", action="store_true", help="Evaluate the model on LM Eval tasks.")
     parser.add_argument(
         '--tasks',
         nargs='+',
-        default=["piqa", "hellaswag", "arc_easy", "arc_challenge", "winogrande", "lambada"],
+        default=["piqa", "hellaswag", "arc_easy", "arc_challenge", "winogrande", "lambada_openai"],
     )
     parser.add_argument(
         '--lm-eval-batch-size', type=int, default=128, help='Batch size for evaluating with lm eval harness.'
@@ -195,6 +233,12 @@ def quarot_main(args: argparse.Namespace) -> None:
             rms_norm=rms_norm,
             act_bits=args.a_bits,
             act_clip_ratio=args.a_clip_ratio,
+            k_bits=args.k_bits,
+            k_clip_ratio=args.k_clip_ratio,
+            k_groupsize=args.k_groupsize,
+            v_bits=args.v_bits,
+            v_clip_ratio=args.v_clip_ratio,
+            v_groupsize=args.v_groupsize,
             config=model_config,
         )
 
@@ -214,7 +258,7 @@ def quarot_main(args: argparse.Namespace) -> None:
     if not args.lm_eval:
         return
 
-    hflm = HFLM(pretrained=model, tokenizer=tokenizer, batch_size=args.lm_eval_batch_size)
+    hflm = HFLM(pretrained=quarot_llama, tokenizer=tokenizer, batch_size=args.lm_eval_batch_size)
 
     initialize_tasks()
     task_names = lm_eval_utils.pattern_match(args.tasks, ALL_TASKS)
