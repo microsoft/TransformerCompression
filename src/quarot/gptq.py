@@ -138,12 +138,9 @@ def quantize_model_gptq(
     apply_mask: bool = True,
 ) -> None:
     """
-    #TODO
-
-    This method works for models where the MLP block is computed after the attention block.
+    TODO
     """
     model_adapter.model.eval()
-    dtype = next(iter(model_adapter.model.parameters())).dtype
 
     inps, args, kwargs, ignore_masks = [], [], [], []
     for batch in dataloader:
@@ -175,23 +172,38 @@ def quantize_model_gptq(
         W_down_proj = layer_adapter.get_mlp_output().weight.data
 
         # 4 calls to quantizer
-        Q_qkv, scale_qkv, offset_qkv = quantize_weight_gptq(W_qkv, H_qkv)
-        Q_o_proj, scale_o_proj, offset_o_proj = quantize_weight_gptq(W_o_proj, H_o_proj)
-        Q_upgate, scale_upgate, offset_upgate = quantize_weight_gptq(W_upgate, H_upgate)
-        Q_down_proj, scale_down_proj, offset_down_proj = quantize_weight_gptq(W_down_proj, H_down_proj)
+        Q_qkv, scale_qkv = quantize_weight_gptq(W_qkv, H_qkv)
+        Q_o_proj, scale_o_proj = quantize_weight_gptq(W_o_proj, H_o_proj)
+        Q_upgate, scale_upgate = quantize_weight_gptq(W_upgate, H_upgate)
+        Q_down_proj, scale_down_proj = quantize_weight_gptq(W_down_proj, H_down_proj)
 
-        # Unconcatenate the qkv and upgate quantized weights, scales and offsets
+        # set the quantized qkv weights and scales
         for module in layer_adapter.get_attn_inputs():
             out_features = module.weight.data.shape[0]
             module.weight.data = Q_qkv[:out_features]
             module.weight_scales = scale_qkv[:out_features]
-            module.weight_offsets = offset_qkv[:out_features]
 
             Q_qkv = Q_qkv[out_features:]
             scale_qkv = scale_qkv[out_features:]
-            offset_qkv = offset_qkv[out_features:]
+
+        # set the quantized o_proj weights and scales
+        layer_adapter.get_attn_output().weight.data = Q_o_proj
+        layer_adapter.get_attn_output().weight_scales = scale_o_proj
+
+        # set the quantized upgate weights and scales
+        for module in layer_adapter.get_mlp_inputs():
+            out_features = module.weight.data.shape[0]
+            module.weight.data = Q_upgate[:out_features]
+            module.weight_scales = scale_upgate[:out_features]
+
+            Q_upgate = Q_upgate[out_features:]
+            scale_upgate = scale_upgate[out_features:]
+
+        # set the quantized down_proj weights and scales
+        layer_adapter.get_mlp_output().weight.data = Q_down_proj
+        layer_adapter.get_mlp_output().weight_scales = scale_down_proj
 
         # inps = outs
-        # cleanup_memory() ?
+        # cleanup_memory()
 
     logging.info("Quantizing model with GPTQ done.")
