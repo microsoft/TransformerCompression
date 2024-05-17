@@ -27,7 +27,7 @@ dependencies = [
     "numpy",
     "torch",
     "tqdm",
-    "transformers@git+https://github.com/huggingface/transformers.git@65ea1904ff5dcd53f9ee97c40d2552398cecb572",
+    "transformers==4.41.0",
 ]
 
 [project.optional-dependencies]
