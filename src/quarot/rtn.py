@@ -119,7 +119,7 @@ def calculate_scales(
 
         else:
             best_quantization_error = torch.full(
-                (weight.shape[0],), float("inf"), device=weight.device, dtype=torch.float16
+                (weight.shape[0],), float("inf"), device=weight.device, dtype=weight.dtype
             )
             for i in range(n_steps):
                 shrink_factor = shrink_factors[i]
@@ -177,8 +177,8 @@ def quantize_weight_rtn(
     offset = offset.cuda() if offset is not None else None
 
     min_int, max_int = calculate_min_max_int(bits, symmetric)
-    min_int = min_int.to(device=weight.device)
-    max_int = max_int.to(device=weight.device)
+    min_int = min_int.to(device=weight.device, dtype=weight.dtype)
+    max_int = max_int.to(device=weight.device, dtype=weight.dtype)
     if symmetric:
         quantized_weight = torch.clamp(torch.round(weight / scale), min_int, max_int)
     else:

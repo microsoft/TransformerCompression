@@ -25,11 +25,14 @@ def quantize_weight_gptq(
     """
     num_features, num_columns = W.shape
     orig_dev = W.device
-    W = W.cuda()
+    orig_dtype = W.dtype
+    W = W.to('cuda').float()
     H = H.cuda()
 
     if groupsize is None:
         scale, offset = calculate_scales(W, bits, symmetric=symmetric, clip_weights=clip_weights, vectorized=False)
+        scale = scale.float()
+        offset = offset.float() if offset is not None else None
 
     # find dead weights and set them to zero, and their Hess value to 1
     dead = torch.diag(H) == 0
@@ -42,14 +45,14 @@ def quantize_weight_gptq(
     # calculate the inverse layer Hessian (Cholesky form)
     L = torch.linalg.cholesky(H)
     H_inv = torch.cholesky_inverse(L)
-    L_inv_transpose = torch.linalg.cholesky(H_inv, upper=True).to(torch.float16)
+    L_inv_transpose = torch.linalg.cholesky(H_inv, upper=True)
 
     Q = torch.zeros_like(W)
     for block_start_idx in range(0, num_columns, max_blocksize):
         block_end_idx = min(block_start_idx + max_blocksize, num_columns)
         blocksize = block_end_idx - block_start_idx
 
-        Err_block = torch.zeros((W.shape[0], blocksize), dtype=torch.float16).cuda()
+        Err_block = torch.zeros((W.shape[0], blocksize)).cuda()
 
         for i in range(blocksize):
             cur_idx = block_start_idx + i
@@ -62,12 +65,20 @@ def quantize_weight_gptq(
                     clip_weights=clip_weights,
                     vectorized=False,
                 )
+                scale = scale.float()
+                offset = offset.float() if offset is not None else None
 
             # store the int-quantized weight column
             Q[:, cur_idx] = quantize_weight_rtn(W[:, cur_idx : cur_idx + 1], scale, offset, bits).flatten()
 
+            # calculate the dequantized weight
+            if symmetric:
+                W_dequantized = Q[:, cur_idx] * scale.flatten()
+            else:
+                W_dequantized = (Q[:, cur_idx] - offset.flatten()) * scale.flatten()
+
             # calculate quantization error (between original and dequantized weight column)
-            Err_block[:, i] = (W[:, cur_idx] - Q[:, cur_idx] * scale.flatten()) / L_inv_transpose[cur_idx, cur_idx]
+            Err_block[:, i] = (W[:, cur_idx] - W_dequantized) / L_inv_transpose[cur_idx, cur_idx]
 
             # update the rest of the weights in the block
             W[:, cur_idx:block_end_idx] -= (
@@ -77,33 +88,37 @@ def quantize_weight_gptq(
         # update the rest of the weights in the tensor
         W[:, block_end_idx:] -= Err_block.matmul(L_inv_transpose[block_start_idx:block_end_idx, block_end_idx:])
 
-    Q = Q.to(orig_dev)
-    scale = scale.to(orig_dev)
-    offset = offset.to(orig_dev) if offset is not None else None
+    if torch.any(torch.isnan(W)):
+        print('NaN in weights')
+        print(bits, scale, offset)
+        raise ValueError('NaN in weights')
+
+    Q = Q.to(orig_dev, dtype=orig_dtype)
+    scale = scale.to(orig_dev, dtype=orig_dtype)
+    offset = offset.to(orig_dev, dtype=orig_dtype) if offset is not None else None
     return Q, scale, offset
 
 
-@torch.no_grad()
 def construct_hessian(X: list[torch.Tensor], ignore_masks: list[torch.Tensor] | None = None) -> torch.Tensor:
     """
     TODO.
     """
     # Run GC and cleanup GPU memory
     cleanup_memory()
-    device = 'cuda'
 
     H = None
     for idx, X_batch in enumerate(X):
         if ignore_masks:
             X_batch[ignore_masks[idx] == 0] = 0
 
-        X_batch = X_batch.double().to(device=device)
+        X_batch = X_batch.to('cuda', dtype=torch.float32)
         H_batch = torch.sum(X_batch.mT @ X_batch, dim=0)  # sum over the batch dimension.
         H = H_batch if H is None else H + H_batch
 
     return H
 
 
+@torch.no_grad()
 def get_signals(
     layer_adapter: LayerAdapter, layer_args: list[tuple], layer_kwargs: list[dict[str, Any]]
 ) -> tuple[list[torch.Tensor], list[torch.Tensor], list[torch.Tensor], list[torch.Tensor], list[torch.Tensor]]:
@@ -118,7 +133,7 @@ def get_signals(
 
     def make_hook(storage_list):
         def hook_fn(_, args: tuple, _output: Any) -> None:
-            storage_list.append(args[0].cpu())
+            storage_list.append(args[0])
 
         return hook_fn
 
@@ -136,7 +151,6 @@ def get_signals(
         out = layer_adapter.layer(*layer_args_batch, **layer_kwargs_batch)
         if isinstance(out, tuple):
             out = out[layer_adapter.hidden_states_output_position]
-        out = out.cpu()
         outputs.append(out)
 
     [h.remove() for h in hooks]
@@ -186,8 +200,10 @@ def quantize_model_gptq(
         # 4 calls to quantizer
         Q_qkv, scale_qkv, offset_qkv = quantize_weight_gptq(W_qkv, H_qkv, bits, symmetric=symmetric)
         Q_o_proj, scale_o_proj, offset_o_proj = quantize_weight_gptq(W_o_proj, H_o_proj, bits, symmetric=symmetric)
-        Q_upgate, scale_upgate = quantize_weight_gptq(W_upgate, H_upgate, bits, symmetric=symmetric)
-        Q_down_proj, scale_down_proj = quantize_weight_gptq(W_down_proj, H_down_proj, bits, symmetric=symmetric)
+        Q_upgate, scale_upgate, offset_upgate = quantize_weight_gptq(W_upgate, H_upgate, bits, symmetric=symmetric)
+        Q_down_proj, scale_down_proj, offset_down_proj = quantize_weight_gptq(
+            W_down_proj, H_down_proj, bits, symmetric=symmetric
+        )
 
         # set the quantized qkv weights and scales
         for module in layer_adapter.get_attention_inputs():
@@ -214,31 +230,42 @@ def quantize_model_gptq(
             # TODO: offsets!
         else:
             if symmetric:
-                layer_adapter.get_attention_output().weight.data *= scale_o_proj
+                layer_adapter.get_attention_output().weight.data = Q_o_proj * scale_o_proj
             else:
                 layer_adapter.get_attention_output().weight.data = (Q_o_proj - offset_o_proj) * scale_o_proj
 
         # set the quantized upgate weights and scales
         for module in layer_adapter.get_mlp_inputs():
             out_features = module.weight.data.shape[0]
-            module.weight.data = Q_upgate[:out_features]
             if hasattr(module, "weight_scales"):
+                module.weight.data = Q_upgate[:out_features]
                 module.weight_scales = scale_upgate[:out_features]
             else:
-                module.weight.data *= scale_upgate[:out_features]
+                if symmetric:
+                    module.weight.data = Q_upgate[:out_features] * scale_upgate[:out_features]
+                else:
+                    module.weight.data = (Q_upgate[:out_features] - offset_upgate[:out_features]) * scale_upgate[
+                        :out_features
+                    ]
 
             Q_upgate = Q_upgate[out_features:]
             scale_upgate = scale_upgate[out_features:]
+            if not symmetric:
+                offset_upgate = offset_upgate[out_features:]
 
         # set the quantized down_proj weights and scales
-        layer_adapter.get_mlp_output().weight.data = Q_down_proj
         if hasattr(layer_adapter.get_mlp_output(), "weight_scales"):
+            layer_adapter.get_mlp_output().weight.data = Q_down_proj
             layer_adapter.get_mlp_output().weight_scales = scale_down_proj
         else:
-            layer_adapter.get_mlp_output().weight.data *= scale_down_proj
+            if symmetric:
+                layer_adapter.get_mlp_output().weight.data = Q_down_proj * scale_down_proj
+            else:
+                layer_adapter.get_mlp_output().weight.data = (Q_down_proj - offset_down_proj) * scale_down_proj
 
         # inps = outs
-        # cleanup_memory()
+        layer_adapter.layer.to('cpu')
+        cleanup_memory()
         # break
 
     logging.info("Quantizing model with GPTQ done.")

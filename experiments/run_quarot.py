@@ -14,7 +14,7 @@ from lm_eval.api.registry import ALL_TASKS
 from lm_eval.models.huggingface import HFLM
 from lm_eval.tasks import initialize_tasks
 
-from quarot import hf_utils, rotation, rtn
+from quarot import gptq, hf_utils, rotation, rtn
 from quarot.modeling_llama import QuarotLlamaConfig, QuarotLlamaForCausalLM
 from slicegpt import data_utils, gpu_utils, layernorm_fusion, utils
 from slicegpt.config import config
@@ -89,6 +89,11 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
         '--w-rtn',
         action="store_true",
         help='Quantize weights using RTN.',
+    )
+    parser.add_argument(
+        '--w-gptq',
+        action="store_true",
+        help='Quantize weights using GPTQ.',
     )
     parser.add_argument(
         '--w-bits',
@@ -186,12 +191,11 @@ def process_quarot_args(args):
     config.dtype = torch.float16
 
 
+@torch.no_grad()
 def quarot_main(args: argparse.Namespace) -> None:
     logging.info("Running QuaRot experiment.")
     logging.info(f"PyTorch device: {config.device}")
     logging.info(f"Number of available cuda devices: {torch.cuda.device_count()}")
-
-    torch.set_default_dtype(config.dtype)
 
     try:
         wandb.init(project=args.wandb_project, config=args, mode='disabled' if args.no_wandb else None)
@@ -252,6 +256,8 @@ def quarot_main(args: argparse.Namespace) -> None:
             config=model_config,
         )
 
+        quarot_llama = quarot_llama.to(config.dtype)
+
         # load the rotated weights into the quarot model
         quarot_llama.load_state_dict(model_adapter.model.state_dict(), strict=False)
 
@@ -263,6 +269,14 @@ def quarot_main(args: argparse.Namespace) -> None:
             symmetric=False if args.w_asym else True,
             vectorized=True if args.w_clip_vec else False,
         )
+        logging.info("Quantization complete.")
+    elif args.w_gptq:
+        logging.info(f"Quantizing weights to INT{args.w_bits} using GPTQ.")
+        train_loader = data_utils.prepare_dataloader(
+            dataset=dataset["train"], tokenizer=tokenizer, batch_size=args.ppl_eval_batch_size
+        )
+        assert not args.w_asym, "Asymmetric quantization is not yet supported with QuaRot-GPTQ."
+        gptq.quantize_model_gptq(model_adapter, train_loader, bits=args.w_bits, symmetric=True)
         logging.info("Quantization complete.")
 
     quarot_llama.to(config.device)
