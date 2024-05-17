@@ -5,7 +5,7 @@ import torch
 from tqdm import tqdm
 
 from quarot.model_adapter import LayerAdapter, ModelAdapter
-from quarot.rtn import calculate_scales_symmetric, quantize_weight_rtn
+from quarot.rtn import calculate_scales, quantize_weight_rtn
 from slicegpt.rotate import get_layer0_inputs
 from slicegpt.utils import cleanup_memory, map_tensors
 
@@ -14,20 +14,22 @@ def quantize_weight_gptq(
     W: torch.Tensor,
     H: torch.Tensor,
     bits: int,
+    symmetric: bool = True,
     max_blocksize: int = 128,
     percdamp: float = 0.01,
     groupsize: int | None = None,
     clip_weights: bool = True,
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]:
     """
     TODO.
     """
     num_features, num_columns = W.shape
+    orig_dev = W.device
     W = W.cuda()
     H = H.cuda()
 
     if groupsize is None:
-        scale = calculate_scales_symmetric(W, bits, clip_weights=clip_weights, vectorized=False)
+        scale, offset = calculate_scales(W, bits, symmetric=symmetric, clip_weights=clip_weights, vectorized=False)
 
     # find dead weights and set them to zero, and their Hess value to 1
     dead = torch.diag(H) == 0
@@ -53,11 +55,16 @@ def quantize_weight_gptq(
             cur_idx = block_start_idx + i
 
             if groupsize is not None and cur_idx % groupsize == 0:
-                raise NotImplementedError("Symmetric groupsize quant is not implemented yet.")
-                # scale = calculate_scales_symmetric(W[:, cur_idx:cur_idx + groupsize], bits)
+                scale, offset = calculate_scales(
+                    W[:, cur_idx : cur_idx + groupsize],
+                    bits,
+                    symmetric=symmetric,
+                    clip_weights=clip_weights,
+                    vectorized=False,
+                )
 
             # store the int-quantized weight column
-            Q[:, cur_idx] = quantize_weight_rtn(W[:, cur_idx : cur_idx + 1], scale, None, bits).flatten()
+            Q[:, cur_idx] = quantize_weight_rtn(W[:, cur_idx : cur_idx + 1], scale, offset, bits).flatten()
 
             # calculate quantization error (between original and dequantized weight column)
             Err_block[:, i] = (W[:, cur_idx] - Q[:, cur_idx] * scale.flatten()) / L_inv_transpose[cur_idx, cur_idx]
@@ -70,7 +77,10 @@ def quantize_weight_gptq(
         # update the rest of the weights in the tensor
         W[:, block_end_idx:] -= Err_block.matmul(L_inv_transpose[block_start_idx:block_end_idx, block_end_idx:])
 
-    return Q, scale
+    Q = Q.to(orig_dev)
+    scale = scale.to(orig_dev)
+    offset = offset.to(orig_dev) if offset is not None else None
+    return Q, scale, offset
 
 
 @torch.no_grad()
