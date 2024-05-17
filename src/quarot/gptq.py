@@ -5,6 +5,7 @@ import torch
 from tqdm import tqdm
 
 from quarot.model_adapter import LayerAdapter, ModelAdapter
+from quarot.quant_utils import PackedQuantizedTensor
 from quarot.rtn import calculate_scales, quantize_weight_rtn
 from slicegpt.rotate import get_layer0_inputs
 from slicegpt.utils import cleanup_memory, map_tensors
@@ -108,6 +109,8 @@ def construct_hessian(X: list[torch.Tensor], ignore_masks: list[torch.Tensor] | 
 
     H = None
     for idx, X_batch in enumerate(X):
+        if isinstance(X_batch, PackedQuantizedTensor):
+            X_batch = X_batch.quantized_x
         if ignore_masks:
             X_batch[ignore_masks[idx] == 0] = 0
 
@@ -163,7 +166,7 @@ def quantize_model_gptq(
     dataloader: torch.utils.data.DataLoader[torch.Tensor],
     bits: int,
     symmetric: bool = True,
-    apply_mask: bool = True,
+    apply_mask: bool = False,
 ) -> None:
     """
     TODO
@@ -211,7 +214,6 @@ def quantize_model_gptq(
             if hasattr(module, "weight_scales"):
                 module.weight.data = Q_qkv[:out_features]
                 module.weight_scales = scale_qkv[:out_features]
-                # TODO: offsets!
             else:
                 if symmetric:
                     module.weight.data = Q_qkv[:out_features] * scale_qkv[:out_features]
@@ -227,7 +229,6 @@ def quantize_model_gptq(
         if hasattr(layer_adapter.get_attention_output(), "weight_scales"):
             layer_adapter.get_attention_output().weight.data = Q_o_proj
             layer_adapter.get_attention_output().weight_scales = scale_o_proj
-            # TODO: offsets!
         else:
             if symmetric:
                 layer_adapter.get_attention_output().weight.data = Q_o_proj * scale_o_proj

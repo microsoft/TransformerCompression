@@ -15,6 +15,7 @@ from lm_eval.models.huggingface import HFLM
 from lm_eval.tasks import initialize_tasks
 
 from quarot import gptq, hf_utils, rotation, rtn
+from quarot.adapters.llama_adapter import LlamaModelAdapter
 from quarot.modeling_llama import QuarotLlamaConfig, QuarotLlamaForCausalLM
 from slicegpt import data_utils, gpu_utils, layernorm_fusion, utils
 from slicegpt.config import config
@@ -276,7 +277,10 @@ def quarot_main(args: argparse.Namespace) -> None:
             dataset=dataset["train"], tokenizer=tokenizer, batch_size=args.ppl_eval_batch_size
         )
         assert not args.w_asym, "Asymmetric quantization is not yet supported with QuaRot-GPTQ."
-        gptq.quantize_model_gptq(model_adapter, train_loader, bits=args.w_bits, symmetric=True)
+
+        quarot_model_adapter = LlamaModelAdapter(quarot_llama)
+        with torch.no_grad():
+            gptq.quantize_model_gptq(quarot_model_adapter, train_loader, bits=args.w_bits, symmetric=True)
         logging.info("Quantization complete.")
 
     quarot_llama.to(config.device)
