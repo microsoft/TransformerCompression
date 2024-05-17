@@ -76,8 +76,8 @@ def calculate_scales(
 
     if clip_weights:
         # Perform a grid search to find the best weight scales according to quantization error.
-        max_shrink_factor = 0.20
-        n_steps = int(10 * (max_shrink_factor)) + 1
+        max_shrink_factor = 0.80
+        n_steps = int(100 * (max_shrink_factor)) + 1
         error_norm = 2.4
         shrink_factors = torch.linspace(1.0, 1 - max_shrink_factor, n_steps).to(weight.device)
 
