@@ -148,6 +148,7 @@ def quantize_model_gptq(
     model_adapter: ModelAdapter,
     dataloader: torch.utils.data.DataLoader[torch.Tensor],
     bits: int,
+    symmetric: bool = True,
     apply_mask: bool = True,
 ) -> None:
     """
@@ -183,29 +184,39 @@ def quantize_model_gptq(
         W_down_proj = layer_adapter.get_mlp_output().weight.data
 
         # 4 calls to quantizer
-        Q_qkv, scale_qkv = quantize_weight_gptq(W_qkv, H_qkv, bits)
-        Q_o_proj, scale_o_proj = quantize_weight_gptq(W_o_proj, H_o_proj, bits)
-        Q_upgate, scale_upgate = quantize_weight_gptq(W_upgate, H_upgate, bits)
-        Q_down_proj, scale_down_proj = quantize_weight_gptq(W_down_proj, H_down_proj, bits)
+        Q_qkv, scale_qkv, offset_qkv = quantize_weight_gptq(W_qkv, H_qkv, bits, symmetric=symmetric)
+        Q_o_proj, scale_o_proj, offset_o_proj = quantize_weight_gptq(W_o_proj, H_o_proj, bits, symmetric=symmetric)
+        Q_upgate, scale_upgate = quantize_weight_gptq(W_upgate, H_upgate, bits, symmetric=symmetric)
+        Q_down_proj, scale_down_proj = quantize_weight_gptq(W_down_proj, H_down_proj, bits, symmetric=symmetric)
 
         # set the quantized qkv weights and scales
         for module in layer_adapter.get_attention_inputs():
             out_features = module.weight.data.shape[0]
-            module.weight.data = Q_qkv[:out_features]
             if hasattr(module, "weight_scales"):
+                module.weight.data = Q_qkv[:out_features]
                 module.weight_scales = scale_qkv[:out_features]
+                # TODO: offsets!
             else:
-                module.weight.data *= scale_qkv[:out_features]
+                if symmetric:
+                    module.weight.data = Q_qkv[:out_features] * scale_qkv[:out_features]
+                else:
+                    module.weight.data = (Q_qkv[:out_features] - offset_qkv[:out_features]) * scale_qkv[:out_features]
 
             Q_qkv = Q_qkv[out_features:]
             scale_qkv = scale_qkv[out_features:]
+            if not symmetric:
+                offset_qkv = offset_qkv[out_features:]
 
         # set the quantized o_proj weights and scales
-        layer_adapter.get_attention_output().weight.data = Q_o_proj
         if hasattr(layer_adapter.get_attention_output(), "weight_scales"):
+            layer_adapter.get_attention_output().weight.data = Q_o_proj
             layer_adapter.get_attention_output().weight_scales = scale_o_proj
+            # TODO: offsets!
         else:
-            layer_adapter.get_attention_output().weight.data *= scale_o_proj
+            if symmetric:
+                layer_adapter.get_attention_output().weight.data *= scale_o_proj
+            else:
+                layer_adapter.get_attention_output().weight.data = (Q_o_proj - offset_o_proj) * scale_o_proj
 
         # set the quantized upgate weights and scales
         for module in layer_adapter.get_mlp_inputs():

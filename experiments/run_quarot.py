@@ -96,6 +96,16 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
         default=16,
         help='Number of bits to quantize the weights to.',
     )
+    parser.add_argument(
+        '--w-clip-vec',
+        action="store_true",
+        help='Vectorized weight clipping ratio search.',
+    )
+    parser.add_argument(
+        '--w-asym',
+        action="store_true",
+        help='Asymmetric weight quantization (else symmetric by default).',
+    )
 
     # Activation Quantization Arguments
     parser.add_argument(
@@ -247,7 +257,12 @@ def quarot_main(args: argparse.Namespace) -> None:
 
     if args.w_rtn:
         logging.info(f"Quantizing weights to INT{args.w_bits} using RTN.")
-        rtn.quantize_model_rtn(quarot_llama, bits=args.w_bits)
+        rtn.quantize_model_rtn(
+            quarot_llama,
+            bits=args.w_bits,
+            symmetric=False if args.w_asym else True,
+            vectorized=True if args.w_clip_vec else False,
+        )
         logging.info("Quantization complete.")
 
     quarot_llama.to(config.device)

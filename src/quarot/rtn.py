@@ -44,7 +44,6 @@ def calculate_scales(
     weight: torch.Tensor,
     bits: int,
     symmetric: bool,
-    perchannel: bool = True,
     clip_weights: bool = False,
     vectorized: bool = True,
     clip_ratio: float = 1.0,
@@ -60,7 +59,7 @@ def calculate_scales(
         init_shape = weight.shape
         weight = weight.reshape(-1, weight.shape[-2], weight.shape[-1] // groupsize, groupsize)
 
-    min_weight, max_weight = calculate_min_max_weight(weight, symmetric=symmetric, perchannel=perchannel)
+    min_weight, max_weight = calculate_min_max_weight(weight, symmetric=symmetric)
     min_weight *= clip_ratio
     max_weight *= clip_ratio
 
@@ -195,6 +194,7 @@ def quantize_module_rtn(
     bits: int,
     symmetric: bool = True,
     clip_weights: bool = True,
+    vectorized: bool = True,
     groupsize: int | None = None,
 ) -> None:
     """
@@ -203,7 +203,7 @@ def quantize_module_rtn(
     """
     weight = module.weight
 
-    scale, offset = calculate_scales(weight, bits, symmetric, clip_weights, vectorized=True, groupsize=groupsize)
+    scale, offset = calculate_scales(weight, bits, symmetric, clip_weights, vectorized=vectorized, groupsize=groupsize)
     quantized_weight = quantize_weight_rtn(weight, scale, offset, bits, symmetric)
 
     module.weight.data = quantized_weight
@@ -215,6 +215,7 @@ def quantize_model_rtn(
     bits: int,
     symmetric: bool = True,
     clip_weights: bool = True,
+    vectorized: bool = True,
     groupsize: int | None = None,
 ) -> None:
     """
@@ -228,10 +229,10 @@ def quantize_model_rtn(
     """
     layers = model.model.layers
     for layer in tqdm(layers, desc="Quantizing layers", unit="layer"):
-        quantize_module_rtn(layer.mlp.up_proj, bits, symmetric, clip_weights, groupsize)
-        quantize_module_rtn(layer.mlp.gate_proj, bits, symmetric, clip_weights, groupsize)
-        quantize_module_rtn(layer.mlp.down_proj, bits, symmetric, clip_weights, groupsize)
-        quantize_module_rtn(layer.self_attn.q_proj, bits, symmetric, clip_weights, groupsize)
-        quantize_module_rtn(layer.self_attn.k_proj, bits, symmetric, clip_weights, groupsize)
-        quantize_module_rtn(layer.self_attn.v_proj, bits, symmetric, clip_weights, groupsize)
-        quantize_module_rtn(layer.self_attn.o_proj, bits, symmetric, clip_weights, groupsize)
+        quantize_module_rtn(layer.mlp.up_proj, bits, symmetric, clip_weights, vectorized, groupsize)
+        quantize_module_rtn(layer.mlp.gate_proj, bits, symmetric, clip_weights, vectorized, groupsize)
+        quantize_module_rtn(layer.mlp.down_proj, bits, symmetric, clip_weights, vectorized, groupsize)
+        quantize_module_rtn(layer.self_attn.q_proj, bits, symmetric, clip_weights, vectorized, groupsize)
+        quantize_module_rtn(layer.self_attn.k_proj, bits, symmetric, clip_weights, vectorized, groupsize)
+        quantize_module_rtn(layer.self_attn.v_proj, bits, symmetric, clip_weights, vectorized, groupsize)
+        quantize_module_rtn(layer.self_attn.o_proj, bits, symmetric, clip_weights, vectorized, groupsize)
