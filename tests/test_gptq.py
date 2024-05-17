@@ -6,8 +6,6 @@ import torch
 
 from quarot.gptq import quantize_weight_gptq
 
-torch.set_default_dtype(torch.float16)
-
 
 @pytest.mark.quarot
 @pytest.mark.gpu
@@ -16,10 +14,10 @@ torch.set_default_dtype(torch.float16)
     [
         (
             4,
-            torch.tensor([[1.1, -2.3, 3.5], [-1.5, 2.6, -7.0]]),
-            torch.eye(3, 3, dtype=torch.float32),
-            torch.tensor([[2.0, -5.0, 7.0], [-2.0, 3.0, -7.0]]),
-            torch.tensor([[0.5], [1.0]]),
+            torch.tensor([[1.1, -2.3, 3.5], [-1.5, 2.6, -7.0]], dtype=torch.float16),
+            torch.eye(3, 3),
+            torch.tensor([[2.0, -5.0, 7.0], [-2.0, 3.0, -7.0]], dtype=torch.float16),
+            torch.tensor([[0.5], [1.0]], dtype=torch.float16),
         ),
     ],
 )
