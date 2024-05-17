@@ -2,7 +2,7 @@ import logging
 from typing import Any
 
 import torch
-import tqdm
+from tqdm import tqdm
 
 from quarot.model_adapter import LayerAdapter, ModelAdapter
 from quarot.rtn import calculate_scales_symmetric, quantize_weight_rtn
@@ -23,9 +23,11 @@ def quantize_weight_gptq(
     TODO.
     """
     num_features, num_columns = W.shape
+    W = W.cuda()
+    H = H.cuda()
 
     if groupsize is None:
-        scale = calculate_scales_symmetric(W, bits, clip_weights=clip_weights)
+        scale = calculate_scales_symmetric(W, bits, clip_weights=clip_weights, vectorized=False)
 
     # find dead weights and set them to zero, and their Hess value to 1
     dead = torch.diag(H) == 0
@@ -38,14 +40,14 @@ def quantize_weight_gptq(
     # calculate the inverse layer Hessian (Cholesky form)
     L = torch.linalg.cholesky(H)
     H_inv = torch.cholesky_inverse(L)
-    L_inv_transpose = torch.linalg.cholesky(H_inv, upper=True)
+    L_inv_transpose = torch.linalg.cholesky(H_inv, upper=True).to(torch.float16)
 
     Q = torch.zeros_like(W)
     for block_start_idx in range(0, num_columns, max_blocksize):
         block_end_idx = min(block_start_idx + max_blocksize, num_columns)
         blocksize = block_end_idx - block_start_idx
 
-        Err_block = torch.zeros((W.shape[0], blocksize))
+        Err_block = torch.zeros((W.shape[0], blocksize), dtype=torch.float16).cuda()
 
         for i in range(blocksize):
             cur_idx = block_start_idx + i
@@ -112,8 +114,8 @@ def get_signals(
 
     hooks = [make_hook(qkv_inputs), make_hook(o_proj_inputs), make_hook(upgate_inputs), make_hook(down_proj_inputs)]
     modules = [
-        layer_adapter.get_attn_inputs()[0],
-        layer_adapter.get_attn_output(),
+        layer_adapter.get_attention_inputs()[0],
+        layer_adapter.get_attention_output(),
         layer_adapter.get_mlp_inputs()[0],
         layer_adapter.get_mlp_output(),
     ]
@@ -135,6 +137,7 @@ def get_signals(
 def quantize_model_gptq(
     model_adapter: ModelAdapter,
     dataloader: torch.utils.data.DataLoader[torch.Tensor],
+    bits: int,
     apply_mask: bool = True,
 ) -> None:
     """
@@ -155,8 +158,6 @@ def quantize_model_gptq(
 
     logging.info("Quantizing model with GPTQ")
     for idx, layer_adapter in enumerate(tqdm(layers, unit="layer", desc="Quantizing layer")):
-        layer = layer_adapter.layer
-
         # get all activations for the current layer (4 sets)
         qkv_inputs, o_proj_inputs, upgate_inputs, down_proj_inputs, outputs = get_signals(layer_adapter, args, kwargs)
 
@@ -166,44 +167,57 @@ def quantize_model_gptq(
         ]
 
         # get 4 weight matrices (concat as needed)
-        W_qkv = torch.cat([w.weight.data for w in layer_adapter.get_attn_inputs()], dim=0)
-        W_o_proj = layer_adapter.get_attn_output().weight.data
+        W_qkv = torch.cat([w.weight.data for w in layer_adapter.get_attention_inputs()], dim=0)
+        W_o_proj = layer_adapter.get_attention_output().weight.data
         W_upgate = torch.cat([w.weight.data for w in layer_adapter.get_mlp_inputs()], dim=0)
         W_down_proj = layer_adapter.get_mlp_output().weight.data
 
         # 4 calls to quantizer
-        Q_qkv, scale_qkv = quantize_weight_gptq(W_qkv, H_qkv)
-        Q_o_proj, scale_o_proj = quantize_weight_gptq(W_o_proj, H_o_proj)
-        Q_upgate, scale_upgate = quantize_weight_gptq(W_upgate, H_upgate)
-        Q_down_proj, scale_down_proj = quantize_weight_gptq(W_down_proj, H_down_proj)
+        Q_qkv, scale_qkv = quantize_weight_gptq(W_qkv, H_qkv, bits)
+        Q_o_proj, scale_o_proj = quantize_weight_gptq(W_o_proj, H_o_proj, bits)
+        Q_upgate, scale_upgate = quantize_weight_gptq(W_upgate, H_upgate, bits)
+        Q_down_proj, scale_down_proj = quantize_weight_gptq(W_down_proj, H_down_proj, bits)
 
         # set the quantized qkv weights and scales
-        for module in layer_adapter.get_attn_inputs():
+        for module in layer_adapter.get_attention_inputs():
             out_features = module.weight.data.shape[0]
             module.weight.data = Q_qkv[:out_features]
-            module.weight_scales = scale_qkv[:out_features]
+            if hasattr(module, "weight_scales"):
+                module.weight_scales = scale_qkv[:out_features]
+            else:
+                module.weight.data *= scale_qkv[:out_features]
 
             Q_qkv = Q_qkv[out_features:]
             scale_qkv = scale_qkv[out_features:]
 
         # set the quantized o_proj weights and scales
-        layer_adapter.get_attn_output().weight.data = Q_o_proj
-        layer_adapter.get_attn_output().weight_scales = scale_o_proj
+        layer_adapter.get_attention_output().weight.data = Q_o_proj
+        if hasattr(layer_adapter.get_attention_output(), "weight_scales"):
+            layer_adapter.get_attention_output().weight_scales = scale_o_proj
+        else:
+            layer_adapter.get_attention_output().weight.data *= scale_o_proj
 
         # set the quantized upgate weights and scales
         for module in layer_adapter.get_mlp_inputs():
             out_features = module.weight.data.shape[0]
             module.weight.data = Q_upgate[:out_features]
-            module.weight_scales = scale_upgate[:out_features]
+            if hasattr(module, "weight_scales"):
+                module.weight_scales = scale_upgate[:out_features]
+            else:
+                module.weight.data *= scale_upgate[:out_features]
 
             Q_upgate = Q_upgate[out_features:]
             scale_upgate = scale_upgate[out_features:]
 
         # set the quantized down_proj weights and scales
         layer_adapter.get_mlp_output().weight.data = Q_down_proj
-        layer_adapter.get_mlp_output().weight_scales = scale_down_proj
+        if hasattr(layer_adapter.get_mlp_output(), "weight_scales"):
+            layer_adapter.get_mlp_output().weight_scales = scale_down_proj
+        else:
+            layer_adapter.get_mlp_output().weight.data *= scale_down_proj
 
         # inps = outs
         # cleanup_memory()
+        # break
 
     logging.info("Quantizing model with GPTQ done.")

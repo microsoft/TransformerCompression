@@ -41,7 +41,7 @@ def calculate_min_max_weight(
 
 
 def calculate_scales_symmetric(
-    weight: torch.Tensor, bits: int, perchannel: bool = True, clip_weights=True
+    weight: torch.Tensor, bits: int, perchannel: bool = True, clip_weights: bool = True, vectorized: bool = True
 ) -> torch.Tensor:
     """
     Calculate the scales for symmetric quantization of a weight tensor to INT<bits> using the Round-to-Nearest scheme. If clip_weights is True,
@@ -58,28 +58,50 @@ def calculate_scales_symmetric(
 
     if clip_weights:
         # Perform a grid search to find the best weight scales according to quantization error.
-        # TODO: This vectorized implementation gives OOM for Llama-2 70B.
-        max_shrink_factor = 0.80
-        n_steps = int(100 * (max_shrink_factor)) + 1
+        max_shrink_factor = 0.20
+        n_steps = int(10 * (max_shrink_factor)) + 1
         error_norm = 2.4
+        shrink_factors = torch.linspace(1.0, 1 - max_shrink_factor, n_steps).to(weight.device)
 
-        shrink_factors = torch.linspace(1.0, 1 - max_shrink_factor, n_steps)
-        candidate_max_weights = shrink_factors.to(weight.device) * max_weight
+        if vectorized:
+            # This vectorized implementation gives OOM for Llama-2 70B.
+            candidate_max_weights = shrink_factors * max_weight
 
-        candidate_scales = candidate_max_weights / max_int
-        candidate_scales = candidate_scales.unsqueeze(1)
-        weight = weight.unsqueeze(-1)
+            candidate_scales = candidate_max_weights / max_int
+            candidate_scales = candidate_scales.unsqueeze(1)
+            weight = weight.unsqueeze(-1)
 
-        # Quantize weights
-        candidate_quantized_weights = quantize_weight_rtn(weight, candidate_scales, None, bits, symmetric=True)
+            # Quantize weights
+            candidate_quantized_weights = quantize_weight_rtn(weight, candidate_scales, None, bits, symmetric=True)
 
-        # Dequantize weights
-        reconstructed_weights = candidate_quantized_weights * candidate_scales
+            # Dequantize weights
+            reconstructed_weights = candidate_quantized_weights * candidate_scales
 
-        # Compute quantization error and find the best scale for each weight
-        quantization_errors = torch.sum(torch.abs(reconstructed_weights - weight).pow_(error_norm), 1)
-        best_scale_indices = torch.argmin(quantization_errors, dim=-1)
-        scale = torch.gather(candidate_scales.squeeze(1), 1, best_scale_indices.unsqueeze(1))
+            # Compute quantization error and find the best scale for each weight
+            quantization_errors = torch.sum(torch.abs(reconstructed_weights - weight).pow_(error_norm), 1)
+            best_scale_indices = torch.argmin(quantization_errors, dim=-1)
+            scale = torch.gather(candidate_scales.squeeze(1), 1, best_scale_indices.unsqueeze(1))
+
+        else:
+            best_quantization_error = torch.full((weight.shape[0],), float("inf"), device=weight.device)
+            for i in range(n_steps):
+                shrink_factor = shrink_factors[i]
+                candidate_max_weight = shrink_factor * max_weight
+                candidate_scale = candidate_max_weight / max_int
+
+                # Quantize weights
+                candidate_quantized_weight = quantize_weight_rtn(weight, candidate_scale, None, bits, symmetric=True)
+
+                # Dequantize weights
+                reconstructed_weight = candidate_quantized_weight * candidate_scale
+
+                # Compute quantization error
+                quantization_error = torch.sum(torch.abs(reconstructed_weight - weight).pow_(error_norm), 1)
+
+                if i == 0 or torch.any(quantization_error < best_quantization_error):
+                    improved_idx = torch.where(quantization_error < best_quantization_error)
+                    scale[improved_idx] = candidate_scale[improved_idx]
+                    best_quantization_error[improved_idx] = quantization_error[improved_idx]
 
     weight = weight.to(device)
     scale = scale.to(device)
