@@ -15,7 +15,7 @@ from lm_eval.models.huggingface import HFLM
 from lm_eval.tasks import initialize_tasks
 
 from quarot import hf_utils, rotation, rtn
-from quarot.modeling_llama import QuarotLlamaConfig, QuarotLlamaForCausalLM
+from quarot.hf_utils import quarot_model_config, get_quarot_model
 from slicegpt import data_utils, gpu_utils, layernorm_fusion, utils
 from slicegpt.config import config
 
@@ -220,45 +220,40 @@ def quarot_main(args: argparse.Namespace) -> None:
         # Rotate the model with fused Hadamard transformations.
         rotation.rotate_model(model_adapter, args.rotation_seed)
 
-    model_config = QuarotLlamaConfig.from_pretrained(args.model, dtype=config.dtype)
-    model_config._attn_implementation = "flash_attention_2"
+    model_config = quarot_model_config(args.model, dtype=config.dtype)
+
     with transformers.modeling_utils.no_init_weights():
         # initialize quarot model
-        online_had_mlp = True if args.rotate else False
-        online_had_attn = True if args.rotate else False
-        rms_norm = True if args.rotate else False
-        quarot_llama = QuarotLlamaForCausalLM(
-            online_had_mlp=online_had_mlp,
-            online_had_attn=online_had_attn,
-            rms_norm=rms_norm,
-            act_bits=args.a_bits,
-            act_clip_ratio=args.a_clip_ratio,
-            k_bits=args.k_bits,
-            k_clip_ratio=args.k_clip_ratio,
-            k_groupsize=args.k_groupsize,
-            v_bits=args.v_bits,
-            v_clip_ratio=args.v_clip_ratio,
-            v_groupsize=args.v_groupsize,
-            config=model_config,
+
+        act_args = {'act_bits': args.a_bits, 'act_clip_ratio': args.a_clip_ratio}
+        key_args = {'k_bits': args.k_bits, 'k_clip_ratio': args.k_clip_ratio, 'k_groupsize': args.k_groupsize}
+        value_args = {'v_bits': args.v_bits, 'v_clip_ratio': args.v_clip_ratio, 'v_groupsize': args.v_groupsize}
+        quarot_model = get_quarot_model(
+            model_name_or_path=args.model,
+            rotate=args.rotate,
+            act_args=act_args,
+            key_args=key_args,
+            value_args=value_args,
+            model_config=model_config,
         )
 
         # load the rotated weights into the quarot model
-        quarot_llama.load_state_dict(model_adapter.model.state_dict(), strict=False)
+        quarot_model.load_state_dict(model_adapter.model.state_dict(), strict=False)
 
     if args.w_rtn:
         logging.info(f"Quantizing weights to INT{args.w_bits} using RTN.")
-        rtn.quantize_model_rtn(quarot_llama, bits=args.w_bits)
+        rtn.quantize_model_rtn(quarot_model, bits=args.w_bits)
         logging.info("Quantization complete.")
 
-    quarot_llama.to(config.device)
-    dataset_ppl = gpu_utils.evaluate_ppl(quarot_llama, quarot_llama.config.pad_token_id, test_loader)
+    quarot_model.to(config.device)
+    dataset_ppl = gpu_utils.evaluate_ppl(quarot_model, quarot_model.config.pad_token_id, test_loader)
     logging.info(f'QuaRot ppl: {dataset_ppl:.4f}')
     wandb.log({"quarot_ppl": dataset_ppl})
 
     if not args.lm_eval:
         return
 
-    hflm = HFLM(pretrained=quarot_llama, tokenizer=tokenizer, batch_size=args.lm_eval_batch_size)
+    hflm = HFLM(pretrained=quarot_model, tokenizer=tokenizer, batch_size=args.lm_eval_batch_size)
 
     initialize_tasks()
     task_names = lm_eval_utils.pattern_match(args.tasks, ALL_TASKS)

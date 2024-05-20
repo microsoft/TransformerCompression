@@ -24,14 +24,14 @@ dependencies = [
     "accelerate",
     "datasets==2.14.7",
     "einops",
-    "huggingface-hub==0.20.2",
+    "huggingface-hub==0.23.0",
     "lm-eval==0.4.1",
     "ml-collections",
     "numpy",
     "sentencepiece",
     "torch",
     "tqdm",
-    "transformers==4.37",
+    "transformers==4.41.0",
     "wandb",
 ]
 

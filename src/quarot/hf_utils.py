@@ -5,11 +5,70 @@ import logging
 import pathlib
 
 import torch
-from transformers import AutoTokenizer, PreTrainedTokenizerBase
+from transformers import AutoTokenizer, PreTrainedTokenizerBase, PretrainedConfig
 
 from slicegpt.hf_utils import do_not_initialize
 
 from .model_adapter import ModelAdapter
+from .modeling_llama import QuarotLlamaConfig, QuarotLlamaForCausalLM
+from .modeling_phi3 import QuarotPhi3Config, QuarotPhi3ForCausalLM
+
+
+def quarot_model_config(model_name_or_path: str, dtype: torch.dtype):
+    if model_name_or_path == 'meta-llama/Llama-2-7b-hf':
+        model_config = QuarotLlamaConfig.from_pretrained(model_name_or_path, dtype=dtype)
+        model_config._attn_implementation = "flash_attention_2"
+        return model_config
+    elif model_name_or_path == 'microsoft/Phi-3-mini-4k-instruct':
+        model_config = QuarotPhi3Config.from_pretrained(model_name_or_path, dtype=dtype)
+        model_config._attn_implementation = "flash_attention_2"
+    else:
+        raise NotImplementedError("Model type not supported")
+
+
+def get_quarot_model(
+    model_name_or_path: str,
+    rotate: bool,
+    act_args: dict,
+    key_args: dict,
+    value_args: dict,
+    model_config: PretrainedConfig,
+):
+    online_had_mlp = True if rotate else False
+    online_had_attn = True if rotate else False
+    rms_norm = True if rotate else False
+    if model_name_or_path == 'meta-llama/Llama-2-7b-hf':
+        return QuarotLlamaForCausalLM(
+            online_had_mlp=online_had_mlp,
+            online_had_attn=online_had_attn,
+            rms_norm=rms_norm,
+            act_bits=act_args['a_bits'],
+            act_clip_ratio=act_args['a_clip_ratio'],
+            k_bits=key_args['k_bits'],
+            k_clip_ratio=key_args['k_clip_ratio'],
+            k_groupsize=key_args['k_groupsize'],
+            v_bits=value_args['v_bits'],
+            v_clip_ratio=value_args['v_clip_ratio'],
+            v_groupsize=value_args['v_groupsize'],
+            config=model_config,
+        )
+    elif model_name_or_path == 'microsoft/Phi-3-mini-4k-instruct':
+        return QuarotPhi3ForCausalLM(
+            online_had_mlp=online_had_mlp,
+            online_had_attn=online_had_attn,
+            rms_norm=rms_norm,
+            act_bits=act_args['a_bits'],
+            act_clip_ratio=act_args['a_clip_ratio'],
+            k_bits=key_args['k_bits'],
+            k_clip_ratio=key_args['k_clip_ratio'],
+            k_groupsize=key_args['k_groupsize'],
+            v_bits=value_args['v_bits'],
+            v_clip_ratio=value_args['v_clip_ratio'],
+            v_groupsize=value_args['v_groupsize'],
+            config=model_config,
+        )
+    else:
+        raise NotImplementedError("Model type not supported")
 
 
 @do_not_initialize
