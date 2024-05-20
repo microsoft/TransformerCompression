@@ -48,10 +48,6 @@ finetune = [
     "peft==0.6.0",
 ]
 
-quarot = [
-    "fast_hadamard_transform",
-]
-
 [tool.setuptools.packages.find]
 where = ["src"]
 exclude = ["*_test.py", "tests/*"]

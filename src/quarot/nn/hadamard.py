@@ -1,6 +1,15 @@
 import torch
 
-from quarot.hadamard_utils import _apply_fast_hadamard, _apply_slow_hadamard, fht_available, get_hadK
+try:
+    from scipy.linalg import hadamard
+except ImportError:
+    hadamard = None
+
+import math
+
+import torch.nn.functional as F
+
+from quarot.hadamard_utils import _apply_slow_hadamard, get_hadK
 
 
 class OnlineHadamard(torch.nn.Module):
@@ -12,10 +21,10 @@ class OnlineHadamard(torch.nn.Module):
         if not self.fp32_had:
             self.had_rem_dim = self.had_rem_dim.to(torch.float16)
 
-        if fht_available:
-            self.had = _apply_fast_hadamard
-        else:
+        if hadamard:
             self.had = _apply_slow_hadamard
+        else:
+            raise ImportError("Please install scipy")
 
     def forward(self, x):
         x_dtype = x.dtype

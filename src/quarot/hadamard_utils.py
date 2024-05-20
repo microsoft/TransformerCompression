@@ -20,18 +20,39 @@ from .hadamard_tensors import (
 )
 
 try:
-    from fast_hadamard_transform import hadamard_transform
-
-    fht_available = True
+    from scipy.linalg import hadamard
 except ImportError:
-    fht_available = False
+    hadamard = None
+import math
+
+import torch
+import torch.nn.functional as F
+
+
+def hadamard_transform_ref(x, scale=1.0):
+    """
+    x: (..., dim)
+    out: (..., dim)
+    """
+    if hadamard is None:
+        raise ImportError("Please install scipy")
+    x_shape = x.shape
+    dim = x.shape[-1]
+    x = x.reshape(-1, dim)
+    log_dim = math.ceil(math.log2(dim))
+    dim_padded = 2**log_dim
+    if dim != dim_padded:
+        x = F.pad(x, (0, dim_padded - dim))
+    out = F.linear(x, torch.tensor(hadamard(dim_padded, dtype=float), dtype=x.dtype, device=x.device))
+    out = out * scale
+    return out[..., :dim].reshape(*x_shape)
 
 
 def factored_hadamard(X: torch.Tensor) -> torch.Tensor:
     """
     Default Hadamard transform implementation. This is a wrapper around `factored_hadamard` that uses the fast Hadamard transform if available.
     """
-    return factored_fast_hadamard(X) if fht_available else factored_slow_hadamard(X)
+    return factored_fast_hadamard(X) if hadamard else factored_slow_hadamard(X)
 
 
 def get_hadK(n: int) -> torch.Tensor:
@@ -105,24 +126,7 @@ def factored_fast_hadamard(X: torch.tensor) -> torch.tensor:
     """
     n = X.shape[-1]
     hadK = get_hadK(n)
-    return _apply_fast_hadamard(X, hadK)
-
-
-def _apply_fast_hadamard(X: torch.tensor, hadK: torch.tensor) -> torch.tensor:
-    """
-    Performs a fast Hadamard transform on X given a Hadamard matrix hadK of size K.
-    """
-    n = X.shape[-1]
-    K = hadK.shape[0]
-    scale = 1.0 / torch.tensor(n).sqrt()
-    X = X.contiguous()
-    if K == 1:
-        return hadamard_transform(X, scale)
-
-    input = X.view(-1, K, n // K)
-    input = hadamard_transform(input, scale)
-    input = hadK.to(input.device).to(input.dtype) @ input
-    return input.reshape(X.shape)
+    return _apply_slow_hadamard(X, hadK)
 
 
 def apply_hadamard_headwise(module: torch.nn.Linear, head_dim: int):
@@ -143,7 +147,7 @@ def apply_hadamard_headwise(module: torch.nn.Linear, head_dim: int):
 
     scale = 1 / math.sqrt(head_dim)
     num_heads = module.out_features // head_dim
-    W_ = hadamard_transform(W_.reshape(module.in_features, num_heads, head_dim), scale=scale)
+    W_ = hadamard_transform_ref(W_.reshape(module.in_features, num_heads, head_dim), scale=scale)
     W_ = W_.reshape((module.in_features, module.out_features)).t()
 
     module.weight.data = W_.to(device=dev, dtype=dtype)
@@ -162,7 +166,7 @@ def apply_hadamard(module: torch.nn.Linear) -> None:
     dev = W_.device
     W_ = W_.float().cuda()
 
-    W_ = factored_fast_hadamard(W_) if fht_available else factored_slow_hadamard(W_)
+    W_ = factored_fast_hadamard(W_) if hadamard else factored_slow_hadamard(W_)
     module.weight.data = W_.to(device=dev, dtype=dtype)
 
 
