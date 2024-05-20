@@ -31,7 +31,7 @@ dependencies = [
     "sentencepiece",
     "torch",
     "tqdm",
-    "transformers==4.41",
+    "transformers==4.41.0",
     "wandb",
 ]
 
