@@ -196,21 +196,12 @@ def quantize_model_rtn(
     #         if isinstance(module, QuarotFP16Linear):
     #             quantize_module_rtn(module, bits, symmetric, perchannel, clip_weights, groupsize)
 
-    if model.config.model_type == "llama":
-        for layer in tqdm(layers, desc="Quantizing layers", unit="layer"):
-            quantize_module_rtn(layer.mlp.up_proj, bits, symmetric, perchannel, clip_weights, groupsize)
-            quantize_module_rtn(layer.mlp.gate_proj, bits, symmetric, perchannel, clip_weights, groupsize)
-            quantize_module_rtn(layer.mlp.down_proj, bits, symmetric, perchannel, clip_weights, groupsize)
-            quantize_module_rtn(layer.self_attn.q_proj, bits, symmetric, perchannel, clip_weights, groupsize)
-            quantize_module_rtn(layer.self_attn.k_proj, bits, symmetric, perchannel, clip_weights, groupsize)
-            quantize_module_rtn(layer.self_attn.v_proj, bits, symmetric, perchannel, clip_weights, groupsize)
-            quantize_module_rtn(layer.self_attn.o_proj, bits, symmetric, perchannel, clip_weights, groupsize)
-    elif model.config.model_type == "phi3":
-        for layer in tqdm(layers, desc="Quantizing layers", unit="layer"):
-            quantize_module_rtn(layer.mlp.gate_up_proj, bits, symmetric, perchannel, clip_weights, groupsize)
-            quantize_module_rtn(layer.mlp.down_proj, bits, symmetric, perchannel, clip_weights, groupsize)
-            quantize_module_rtn(layer.self_attn.qkv_proj, bits, symmetric, perchannel, clip_weights, groupsize)
-            quantize_module_rtn(layer.self_attn.o_proj, bits, symmetric, perchannel, clip_weights, groupsize)
-    else:
-        raise NotImplementedError("Model type not supported")
+    for layer in tqdm(layers, desc="Quantizing layers", unit="layer"):
+        quantize_module_rtn(layer.mlp.up_proj, bits, symmetric, perchannel, clip_weights, groupsize)
+        quantize_module_rtn(layer.mlp.gate_proj, bits, symmetric, perchannel, clip_weights, groupsize)
+        quantize_module_rtn(layer.mlp.down_proj, bits, symmetric, perchannel, clip_weights, groupsize)
+        quantize_module_rtn(layer.self_attn.q_proj, bits, symmetric, perchannel, clip_weights, groupsize)
+        quantize_module_rtn(layer.self_attn.k_proj, bits, symmetric, perchannel, clip_weights, groupsize)
+        quantize_module_rtn(layer.self_attn.v_proj, bits, symmetric, perchannel, clip_weights, groupsize)
+        quantize_module_rtn(layer.self_attn.o_proj, bits, symmetric, perchannel, clip_weights, groupsize)
 
