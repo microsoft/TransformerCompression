@@ -192,7 +192,6 @@ def process_quarot_args(args):
     config.dtype = torch.float16
 
 
-@torch.no_grad()
 def quarot_main(args: argparse.Namespace) -> None:
     logging.info("Running QuaRot experiment.")
     logging.info(f"PyTorch device: {config.device}")
@@ -235,7 +234,7 @@ def quarot_main(args: argparse.Namespace) -> None:
         # Rotate the model with fused Hadamard transformations.
         rotation.rotate_model(model_adapter, args.rotation_seed)
 
-    model_config = QuarotLlamaConfig.from_pretrained(args.model, dtype=config.dtype)
+    model_config = QuarotLlamaConfig.from_pretrained(args.model, dtype=config.dtype, use_cache=False)
     model_config._attn_implementation = "flash_attention_2"
     with transformers.modeling_utils.no_init_weights():
         # initialize quarot model
@@ -276,11 +275,11 @@ def quarot_main(args: argparse.Namespace) -> None:
         train_loader = data_utils.prepare_dataloader(
             dataset=dataset["train"], tokenizer=tokenizer, batch_size=args.ppl_eval_batch_size
         )
-        assert not args.w_asym, "Asymmetric quantization is not yet supported with QuaRot-GPTQ."
 
         quarot_model_adapter = LlamaModelAdapter(quarot_llama)
-        with torch.no_grad():
-            gptq.quantize_model_gptq(quarot_model_adapter, train_loader, bits=args.w_bits, symmetric=True)
+        gptq.quantize_model_gptq(
+            quarot_model_adapter, train_loader, bits=args.w_bits, symmetric=False if args.w_asym else True
+        )
         logging.info("Quantization complete.")
 
     quarot_llama.to(config.device)
