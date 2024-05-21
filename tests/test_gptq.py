@@ -5,26 +5,31 @@ import pytest
 import torch
 
 from quarot.gptq import quantize_weight_gptq
+from quarot.rtn import calculate_scales, quantize_weight_rtn
 
 
 @pytest.mark.quarot
 @pytest.mark.gpu
 @pytest.mark.parametrize(
-    "bits, weight, hessian, expected_quantized_weight, expected_scale",
-    [
-        (
-            4,
-            torch.tensor([[1.1, -2.3, 3.5], [-1.5, 2.6, -7.0]], dtype=torch.float16),
-            torch.eye(3, 3),
-            torch.tensor([[2.0, -5.0, 7.0], [-2.0, 3.0, -7.0]], dtype=torch.float16),
-            torch.tensor([[0.5], [1.0]], dtype=torch.float16),
-        ),
-    ],
+    "weight",
+    [torch.tensor([[1.1, -2.3, 3.5], [-1.5, 2.6, -7.0]])],
 )
-def test_weight_gptq(bits, weight, hessian, expected_quantized_weight, expected_scale):
-    quantized_weight, scale, offset = quantize_weight_gptq(
-        weight, hessian, bits, symmetric=True, percdamp=0.0, clip_weights=False
+@pytest.mark.parametrize("bits", [3, 4, 8])
+@pytest.mark.parametrize("symmetric", [True, False])
+def test_gptq_eye_hessian(weight, bits, symmetric):
+    hessian = torch.eye(weight.shape[1])
+
+    gptq_quantized_weight, gptq_scale, gptq_offset = quantize_weight_gptq(
+        weight, hessian, bits, symmetric=symmetric, clip_weights=False
     )
-    assert torch.allclose(scale, expected_scale)
-    assert offset is None
-    assert torch.allclose(quantized_weight, expected_quantized_weight)
+
+    rtn_scale, rtn_offset = calculate_scales(weight, bits, symmetric=symmetric, clip_weights=False)
+    rtn_quantized_weight = quantize_weight_rtn(weight, rtn_scale, rtn_offset, bits, symmetric=symmetric)
+
+    assert torch.allclose(gptq_quantized_weight, rtn_quantized_weight)
+    assert torch.allclose(gptq_scale, rtn_scale)
+    if symmetric:
+        assert gptq_offset is None
+        assert rtn_offset is None
+    else:
+        assert torch.allclose(gptq_offset, rtn_offset)

@@ -5,6 +5,7 @@ import torch
 from tqdm import tqdm
 
 from quarot.model_adapter import LayerAdapter, ModelAdapter
+from quarot.nn.linear import QuarotFP16Linear
 from quarot.quant_utils import PackedQuantizedTensor
 from quarot.rtn import calculate_scales, quantize_weight_rtn
 from slicegpt.rotate import get_layer0_inputs
@@ -70,7 +71,9 @@ def quantize_weight_gptq(
                 offset = offset.float() if offset is not None else None
 
             # store the int-quantized weight column
-            Q[:, cur_idx] = quantize_weight_rtn(W[:, cur_idx : cur_idx + 1], scale, offset, bits).flatten()
+            Q[:, cur_idx] = quantize_weight_rtn(
+                W[:, cur_idx : cur_idx + 1], scale, offset, bits, symmetric=symmetric
+            ).flatten()
 
             # calculate the dequantized weight
             if symmetric:
@@ -107,16 +110,26 @@ def construct_hessian(X: list[torch.Tensor], ignore_masks: list[torch.Tensor] | 
     # Run GC and cleanup GPU memory
     cleanup_memory()
 
+    if isinstance(X[0], PackedQuantizedTensor):
+        X = [x.quantized_x for x in X]
+
     H = None
+    num_samples = 0
+    hidden_dim = X[0].shape[-1]
+    H = torch.zeros(hidden_dim, hidden_dim, device='cuda')
     for idx, X_batch in enumerate(X):
-        if isinstance(X_batch, PackedQuantizedTensor):
-            X_batch = X_batch.quantized_x
+        batch_size, seq_len = X_batch.shape[:2]
         if ignore_masks:
             X_batch[ignore_masks[idx] == 0] = 0
+            num_elements = ignore_masks[idx].sum()
+        else:
+            num_elements = batch_size * seq_len
 
-        X_batch = X_batch.to('cuda', dtype=torch.float32)
+        X_batch = X_batch.to('cuda', dtype=torch.float32) * torch.rsqrt(torch.tensor(num_elements, device='cuda'))
         H_batch = torch.sum(X_batch.mT @ X_batch, dim=0)  # sum over the batch dimension.
-        H = H_batch if H is None else H + H_batch
+
+        H = H * (num_samples / (num_samples + num_elements)) + H_batch * (num_elements / (num_samples + num_elements))
+        num_samples += num_elements
 
     return H
 
@@ -156,11 +169,42 @@ def get_signals(
             out = out[layer_adapter.hidden_states_output_position]
         outputs.append(out)
 
-    [h.remove() for h in hooks]
+    for h in hooks:
+        h.remove()
+
     return qkv_inputs, o_proj_inputs, upgate_inputs, down_proj_inputs, outputs
 
 
-@torch.no_grad()
+def set_tensors(
+    module: torch.nn.Linear | QuarotFP16Linear,
+    quantized_weight: torch.Tensor,
+    scale: torch.Tensor,
+    offset: torch.Tensor | None = None,
+) -> None:
+    """
+    Set the quantized weight, scale, and offset into a module. If the module is a torch.nn.Linear, the weight is dequantized using the scale and offset.
+    Otherwise if it is a QuarotFP16Linear, the weight buffer is set to be equal to quantized_weight - offset, and the weight scale buffer is equal to the given scale.
+    """
+    out_features, in_features = module.weight.data.shape
+    assert quantized_weight.shape == (out_features, in_features)
+    assert scale.shape == (out_features, 1)
+    if offset is not None:
+        assert offset.shape == (out_features, 1)
+
+    if isinstance(module, QuarotFP16Linear):
+        module.weight.data = quantized_weight  # out_features x in_features
+        module.weight_scales.data = scale  # out_features x 1
+        if offset is not None:
+            module.weight.data -= offset
+    elif isinstance(module, torch.nn.Linear):
+        # Here we dequantize the weights and set them back into the module
+        module.weight.data = quantized_weight * scale
+        if offset is not None:
+            module.weight.data -= offset * scale
+    else:
+        raise ValueError(f"Unsupported module type {type(module)}")
+
+
 def quantize_model_gptq(
     model_adapter: ModelAdapter,
     dataloader: torch.utils.data.DataLoader[torch.Tensor],
@@ -186,6 +230,8 @@ def quantize_model_gptq(
 
     logging.info("Quantizing model with GPTQ")
     for idx, layer_adapter in enumerate(tqdm(layers, unit="layer", desc="Quantizing layer")):
+        layer_adapter.layer.to('cuda')
+
         # get all activations for the current layer (4 sets)
         qkv_inputs, o_proj_inputs, upgate_inputs, down_proj_inputs, outputs = get_signals(layer_adapter, args, kwargs)
 
@@ -208,65 +254,34 @@ def quantize_model_gptq(
             W_down_proj, H_down_proj, bits, symmetric=symmetric
         )
 
-        # set the quantized qkv weights and scales
-        for module in layer_adapter.get_attention_inputs():
-            out_features = module.weight.data.shape[0]
-            if hasattr(module, "weight_scales"):
-                module.weight.data = Q_qkv[:out_features]
-                module.weight_scales = scale_qkv[:out_features]
-            else:
-                if symmetric:
-                    module.weight.data = Q_qkv[:out_features] * scale_qkv[:out_features]
-                else:
-                    module.weight.data = (Q_qkv[:out_features] - offset_qkv[:out_features]) * scale_qkv[:out_features]
+        # set the quantized weights and scales
+        attn_inputs = layer_adapter.get_attention_inputs()
+        for module, quantized_weight, scale, offset in zip(
+            attn_inputs,
+            torch.chunk(Q_qkv, len(attn_inputs), dim=0),
+            torch.chunk(scale_qkv, len(attn_inputs), dim=0),
+            torch.chunk(offset_qkv, len(attn_inputs), dim=0) if offset_qkv is not None else [None] * len(attn_inputs),
+        ):
+            set_tensors(module, quantized_weight, scale, offset)
 
-            Q_qkv = Q_qkv[out_features:]
-            scale_qkv = scale_qkv[out_features:]
-            if not symmetric:
-                offset_qkv = offset_qkv[out_features:]
+        set_tensors(layer_adapter.get_attention_output(), Q_o_proj, scale_o_proj, offset_o_proj)
 
-        # set the quantized o_proj weights and scales
-        if hasattr(layer_adapter.get_attention_output(), "weight_scales"):
-            layer_adapter.get_attention_output().weight.data = Q_o_proj
-            layer_adapter.get_attention_output().weight_scales = scale_o_proj
-        else:
-            if symmetric:
-                layer_adapter.get_attention_output().weight.data = Q_o_proj * scale_o_proj
-            else:
-                layer_adapter.get_attention_output().weight.data = (Q_o_proj - offset_o_proj) * scale_o_proj
+        mlp_inputs = layer_adapter.get_mlp_inputs()
+        for module, quantized_weight, scale, offset in zip(
+            mlp_inputs,
+            torch.chunk(Q_upgate, len(mlp_inputs), dim=0),
+            torch.chunk(scale_upgate, len(mlp_inputs), dim=0),
+            torch.chunk(offset_upgate, len(mlp_inputs), dim=0)
+            if offset_upgate is not None
+            else [None] * len(mlp_inputs),
+        ):
+            set_tensors(module, quantized_weight, scale, offset)
 
-        # set the quantized upgate weights and scales
-        for module in layer_adapter.get_mlp_inputs():
-            out_features = module.weight.data.shape[0]
-            if hasattr(module, "weight_scales"):
-                module.weight.data = Q_upgate[:out_features]
-                module.weight_scales = scale_upgate[:out_features]
-            else:
-                if symmetric:
-                    module.weight.data = Q_upgate[:out_features] * scale_upgate[:out_features]
-                else:
-                    module.weight.data = (Q_upgate[:out_features] - offset_upgate[:out_features]) * scale_upgate[
-                        :out_features
-                    ]
+        set_tensors(layer_adapter.get_mlp_output(), Q_down_proj, scale_down_proj, offset_down_proj)
 
-            Q_upgate = Q_upgate[out_features:]
-            scale_upgate = scale_upgate[out_features:]
-            if not symmetric:
-                offset_upgate = offset_upgate[out_features:]
+        # outputs of this layer are inputs of the next
+        args = [layer_adapter.get_updated_args(output_i, args_i) for output_i, args_i in zip(outputs, args)]
 
-        # set the quantized down_proj weights and scales
-        if hasattr(layer_adapter.get_mlp_output(), "weight_scales"):
-            layer_adapter.get_mlp_output().weight.data = Q_down_proj
-            layer_adapter.get_mlp_output().weight_scales = scale_down_proj
-        else:
-            if symmetric:
-                layer_adapter.get_mlp_output().weight.data = Q_down_proj * scale_down_proj
-            else:
-                layer_adapter.get_mlp_output().weight.data = (Q_down_proj - offset_down_proj) * scale_down_proj
-
-        # inps = outs
         layer_adapter.layer.to('cpu')
-        cleanup_memory()
-        # break
 
     logging.info("Quantizing model with GPTQ done.")

@@ -206,7 +206,7 @@ def quantize_module_rtn(
     scale, offset = calculate_scales(weight, bits, symmetric, clip_weights, vectorized=vectorized, groupsize=groupsize)
     quantized_weight = quantize_weight_rtn(weight, scale, offset, bits, symmetric)
 
-    module.weight.data = quantized_weight
+    module.weight.data = quantized_weight - offset if offset is not None else quantized_weight
     module.weight_scales = scale
 
 
