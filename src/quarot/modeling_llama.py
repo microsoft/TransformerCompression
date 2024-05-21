@@ -142,12 +142,16 @@ class QuarotFP16LlamaFlashAttention2(LlamaFlashAttention2):
         # Flash attention requires the input to have the shape
         # batch_size x seq_length x head_dim x hidden_dim
         # therefore we just need to keep the original shape
-        query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim)
-        key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim)
-        value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim)
+        query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim)  # QuaRot: remove transpose
+        key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim)  # QuaRot: remove transpose
+        value_states = value_states.view(
+            bsz, q_len, self.num_key_value_heads, self.head_dim
+        )  # QuaRot: remove transpose
 
+        # QuaRot: shape is now shape[1] instead of shape[-2]
         kv_seq_len = key_states.shape[1]
-        kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
+        if past_key_value is not None:
+            kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
         query_states, key_states = apply_rotary_pos_emb(
             query_states, key_states, cos, sin, position_ids, unsqueeze_dim=2
@@ -162,24 +166,14 @@ class QuarotFP16LlamaFlashAttention2(LlamaFlashAttention2):
         key_states = self.k_quantizer(key_states)
         value_states = self.v_quantizer(value_states)
 
-        past_key_value = getattr(self, "past_key_value", past_key_value)
-        assert past_key_value is not None
-        # sin and cos are specific to RoPE models; position_ids needed for the static cache
+        if past_key_value is not None:
+            # sin and cos are specific to RoPE models; position_ids needed for the static cache
+            cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position, "attention_mask": attention_mask}
+            key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
 
-        cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position, "attention_mask": attention_mask}
-        cache_out = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
-
-        dropout_rate = self.attention_dropout if self.training else 0.0
-
-        assert self.is_causal
-
-        if isinstance(cache_out, tuple):
-            key_states, value_states = cache_out
-            attn_output = self._flash_attention_forward(
-                query_states, key_states, value_states, query_length=q_len, attention_mask=attention_mask
-            )
-        else:
-            attn_output = cache_out(query_states)
+        attn_output = self._flash_attention_forward(
+            query_states, key_states, value_states, query_length=q_len, attention_mask=attention_mask
+        )
 
         # QuaRot: apply online hadamard if needed
         if self.online_had:

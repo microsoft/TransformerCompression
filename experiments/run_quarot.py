@@ -235,7 +235,7 @@ def quarot_main(args: argparse.Namespace) -> None:
         # Rotate the model with fused Hadamard transformations.
         rotation.rotate_model(model_adapter, args.rotation_seed)
 
-    model_config = QuarotLlamaConfig.from_pretrained(args.model, dtype=config.dtype)
+    model_config = QuarotLlamaConfig.from_pretrained(args.model, dtype=config.dtype, use_cache=False)
     model_config._attn_implementation = "flash_attention_2"
     with transformers.modeling_utils.no_init_weights():
         # initialize quarot model
