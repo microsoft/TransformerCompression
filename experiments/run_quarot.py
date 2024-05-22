@@ -15,7 +15,7 @@ from lm_eval.models.huggingface import HFLM
 from lm_eval.tasks import initialize_tasks
 
 from quarot import hf_utils, rotation, rtn
-from quarot.hf_utils import quarot_model_config, get_quarot_model
+from quarot.hf_utils import get_quarot_model, quarot_model_config
 from slicegpt import data_utils, gpu_utils, layernorm_fusion, utils
 from slicegpt.config import config
 

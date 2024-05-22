@@ -19,8 +19,14 @@ from typing import Optional, Tuple
 
 import torch
 from transformers import Cache, Phi3Config
-from transformers.models.phi3.modeling_phi3 import Phi3FlashAttention2, Phi3ForCausalLM, Phi3MLP, apply_rotary_pos_emb
-from transformers.models.phi3.modeling_phi3 import _flash_supports_window_size, repeat_kv
+from transformers.models.phi3.modeling_phi3 import (
+    Phi3FlashAttention2,
+    Phi3ForCausalLM,
+    Phi3MLP,
+    _flash_supports_window_size,
+    apply_rotary_pos_emb,
+    repeat_kv,
+)
 from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
 
 from quarot.nn import OnlineHadamard, QuarotFP16Linear
@@ -151,11 +157,11 @@ class QuarotFP16Phi3FlashAttention2(Phi3FlashAttention2):
         # Flash attention requires the input to have the shape
         # batch_size x seq_length x head_dim x hidden_dim
         # therefore we just need to keep the original shape
-        query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
-        key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
-        value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+        query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim)
+        key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim)
+        value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim)
 
-        kv_seq_len = key_states.shape[-2]
+        kv_seq_len = key_states.shape[1]
         if past_key_value is not None:
             if self.layer_idx is None:
                 raise ValueError(
@@ -169,7 +175,9 @@ class QuarotFP16Phi3FlashAttention2(Phi3FlashAttention2):
         rotary_seq_len = max(kv_seq_len, position_ids[:, -1].max().item()) + 1
         cos, sin = self.rotary_emb(value_states, position_ids, seq_len=rotary_seq_len)
 
-        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
+        query_states, key_states = apply_rotary_pos_emb(
+            query_states, key_states, cos, sin, position_ids, unsqueeze_dim=2
+        )
 
         # QuaRot: apply online hadamard to queries and keys
         if self.online_had:
@@ -240,10 +248,10 @@ class QuarotFP16Phi3FlashAttention2(Phi3FlashAttention2):
             key_states = key_states.to(target_dtype)
             value_states = value_states.to(target_dtype)
 
-        # Reashape to the expected shape for Flash Attention
-        query_states = query_states.transpose(1, 2)
-        key_states = key_states.transpose(1, 2)
-        value_states = value_states.transpose(1, 2)
+        # # Reashape to the expected shape for Flash Attention
+        # query_states = query_states.transpose(1, 2)
+        # key_states = key_states.transpose(1, 2)
+        # value_states = value_states.transpose(1, 2)
 
         attn_output = self._flash_attention_forward(
             query_states,
