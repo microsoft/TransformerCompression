@@ -16,8 +16,10 @@ from lm_eval.tasks import initialize_tasks
 
 from quarot import gptq, hf_utils, rotation, rtn
 from quarot.adapters.llama_adapter import LlamaModelAdapter
-from quarot import hf_utils, rotation, rtn
+from quarot.adapters.phi3_adapter import Phi3ModelAdapter
 from quarot.hf_utils import get_quarot_model, quarot_model_config
+from quarot.modeling_llama import QuarotLlamaForCausalLM
+from quarot.modeling_phi3 import QuarotPhi3ForCausalLM
 from slicegpt import data_utils, gpu_utils, layernorm_fusion, utils
 from slicegpt.config import config
 
@@ -272,7 +274,13 @@ def quarot_main(args: argparse.Namespace) -> None:
             dataset=dataset["train"], tokenizer=tokenizer, batch_size=args.ppl_eval_batch_size
         )
 
-        quarot_model_adapter = LlamaModelAdapter(quarot_model)
+        if isinstance(quarot_model, QuarotLlamaForCausalLM):
+            quarot_model_adapter = LlamaModelAdapter(quarot_model)
+        elif isinstance(quarot_model, QuarotPhi3ForCausalLM):
+            quarot_model_adapter = Phi3ModelAdapter(quarot_model)
+        else:
+            raise ValueError("Specify adapter for QuaRot model.")
+
         gptq.quantize_model_gptq(
             quarot_model_adapter, train_loader, bits=args.w_bits, symmetric=False if args.w_asym else True
         )

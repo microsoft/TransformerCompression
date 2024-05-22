@@ -38,8 +38,6 @@ def rotate_model(model_adapter: ModelAdapter, seed: int = 0) -> None:
     rotate_head(model_adapter, Q)
 
     is_phi3 = isinstance(model_adapter.model, Phi3ForCausalLM)
-    print("Debug: rotating Phi3 model")
-
     layer_adapters = model_adapter.get_layers()
     for layer_adapter in tqdm.tqdm(layer_adapters, unit="layer", desc="Rotating"):
         rotate_attention_inputs(layer_adapter, Q)

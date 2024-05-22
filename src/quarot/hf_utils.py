@@ -15,8 +15,8 @@ from .modeling_phi3 import QuarotPhi3Config, QuarotPhi3ForCausalLM
 
 
 def quarot_model_config(model_name_or_path: str, dtype: torch.dtype):
-    if model_name_or_path == 'meta-llama/Llama-2-7b-hf':
-        model_config = QuarotLlamaConfig.from_pretrained(model_name_or_path, dtype=dtype)
+    if model_name_or_path in ['meta-llama/Llama-2-7b-hf', 'meta-llama/Llama-2-13b-hf']:
+        model_config = QuarotLlamaConfig.from_pretrained(model_name_or_path, dtype=dtype, use_cache=False)
         model_config._attn_implementation = "flash_attention_2"
         return model_config
     elif model_name_or_path == 'microsoft/Phi-3-mini-4k-instruct':
@@ -38,7 +38,7 @@ def get_quarot_model(
     online_had_mlp = True if rotate else False
     online_had_attn = True if rotate else False
     rms_norm = True if rotate else False
-    if model_name_or_path == 'meta-llama/Llama-2-7b-hf':
+    if model_name_or_path in ['meta-llama/Llama-2-7b-hf', 'meta-llama/Llama-2-13b-hf']:
         return QuarotLlamaForCausalLM(
             online_had_mlp=online_had_mlp,
             online_had_attn=online_had_attn,
