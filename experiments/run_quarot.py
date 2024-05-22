@@ -15,7 +15,7 @@ from lm_eval.models.huggingface import HFLM
 from lm_eval.tasks import initialize_tasks
 
 from quarot import hf_utils, rotation, rtn
-from quarot.hf_utils import quarot_model_config, get_quarot_model
+from quarot.hf_utils import get_quarot_model, quarot_model_config
 from slicegpt import data_utils, gpu_utils, layernorm_fusion, utils
 from slicegpt.config import config
 
@@ -225,7 +225,7 @@ def quarot_main(args: argparse.Namespace) -> None:
     with transformers.modeling_utils.no_init_weights():
         # initialize quarot model
 
-        act_args = {'act_bits': args.a_bits, 'act_clip_ratio': args.a_clip_ratio}
+        act_args = {'a_bits': args.a_bits, 'a_clip_ratio': args.a_clip_ratio}
         key_args = {'k_bits': args.k_bits, 'k_clip_ratio': args.k_clip_ratio, 'k_groupsize': args.k_groupsize}
         value_args = {'v_bits': args.v_bits, 'v_clip_ratio': args.v_clip_ratio, 'v_groupsize': args.v_groupsize}
         quarot_model = get_quarot_model(

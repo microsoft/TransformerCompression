@@ -3,6 +3,7 @@
 
 import torch
 import tqdm
+from transformers.models.phi3.modeling_phi3 import Phi3ForCausalLM
 
 from slicegpt import utils
 from slicegpt.rotate import (
@@ -36,6 +37,9 @@ def rotate_model(model_adapter: ModelAdapter, seed: int = 0) -> None:
     rotate_embeddings(model_adapter, Q)
     rotate_head(model_adapter, Q)
 
+    is_phi3 = isinstance(model_adapter.model, Phi3ForCausalLM)
+    print("Debug: rotating Phi3 model")
+
     layer_adapters = model_adapter.get_layers()
     for layer_adapter in tqdm.tqdm(layer_adapters, unit="layer", desc="Rotating"):
         rotate_attention_inputs(layer_adapter, Q)
@@ -43,7 +47,7 @@ def rotate_model(model_adapter: ModelAdapter, seed: int = 0) -> None:
         rotate_mlp_input(layer_adapter, Q)
         rotate_mlp_output(layer_adapter, Q)
         apply_hadamard(layer_adapter.get_mlp_output())
-        apply_hadamard_headwise(layer_adapter.get_v_proj(), head_dim=head_dim)
-        apply_hadamard(layer_adapter.get_attention_output())
+        apply_hadamard_headwise(layer_adapter.get_v_proj(), head_dim=head_dim, is_phi3=is_phi3)
+        apply_hadamard(layer_adapter.get_attention_output(), is_phi3=is_phi3)
 
     utils.cleanup_memory()

@@ -5,7 +5,7 @@ import logging
 import pathlib
 
 import torch
-from transformers import AutoTokenizer, PreTrainedTokenizerBase, PretrainedConfig
+from transformers import AutoTokenizer, PretrainedConfig, PreTrainedTokenizerBase
 
 from slicegpt.hf_utils import do_not_initialize
 
@@ -20,8 +20,9 @@ def quarot_model_config(model_name_or_path: str, dtype: torch.dtype):
         model_config._attn_implementation = "flash_attention_2"
         return model_config
     elif model_name_or_path == 'microsoft/Phi-3-mini-4k-instruct':
-        model_config = QuarotPhi3Config.from_pretrained(model_name_or_path, dtype=dtype)
+        model_config = QuarotPhi3Config.from_pretrained(model_name_or_path, dtype=dtype, use_cache=False)
         model_config._attn_implementation = "flash_attention_2"
+        return model_config
     else:
         raise NotImplementedError("Model type not supported")
 
