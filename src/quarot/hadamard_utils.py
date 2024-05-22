@@ -134,17 +134,16 @@ def apply_hadamard_headwise(module: torch.nn.Linear, head_dim: int):
     - module: the torch.nn.Linear instance to modify.
     - head_dim: the head dimension. Must be a power of 2.
     """
-    assert is_pow2(head_dim), "Head dimension must be a power of 2!"
-
-    W_ = module.weight.data.t()
+    W_ = module.weight.data
     dtype = W_.dtype
     dev = W_.device
     W_ = W_.float().cuda()
 
-    scale = 1 / math.sqrt(head_dim)
     num_heads = module.out_features // head_dim
-    W_ = hadamard_transform(W_.reshape(module.in_features, num_heads, head_dim), scale=scale)
-    W_ = W_.reshape((module.in_features, module.out_features)).t()
+    W_ = W_.t()  # (in_features, out_features)
+    W_ = W_.reshape(module.in_features, num_heads, head_dim) # (in_features, num_heads, head_dim)
+    W_ = factored_hadamard(W_)  # hadamard along the head dimension
+    W_ = W_.reshape((module.in_features, module.out_features)).t()  # (out_features, in_features)
 
     module.weight.data = W_.to(device=dev, dtype=dtype)
 

@@ -22,6 +22,7 @@ def quarot_model_config(model_name_or_path: str, dtype: torch.dtype):
     elif model_name_or_path == 'microsoft/Phi-3-mini-4k-instruct':
         model_config = QuarotPhi3Config.from_pretrained(model_name_or_path, dtype=dtype)
         model_config._attn_implementation = "flash_attention_2"
+        return model_config
     else:
         raise NotImplementedError("Model type not supported")
 

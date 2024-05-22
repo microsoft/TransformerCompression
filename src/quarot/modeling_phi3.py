@@ -48,7 +48,7 @@ class QuarotPhi3MLP(Phi3MLP):
         self.online_had = online_had
         self.gate_up_proj = QuarotFP16Linear.like(self.gate_up_proj)
         self.down_proj = QuarotFP16Linear.like(self.down_proj)
-        self.online_down_proj_hadamard = OnlineHadamard(self.intermediate_size)
+        self.online_down_proj_hadamard = OnlineHadamard(config.intermediate_size)
         if act_bits < 16:
             self.input_quantizer = ActQuantizer(act_bits, symmetric=True, clip_ratio=act_clip_ratio)
             self.down_proj_input_quantizer = ActQuantizer(act_bits, symmetric=True, clip_ratio=act_clip_ratio)
