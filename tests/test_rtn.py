@@ -4,7 +4,9 @@
 import pytest
 import torch
 
-from quarot.rtn import calculate_scales_asymmetric, calculate_scales_symmetric, quantize_weight_rtn
+from quarot.rtn import calculate_scales, quantize_weight_rtn
+
+torch.set_default_dtype(torch.float16)
 
 
 @pytest.mark.quarot
@@ -23,8 +25,18 @@ from quarot.rtn import calculate_scales_asymmetric, calculate_scales_symmetric, 
     ],
 )
 def test_calculate_scales_symmetric(bits, weight, expected_scales):
-    scales = calculate_scales_symmetric(weight, bits, perchannel=True, clip_weights=False)
+    symmetric = True
+    scales, offsets = calculate_scales(weight, bits, symmetric=symmetric, clip_weights=False, vectorized=False)
     assert torch.allclose(scales, expected_scales)
+    assert offsets is None
+
+    scales_nonvec, offsets_nonvec = calculate_scales(
+        weight, bits, symmetric=symmetric, clip_weights=True, vectorized=False
+    )
+    scales_vec, offsets_vec = calculate_scales(weight, bits, symmetric=symmetric, clip_weights=True, vectorized=True)
+    assert torch.allclose(scales_vec, scales_nonvec)
+    assert offsets_nonvec is None
+    assert offsets_vec is None
 
 
 @pytest.mark.quarot
@@ -42,9 +54,18 @@ def test_calculate_scales_symmetric(bits, weight, expected_scales):
     ],
 )
 def test_weight_rtn_symmetric(bits, weight, expected_quantized_weight):
-    scales = calculate_scales_symmetric(weight, bits, perchannel=True, clip_weights=False)
-    quantized_weight = quantize_weight_rtn(weight, scales, None, bits, symmetric=True)
+    symmetric = True
+    scales, offsets = calculate_scales(weight, bits, symmetric=symmetric, clip_weights=False)
+    quantized_weight = quantize_weight_rtn(weight, scales, offsets, bits, symmetric=symmetric)
     assert torch.allclose(quantized_weight, expected_quantized_weight)
+
+    scales_nonvec, offsets_nonvec = calculate_scales(
+        weight, bits, symmetric=symmetric, clip_weights=True, vectorized=False
+    )
+    scales_vec, offsets_vec = calculate_scales(weight, bits, symmetric=symmetric, clip_weights=True, vectorized=True)
+    quantized_weight_nonvec = quantize_weight_rtn(weight, scales_nonvec, offsets_nonvec, bits, symmetric=symmetric)
+    quantized_weight_vec = quantize_weight_rtn(weight, scales_vec, offsets_vec, bits, symmetric=symmetric)
+    assert torch.allclose(quantized_weight_vec, quantized_weight_nonvec)
 
 
 @pytest.mark.quarot
@@ -60,9 +81,17 @@ def test_weight_rtn_symmetric(bits, weight, expected_quantized_weight):
     ],
 )
 def test_calculate_scales_asymmetric(bits, weight, expected_scales, expected_offsets):
-    scales, offsets = calculate_scales_asymmetric(weight, bits, perchannel=True)
+    symmetric = False
+    scales, offsets = calculate_scales(weight, bits, symmetric=symmetric, clip_weights=False)
     assert torch.allclose(scales, expected_scales)
     assert torch.allclose(offsets, expected_offsets)
+
+    scales_nonvec, offsets_nonvec = calculate_scales(
+        weight, bits, symmetric=symmetric, clip_weights=True, vectorized=False
+    )
+    scales_vec, offsets_vec = calculate_scales(weight, bits, symmetric=symmetric, clip_weights=True, vectorized=True)
+    assert torch.allclose(scales_vec, scales_nonvec)
+    assert torch.allclose(offsets_nonvec, offsets_vec)
 
 
 @pytest.mark.quarot
@@ -77,9 +106,18 @@ def test_calculate_scales_asymmetric(bits, weight, expected_scales, expected_off
     ],
 )
 def test_weight_rtn_asymmetric(bits, weight, expected_quantized_weight):
-    scale, offset = calculate_scales_asymmetric(weight, bits, perchannel=True)
-    quantized_weight = quantize_weight_rtn(weight, scale, offset, bits, symmetric=False)
+    symmetric = False
+    scale, offset = calculate_scales(weight, bits, symmetric=symmetric, clip_weights=False)
+    quantized_weight = quantize_weight_rtn(weight, scale, offset, bits, symmetric=symmetric)
     assert torch.allclose(quantized_weight, expected_quantized_weight)
+
+    scales_nonvec, offsets_nonvec = calculate_scales(
+        weight, bits, symmetric=symmetric, clip_weights=True, vectorized=False
+    )
+    scales_vec, offsets_vec = calculate_scales(weight, bits, symmetric=symmetric, clip_weights=True, vectorized=True)
+    quantized_weight_nonvec = quantize_weight_rtn(weight, scales_nonvec, offsets_nonvec, bits, symmetric=symmetric)
+    quantized_weight_vec = quantize_weight_rtn(weight, scales_vec, offsets_vec, bits, symmetric=symmetric)
+    assert torch.allclose(quantized_weight_vec, quantized_weight_nonvec)
 
 
 @pytest.mark.quarot
@@ -105,7 +143,7 @@ def test_weight_rtn_asymmetric(bits, weight, expected_quantized_weight):
     ],
 )
 def test_calculate_scales_asymmetric_groupwise(bits, groupsize, weight, expected_scales, expected_offsets):
-    scales, offsets = calculate_scales_asymmetric(weight, bits, perchannel=True, groupsize=groupsize)
+    scales, offsets = calculate_scales(weight, bits, symmetric=False, clip_weights=False, groupsize=groupsize)
     assert torch.allclose(scales, expected_scales)
     assert torch.allclose(offsets, expected_offsets)
 
@@ -121,6 +159,7 @@ def test_calculate_scales_asymmetric_groupwise(bits, groupsize, weight, expected
     ],
 )
 def test_weight_rtn_asymmetric_groupwise(bits, groupsize, weight, expected_quantized_weight):
-    scale, offset = calculate_scales_asymmetric(weight, bits, perchannel=True, groupsize=groupsize)
+    expected_quantized_weight = expected_quantized_weight.to(dtype=torch.float16)
+    scale, offset = calculate_scales(weight, bits, symmetric=False, clip_weights=False, groupsize=groupsize)
     quantized_weight = quantize_weight_rtn(weight, scale, offset, bits, symmetric=False)
     assert torch.allclose(quantized_weight, expected_quantized_weight)

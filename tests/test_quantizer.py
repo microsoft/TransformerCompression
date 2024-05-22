@@ -38,6 +38,6 @@ def test_act_quantizer():
     assert quantized_act.shape == (batch_size, seq_len, hidden_dim)
     assert act_scales.shape == (batch_size, seq_len, 1)
 
-    # Check quantization error
+    # Check quantization error (NB: flakey, depends on randomness of act)
     dequantized_act = quantized_act * act_scales
     assert torch.allclose(act, dequantized_act, rtol=1e-2, atol=1e-2)
