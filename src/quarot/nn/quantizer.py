@@ -1,7 +1,7 @@
 import torch
 
 from quarot.quant_utils import PackedQuantizedTensor
-from quarot.rtn import calculate_scales_asymmetric, calculate_scales_symmetric, quantize_weight_rtn
+from quarot.rtn import calculate_scales, quantize_weight_rtn
 
 
 class DummyActQuantizer(torch.nn.Module):
@@ -24,8 +24,10 @@ class ActQuantizer(torch.nn.Module):
         self.clip_ratio = clip_ratio
 
     def forward(self, x: torch.Tensor) -> PackedQuantizedTensor:
-        x_scales = calculate_scales_symmetric(x, self.bits, perchannel=True, clip_weights=False) * self.clip_ratio
-        quantized_x = quantize_weight_rtn(x, x_scales, None, self.bits, symmetric=True)
+        x_scales, x_offsets = calculate_scales(
+            x, self.bits, symmetric=True, clip_weights=False, clip_ratio=self.clip_ratio
+        )
+        quantized_x = quantize_weight_rtn(x, x_scales, x_offsets, self.bits, symmetric=True)
         return PackedQuantizedTensor(quantized_x, x_scales)
 
 
@@ -42,8 +44,8 @@ class KVQuantizerDequantizer(torch.nn.Module):
         self.groupsize = groupsize
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x_scales, x_offsets = calculate_scales_asymmetric(
-            x, self.bits, perchannel=True, clip_ratio=self.clip_ratio, groupsize=self.groupsize
+        x_scales, x_offsets = calculate_scales(
+            x, self.bits, symmetric=False, clip_weights=False, clip_ratio=self.clip_ratio, groupsize=self.groupsize
         )
         quantized_x = quantize_weight_rtn(x, x_scales, x_offsets, self.bits, symmetric=False)
         dequantized_x = (quantized_x - x_offsets) * x_scales
