@@ -14,7 +14,8 @@ from lm_eval.api.registry import ALL_TASKS
 from lm_eval.models.huggingface import HFLM
 from lm_eval.tasks import initialize_tasks
 
-from quarot import hf_utils, rotation, rtn
+from quarot import gptq, hf_utils, rotation, rtn
+from quarot.adapters.llama_adapter import LlamaModelAdapter
 from quarot.modeling_llama import QuarotLlamaConfig, QuarotLlamaForCausalLM
 from slicegpt import data_utils, gpu_utils, layernorm_fusion, utils
 from slicegpt.config import config
@@ -91,10 +92,25 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
         help='Quantize weights using RTN.',
     )
     parser.add_argument(
+        '--w-gptq',
+        action="store_true",
+        help='Quantize weights using GPTQ.',
+    )
+    parser.add_argument(
         '--w-bits',
         type=int,
         default=16,
         help='Number of bits to quantize the weights to.',
+    )
+    parser.add_argument(
+        '--w-clip-vec',
+        action="store_true",
+        help='Vectorized weight clipping ratio search.',
+    )
+    parser.add_argument(
+        '--w-asym',
+        action="store_true",
+        help='Asymmetric weight quantization (else symmetric by default).',
     )
 
     # Activation Quantization Arguments
@@ -181,8 +197,6 @@ def quarot_main(args: argparse.Namespace) -> None:
     logging.info(f"PyTorch device: {config.device}")
     logging.info(f"Number of available cuda devices: {torch.cuda.device_count()}")
 
-    torch.set_default_dtype(config.dtype)
-
     try:
         wandb.init(project=args.wandb_project, config=args, mode='disabled' if args.no_wandb else None)
     except wandb.UsageError as e:
@@ -220,7 +234,7 @@ def quarot_main(args: argparse.Namespace) -> None:
         # Rotate the model with fused Hadamard transformations.
         rotation.rotate_model(model_adapter, args.rotation_seed)
 
-    model_config = QuarotLlamaConfig.from_pretrained(args.model, dtype=config.dtype)
+    model_config = QuarotLlamaConfig.from_pretrained(args.model, dtype=config.dtype, use_cache=False)
     model_config._attn_implementation = "flash_attention_2"
     with transformers.modeling_utils.no_init_weights():
         # initialize quarot model
@@ -242,12 +256,30 @@ def quarot_main(args: argparse.Namespace) -> None:
             config=model_config,
         )
 
+        quarot_llama = quarot_llama.to(config.dtype)
+
         # load the rotated weights into the quarot model
         quarot_llama.load_state_dict(model_adapter.model.state_dict(), strict=False)
 
     if args.w_rtn:
         logging.info(f"Quantizing weights to INT{args.w_bits} using RTN.")
-        rtn.quantize_model_rtn(quarot_llama, bits=args.w_bits)
+        rtn.quantize_model_rtn(
+            quarot_llama,
+            bits=args.w_bits,
+            symmetric=False if args.w_asym else True,
+            vectorized=True if args.w_clip_vec else False,
+        )
+        logging.info("Quantization complete.")
+    elif args.w_gptq:
+        logging.info(f"Quantizing weights to INT{args.w_bits} using GPTQ.")
+        train_loader = data_utils.prepare_dataloader(
+            dataset=dataset["train"], tokenizer=tokenizer, batch_size=args.ppl_eval_batch_size
+        )
+
+        quarot_model_adapter = LlamaModelAdapter(quarot_llama)
+        gptq.quantize_model_gptq(
+            quarot_model_adapter, train_loader, bits=args.w_bits, symmetric=False if args.w_asym else True
+        )
         logging.info("Quantization complete.")
 
     quarot_llama.to(config.device)
