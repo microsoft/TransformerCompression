@@ -57,17 +57,9 @@ class Phi3LayerAdapter(LayerAdapter):
     def get_mlp_output(self) -> Linear:
         return self.layer.mlp.down_proj
 
-    # QuaRot specific. # should we separate the qk and v like they do in fwd?
+    # QuaRot specific. NB diff behaviour to Llama2/3!
     def get_v_proj(self) -> Linear:
-        # op_size = self.num_heads * self.head_dim + 2 * (self.num_key_value_heads * self.head_dim)
-        # self.o_proj = nn.Linear(self.num_heads * self.head_dim, self.hidden_size, bias=False)
-        # self.qkv_proj = nn.Linear(self.hidden_size, op_size, bias=False)
-        num_heads_times_head_dim = self.layer.self_attn.o_proj.in_features
-        hidden_size, op_size = self.layer.self_attn.qkv_proj.in_features, self.layer.self_attn.qkv_proj.out_features
-        v_proj_size = (op_size - num_heads_times_head_dim) // 2
-        v_proj = torch.nn.Linear(hidden_size, v_proj_size, bias=False)
-        v_proj.weight.copy_(self.layer.self_attn.qkv_proj.weight[op_size-v_proj_size:,:])
-        return v_proj
+        return self.layer.self_attn.qkv_proj
 
 
 class Phi3ModelAdapter(ModelAdapter):

@@ -228,11 +228,8 @@ def quantize_model_rtn(
         clip_weights: whether to clip the weights to the maximum representable value
     """
     layers = model.model.layers
+
     for layer in tqdm(layers, desc="Quantizing layers", unit="layer"):
-        quantize_module_rtn(layer.mlp.up_proj, bits, symmetric, clip_weights, vectorized, groupsize)
-        quantize_module_rtn(layer.mlp.gate_proj, bits, symmetric, clip_weights, vectorized, groupsize)
-        quantize_module_rtn(layer.mlp.down_proj, bits, symmetric, clip_weights, vectorized, groupsize)
-        quantize_module_rtn(layer.self_attn.q_proj, bits, symmetric, clip_weights, vectorized, groupsize)
-        quantize_module_rtn(layer.self_attn.k_proj, bits, symmetric, clip_weights, vectorized, groupsize)
-        quantize_module_rtn(layer.self_attn.v_proj, bits, symmetric, clip_weights, vectorized, groupsize)
-        quantize_module_rtn(layer.self_attn.o_proj, bits, symmetric, clip_weights, vectorized, groupsize)
+        for _, module in layer.named_modules():
+            if isinstance(module, QuarotFP16Linear):
+                quantize_module_rtn(module, bits, symmetric, clip_weights, vectorized, groupsize)
