@@ -20,6 +20,7 @@ from transformers import PretrainedConfig
 from transformers.models.phi3.modeling_phi3 import Phi3Config, Phi3DecoderLayer, Phi3ForCausalLM, Phi3RMSNorm
 
 from quarot.model_adapter import LayerAdapter, ModelAdapter
+from quarot.nn.linear import QuarotFP16Linear
 
 
 class Phi3LayerAdapter(LayerAdapter):
@@ -59,7 +60,14 @@ class Phi3LayerAdapter(LayerAdapter):
 
     # QuaRot specific. NB diff behaviour to Llama2/3!
     def get_v_proj(self) -> Linear:
-        return self.layer.self_attn.qkv_proj
+        qkv = self.layer.self_attn.qkv_proj
+        out_features, in_features = qkv.weight.shape
+        v_proj_out_features = out_features // 3
+        v_proj = QuarotFP16Linear(in_features, v_proj_out_features, bias=False)
+
+        # point v_proj weight to qkv weight
+        v_proj.weight = torch.nn.Parameter(qkv.weight[2 * v_proj_out_features :, :])
+        return v_proj
 
 
 class Phi3ModelAdapter(ModelAdapter):

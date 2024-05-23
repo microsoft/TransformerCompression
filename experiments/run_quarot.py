@@ -14,7 +14,7 @@ from lm_eval.api.registry import ALL_TASKS
 from lm_eval.models.huggingface import HFLM
 from lm_eval.tasks import initialize_tasks
 
-from quarot import gptq, hf_utils, rotation, rtn
+from quarot import gptq, hf_utils, rotate, rtn
 from quarot.adapters.llama_adapter import LlamaModelAdapter
 from quarot.adapters.phi3_adapter import Phi3ModelAdapter
 from quarot.hf_utils import get_quarot_model, quarot_model_config
@@ -235,7 +235,7 @@ def quarot_main(args: argparse.Namespace) -> None:
         layernorm_fusion.fuse_modules(model_adapter)  # TODO: fix expected adapter type
 
         # Rotate the model with fused Hadamard transformations.
-        rotation.rotate_model(model_adapter, args.rotation_seed)
+        rotate.rotate_model(model_adapter, args.rotation_seed)
 
     model_config = quarot_model_config(args.model, dtype=config.dtype)
 

@@ -50,7 +50,7 @@ finetune = [
 
 quarot = [
     "flash-attn==2.5.8",
-    "fast_hadamard_transform",
+    "fast-hadamard-transform @ https://github.com/Dao-AILab/fast-hadamard-transform/archive/refs/tags/v1.0.4.post1.zip",
 ]
 
 [tool.setuptools.packages.find]

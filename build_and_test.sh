@@ -12,6 +12,7 @@ python3 -m venv .venv
 # Install dependencies
 pip install --upgrade pip setuptools wheel
 pip install -e .[dev]
+pip install -e .[quarot]  # Required for quarot tests, must be installed once torch, setuptools and packaging installed.
 
 ./test.sh
 

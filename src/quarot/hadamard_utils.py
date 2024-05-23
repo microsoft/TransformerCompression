@@ -125,7 +125,7 @@ def _apply_fast_hadamard(X: torch.tensor, hadK: torch.tensor) -> torch.tensor:
     return input.reshape(X.shape)
 
 
-def apply_hadamard_headwise(module: torch.nn.Linear, head_dim: int, is_phi3: bool = False):
+def apply_hadamard_headwise(module: torch.nn.Linear, head_dim: int):
     """
     Apply a Hadamard transform to each head (chunk of columns) of the weight matrix of a module.
     We do this by reshaping the weight matrix into (in_features, num_heads, head_dim) and applying the Hadamard transform along the last dimension, then reshaping.
@@ -135,9 +135,6 @@ def apply_hadamard_headwise(module: torch.nn.Linear, head_dim: int, is_phi3: boo
     - head_dim: the head dimension. Must be a power of 2.
     """
     W_ = module.weight.data
-
-    if is_phi3:
-        W_ = W_[2 * 3072 :, :]
 
     dtype = W_.dtype
     dev = W_.device
@@ -150,36 +147,34 @@ def apply_hadamard_headwise(module: torch.nn.Linear, head_dim: int, is_phi3: boo
     W_ = factored_hadamard(W_)  # hadamard along the head dimension
     W_ = W_.reshape((in_features, out_features)).t()  # (out_features, in_features)
 
-    # import pdb; pdb.set_trace()
-    if is_phi3:
-        module.weight.data[2 * 3072 :, :] = W_.to(device=dev, dtype=dtype)
-    else:
-        module.weight.data = W_.to(device=dev, dtype=dtype)
+    module.weight.data[:, :] = W_.to(device=dev, dtype=dtype)[
+        :, :
+    ]  # in-place replacement needed when updating v_proj in Phi3 so that parent qkv is updated
 
 
-def apply_hadamard(module: torch.nn.Linear, is_phi3=False) -> None:
+def apply_hadamard(module: torch.nn.Linear, head_dim: int | None = None) -> None:
     """
     Modifies the weights contained in a torch.nn.Linear instance. If the weights are W,
     this turns them into HW, where H is a Hadamard matrix.
 
     Args:
     - module: the torch.nn.Linear instance to modify.
+    - head_dim: the head dimension (if applicable). If provided, the Hadamard transform is applied headwise (default: None).
     """
     W_ = module.weight.data
     dtype = W_.dtype
     dev = W_.device
     W_ = W_.float().cuda()
 
-    if is_phi3:
-        out_features, in_features = W_.shape  # 3072, 3072
-        num_heads = in_features // 96
-        W_ = W_.reshape(out_features, num_heads, 96)
+    out_features, in_features = W_.shape
+    if head_dim is not None and not is_pow2(in_features):
+        num_heads = in_features // head_dim
+        W_ = W_.reshape(out_features, num_heads, head_dim)
         W_ = factored_hadamard(W_)
         W_ = W_.mT
         W_ = factored_hadamard(W_)
         W_ = W_.mT
         W_ = W_.reshape(out_features, in_features)
-
     else:
         W_ = factored_fast_hadamard(W_) if fht_available else factored_slow_hadamard(W_)
 
@@ -197,5 +192,5 @@ def random_hadamard_matrix(size: int, seed: int = 0) -> torch.Tensor:
     return factored_slow_hadamard(Q)
 
 
-def is_pow2(n):
+def is_pow2(n: int) -> bool:
     return (n & (n - 1) == 0) and (n > 0)
