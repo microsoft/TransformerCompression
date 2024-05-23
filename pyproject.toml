@@ -49,6 +49,7 @@ finetune = [
 ]
 
 quarot = [
+    "flash-attn==2.5.8",
     "fast_hadamard_transform",
 ]
 
