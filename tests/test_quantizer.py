@@ -16,8 +16,9 @@ def test_dummy_quantizer():
     packed_quantized_act = quantizer(act)
     quantized_x, scales_x = packed_quantized_act.quantized_x, packed_quantized_act.scales_x
 
-    # Check quantization error
+    # Check scales are ones and quantization error is nil
     dequantized_x = quantized_x * scales_x
+    assert torch.allclose(scales_x, torch.ones_like(scales_x))
     assert torch.allclose(act, dequantized_x)
 
 

@@ -23,23 +23,36 @@ def quantize_weight_gptq(
     clip_weights: bool = True,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]:
     """
-    TODO.
+    Quantize a weight tensor to INT<bits> using the GPTQ scheme.
+
+    Args:
+        W: The weight tensor to quantize.
+        H: The Hessian of the activations, must have dtype==torch.float32.
+        bits: The number of bits to quantize to.
+        symmetric: Whether to use symmetric quantization.
+        max_blocksize: The maximum block size for the GPTQ algorithm.
+        percdamp: The damping factor for the Hessian.
+        groupsize: The number of weights to group together for quantization.
+        clip_weights: Whether to clip the weights (by searching for good clipping ratios) to the range of the quantization.
     """
     num_features, num_columns = W.shape
     orig_dev = W.device
     orig_dtype = W.dtype
-    W = W.to('cuda').float()
-    H = H.cuda()
+    W = W.to('cuda', dtype=torch.float32)
+    H = H.to(W.device)
 
     if groupsize is None:
         scale, offset = calculate_scales(W, bits, symmetric=symmetric, clip_weights=clip_weights, vectorized=False)
         scale = scale.float()
-        offset = offset.float() if offset is not None else None
+        if not symmetric:
+            offset = offset.float()
+    else:
+        raise NotImplementedError("Groupwise quantization not yet tested for GPTQ")
 
     # find dead weights and set them to zero, and their Hess value to 1
-    dead = torch.diag(H) == 0
-    H[dead, dead] = 1
-    W[:, dead] = 0
+    dead = torch.diag(H) == 0.0
+    H[dead, dead] = 1.0
+    W[:, dead] = 0.0
 
     # add damping to the diagonal
     H.diagonal().add_(percdamp * torch.mean(torch.diag(H)))
@@ -54,7 +67,7 @@ def quantize_weight_gptq(
         block_end_idx = min(block_start_idx + max_blocksize, num_columns)
         blocksize = block_end_idx - block_start_idx
 
-        Err_block = torch.zeros((W.shape[0], blocksize)).cuda()
+        Err_block = torch.zeros((W.shape[0], blocksize), dtype=W.dtype, device=W.device)
 
         for i in range(blocksize):
             cur_idx = block_start_idx + i
@@ -67,13 +80,9 @@ def quantize_weight_gptq(
                     clip_weights=clip_weights,
                     vectorized=False,
                 )
-                scale = scale.float()
-                offset = offset.float() if offset is not None else None
 
             # store the int-quantized weight column
-            Q[:, cur_idx] = quantize_weight_rtn(
-                W[:, cur_idx : cur_idx + 1], scale, offset, bits, symmetric=symmetric
-            ).flatten()
+            Q[:, cur_idx] = quantize_weight_rtn(W[:, cur_idx : cur_idx + 1], scale, offset, bits).flatten()
 
             # calculate the dequantized weight
             if symmetric:
@@ -92,20 +101,19 @@ def quantize_weight_gptq(
         # update the rest of the weights in the tensor
         W[:, block_end_idx:] -= Err_block.matmul(L_inv_transpose[block_start_idx:block_end_idx, block_end_idx:])
 
-    if torch.any(torch.isnan(W)):
-        print('NaN in weights')
-        print(bits, scale, offset)
-        raise ValueError('NaN in weights')
-
     Q = Q.to(orig_dev, dtype=orig_dtype)
     scale = scale.to(orig_dev, dtype=orig_dtype)
-    offset = offset.to(orig_dev, dtype=orig_dtype) if offset is not None else None
+    if not symmetric:
+        offset = offset.to(orig_dev, dtype=orig_dtype)
+
     return Q, scale, offset
 
 
-def construct_hessian(X: list[torch.Tensor], ignore_masks: list[torch.Tensor] | None = None) -> torch.Tensor:
+def construct_hessian(
+    X: list[torch.Tensor | PackedQuantizedTensor], ignore_masks: list[torch.Tensor] | None = None
+) -> torch.Tensor:
     """
-    TODO.
+    Construct the Hessian matrix for a given set of activations.
     """
     # Run GC and cleanup GPU memory
     cleanup_memory()
@@ -140,7 +148,7 @@ def get_signals(
 ) -> tuple[list[torch.Tensor], list[torch.Tensor], list[torch.Tensor], list[torch.Tensor], list[torch.Tensor]]:
     """
     Take the input signals ("activations") for a layer, run the layer forward.
-    Return the output of the layer (not layernormed) and the input to the MLP (pre-layernorm).
+    Return the output of the layer and the inputs to the attention inputs & output, and to the mlp inputs & output.
     """
     qkv_inputs, o_proj_inputs, upgate_inputs, down_proj_inputs = [], [], [], []
     outputs = []
@@ -213,7 +221,9 @@ def quantize_model_gptq(
     apply_mask: bool = False,
 ) -> None:
     """
-    TODO
+    Quantize the model in-place using the GPTQ scheme, using the dataloader calibration data. All weights are stored in FP16.
+    If the model is a QuaRot model, the weights-minus-offsets and scales are stored in the QuarotFP16Linear modules. If the model is not a QuaRot model,
+    the weights are dequantized and stored in the torch.nn.Linear modules.
     """
     model_adapter.model.eval()
 
@@ -226,16 +236,13 @@ def quantize_model_gptq(
         if apply_mask:
             ignore_masks.append(batch["attention_mask"])
 
-    layers = model_adapter.get_layers()
-
-    logging.info("Quantizing model with GPTQ")
-    for idx, layer_adapter in enumerate(tqdm(layers, unit="layer", desc="Quantizing layer")):
+    for layer_adapter in tqdm(model_adapter.get_layers(), unit="layer", desc="Quantizing layer"):
         layer_adapter.layer.to('cuda')
 
         # get all activations for the current layer (4 sets)
         qkv_inputs, o_proj_inputs, upgate_inputs, down_proj_inputs, outputs = get_signals(layer_adapter, args, kwargs)
 
-        # compute the 4 Hessians [construct_hessian(inps, ignore_masks)  # TODO: rescale?]
+        # compute the 4 Hessians
         H_qkv, H_o_proj, H_upgate, H_down_proj = [
             construct_hessian(X, ignore_masks) for X in [qkv_inputs, o_proj_inputs, upgate_inputs, down_proj_inputs]
         ]
@@ -246,7 +253,7 @@ def quantize_model_gptq(
         W_upgate = torch.cat([w.weight.data for w in layer_adapter.get_mlp_inputs()], dim=0)
         W_down_proj = layer_adapter.get_mlp_output().weight.data
 
-        # 4 calls to quantizer
+        # call the quantizer
         Q_qkv, scale_qkv, offset_qkv = quantize_weight_gptq(W_qkv, H_qkv, bits, symmetric=symmetric)
         Q_o_proj, scale_o_proj, offset_o_proj = quantize_weight_gptq(W_o_proj, H_o_proj, bits, symmetric=symmetric)
         Q_upgate, scale_upgate, offset_upgate = quantize_weight_gptq(W_upgate, H_upgate, bits, symmetric=symmetric)
@@ -254,7 +261,7 @@ def quantize_model_gptq(
             W_down_proj, H_down_proj, bits, symmetric=symmetric
         )
 
-        # set the quantized weights and scales
+        # set the quantized weights and scales of the attention inputs
         attn_inputs = layer_adapter.get_attention_inputs()
         for module, quantized_weight, scale, offset in zip(
             attn_inputs,
@@ -264,8 +271,10 @@ def quantize_model_gptq(
         ):
             set_tensors(module, quantized_weight, scale, offset)
 
+        # set the quantized weights and scales of the attention output
         set_tensors(layer_adapter.get_attention_output(), Q_o_proj, scale_o_proj, offset_o_proj)
 
+        # set the quantized weights and scales of the MLP inputs
         mlp_inputs = layer_adapter.get_mlp_inputs()
         for module, quantized_weight, scale, offset in zip(
             mlp_inputs,
@@ -277,11 +286,10 @@ def quantize_model_gptq(
         ):
             set_tensors(module, quantized_weight, scale, offset)
 
+        # set the quantized weights and scales of the MLP output
         set_tensors(layer_adapter.get_mlp_output(), Q_down_proj, scale_down_proj, offset_down_proj)
 
         # outputs of this layer are inputs of the next
         args = [layer_adapter.get_updated_args(output_i, args_i) for output_i, args_i in zip(outputs, args)]
 
         layer_adapter.layer.to('cpu')
-
-    logging.info("Quantizing model with GPTQ done.")

@@ -248,11 +248,6 @@ class QuarotFP16Phi3FlashAttention2(Phi3FlashAttention2):
             key_states = key_states.to(target_dtype)
             value_states = value_states.to(target_dtype)
 
-        # # Reashape to the expected shape for Flash Attention
-        # query_states = query_states.transpose(1, 2)
-        # key_states = key_states.transpose(1, 2)
-        # value_states = value_states.transpose(1, 2)
-
         attn_output = self._flash_attention_forward(
             query_states,
             key_states,

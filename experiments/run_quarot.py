@@ -279,7 +279,7 @@ def quarot_main(args: argparse.Namespace) -> None:
         elif isinstance(quarot_model, QuarotPhi3ForCausalLM):
             quarot_model_adapter = Phi3ModelAdapter(quarot_model)
         else:
-            raise ValueError("Specify adapter for QuaRot model.")
+            raise ValueError("Adapter for QuaRot model must be specified.")
 
         gptq.quantize_model_gptq(
             quarot_model_adapter, train_loader, bits=args.w_bits, symmetric=False if args.w_asym else True
@@ -288,8 +288,13 @@ def quarot_main(args: argparse.Namespace) -> None:
 
     quarot_model.to(config.device)
     dataset_ppl = gpu_utils.evaluate_ppl(quarot_model, quarot_model.config.pad_token_id, test_loader)
-    logging.info(f'QuaRot ppl: {dataset_ppl:.4f}')
-    wandb.log({"quarot_ppl": dataset_ppl})
+
+    if args.rotate:
+        logging.info(f'QuaRot ppl: {dataset_ppl:.4f}')
+        wandb.log({"quarot_ppl": dataset_ppl})
+    else:
+        logging.info(f'ppl: {dataset_ppl:.4f}')
+        wandb.log({"ppl": dataset_ppl})
 
     if not args.lm_eval:
         return

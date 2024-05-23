@@ -100,9 +100,7 @@ def calculate_scales(
             weight = weight.unsqueeze(-1)
 
             # Quantize weights
-            candidate_quantized_weights = quantize_weight_rtn(
-                weight, candidate_scales, candidate_offset, bits, symmetric=symmetric
-            )
+            candidate_quantized_weights = quantize_weight_rtn(weight, candidate_scales, candidate_offset, bits)
 
             # Dequantize weights
             if symmetric:
@@ -134,9 +132,7 @@ def calculate_scales(
                     candidate_offset = torch.round(-candidate_min_weight / candidate_scale)
 
                 # Quantize weights
-                candidate_quantized_weight = quantize_weight_rtn(
-                    weight, candidate_scale, candidate_offset, bits, symmetric=symmetric
-                )
+                candidate_quantized_weight = quantize_weight_rtn(weight, candidate_scale, candidate_offset, bits)
 
                 # Dequantize weights
                 if symmetric:
@@ -166,7 +162,7 @@ def calculate_scales(
 
 
 def quantize_weight_rtn(
-    weight: torch.Tensor, scale: torch.Tensor, offset: torch.Tensor | None, bits: int, symmetric: bool = True
+    weight: torch.Tensor, scale: torch.Tensor, offset: torch.Tensor | None, bits: int
 ) -> torch.Tensor:
     """
     Quantize a weight tensor to INT<bits> using the given scale and offset.
@@ -174,18 +170,20 @@ def quantize_weight_rtn(
     device = weight.device
     weight = weight.cuda()
     scale = scale.cuda()
-    offset = offset.cuda() if offset is not None else None
+
+    symmetric = offset is None
+    if not symmetric:
+        offset = offset.cuda()
 
     min_int, max_int = calculate_min_max_int(bits, symmetric)
     min_int = min_int.to(device=weight.device, dtype=weight.dtype)
     max_int = max_int.to(device=weight.device, dtype=weight.dtype)
-    if symmetric:
-        quantized_weight = torch.clamp(torch.round(weight / scale), min_int, max_int)
-    else:
-        offset = offset.to(device=weight.device)
-        quantized_weight = torch.clamp(torch.round(weight / scale) + offset, min_int, max_int)
 
-    quantized_weight = quantized_weight.to(device)
+    weight_ints = torch.round(weight / scale)
+    if not symmetric:
+        weight_ints += offset
+
+    quantized_weight = torch.clamp(weight_ints, min_int, max_int).to(device)
     return quantized_weight
 
 
@@ -204,9 +202,9 @@ def quantize_module_rtn(
     weight = module.weight
 
     scale, offset = calculate_scales(weight, bits, symmetric, clip_weights, vectorized=vectorized, groupsize=groupsize)
-    quantized_weight = quantize_weight_rtn(weight, scale, offset, bits, symmetric)
+    quantized_weight = quantize_weight_rtn(weight, scale, offset, bits)
 
-    module.weight.data = quantized_weight - offset if offset is not None else quantized_weight
+    module.weight.data = quantized_weight - offset if not symmetric else quantized_weight
     module.weight_scales = scale
 
 
@@ -225,11 +223,11 @@ def quantize_model_rtn(
         model: the model to quantize
         bits: the number of bits to quantize the weights to
         symmetric: whether to use symmetric quantization
-        clip_weights: whether to clip the weights to the maximum representable value
+        clip_weights: whether to perform a search for the best clip ratio for weight clipping
+        vectorized: whether to use a vectorized implementation for weight clipping
+        groupsize: the groupsize for quantization. If None, quantize each channel in full.
     """
-    layers = model.model.layers
-
-    for layer in tqdm(layers, desc="Quantizing layers", unit="layer"):
+    for layer in tqdm(model.model.layers, unit="layer", desc="Quantizing layer"):
         for _, module in layer.named_modules():
             if isinstance(module, QuarotFP16Linear):
                 quantize_module_rtn(module, bits, symmetric, clip_weights, vectorized, groupsize)
