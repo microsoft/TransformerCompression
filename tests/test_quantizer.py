@@ -4,11 +4,11 @@
 import pytest
 import torch
 
-from quarot.nn.quantizer import ActQuantizer, DummyActQuantizer
-
 
 @pytest.mark.quarot
 def test_dummy_quantizer():
+    from quarot.nn.quantizer import DummyActQuantizer
+
     quantizer = DummyActQuantizer()
 
     act = torch.tensor([1.02, 0.056, -3.2, 4.999, 5.0])
@@ -25,6 +25,8 @@ def test_dummy_quantizer():
 @pytest.mark.quarot
 @pytest.mark.gpu
 def test_act_quantizer():
+    from quarot.nn.quantizer import ActQuantizer
+
     quantizer = ActQuantizer(bits=8)
 
     batch_size = 2
