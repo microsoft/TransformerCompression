@@ -217,7 +217,7 @@ def quantize_model_rtn(
     groupsize: int | None = None,
 ) -> None:
     """
-    Quantize the weights of a model using the Round-to-Nearest scheme.
+    Quantize the weights (in QuarotFP16Linear modules) of a QuaRot model using the Round-to-Nearest scheme.
 
     Args:
         model: the model to quantize

@@ -95,5 +95,6 @@ docstring-min-length = 10
 markers = [
     "gpu: tests that require GPU to run",
     "experiment: end to end experiments, slow to run",
-    "quarot: end to end quarot experiments, slow to run",
+    "quarot: unit tests, fast to run",
+    "quarot_experiment: end to end quarot experiments, slow to run",
 ]
