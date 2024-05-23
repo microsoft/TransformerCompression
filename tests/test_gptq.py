@@ -4,9 +4,6 @@
 import pytest
 import torch
 
-from quarot.gptq import quantize_weight_gptq
-from quarot.rtn import calculate_scales, quantize_weight_rtn
-
 
 @pytest.mark.quarot
 @pytest.mark.gpu
@@ -17,6 +14,11 @@ from quarot.rtn import calculate_scales, quantize_weight_rtn
 @pytest.mark.parametrize("bits", [3, 4, 8])
 @pytest.mark.parametrize("symmetric", [True, False])
 def test_gptq_eye_hessian(weight, bits, symmetric):
+
+    # imports which require a GPU build machine
+    from quarot.gptq import quantize_weight_gptq
+    from quarot.rtn import calculate_scales, quantize_weight_rtn
+
     hessian = torch.eye(weight.shape[1], dtype=torch.float32)
 
     gptq_quantized_weight, gptq_scale, gptq_offset = quantize_weight_gptq(
