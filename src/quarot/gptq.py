@@ -11,7 +11,32 @@ from quarot.rtn import calculate_scales, quantize_weight_rtn
 from slicegpt.rotate import get_layer0_inputs
 from slicegpt.utils import cleanup_memory, map_tensors
 
+@torch.compile
+def gptq_inner_func(i, cur_idx, block_end_idx, 
+                    W, Q, Err_block, L_inv_transpose, 
+                    scale, offset, bits, symmetric):
+    """
+    """
+    # store the int-quantized weight column
+    Q[:, cur_idx] = quantize_weight_rtn(
+        W[:, cur_idx : cur_idx + 1], scale, offset, bits, symmetric=symmetric
+    ).flatten()
 
+    # calculate the dequantized weight
+    if symmetric:
+        W_dequantized = Q[:, cur_idx] * scale.flatten()
+    else:
+        W_dequantized = (Q[:, cur_idx] - offset.flatten()) * scale.flatten()
+
+    # calculate quantization error (between original and dequantized weight column)
+    Err_block[:, i] = (W[:, cur_idx] - W_dequantized) / L_inv_transpose[cur_idx, cur_idx]
+
+    # update the rest of the weights in the block
+    W[:, cur_idx:block_end_idx] -= (
+        Err_block[:, i : i + 1] * L_inv_transpose[cur_idx : cur_idx + 1, cur_idx:block_end_idx]
+    )
+
+@torch.no_grad()
 def quantize_weight_gptq(
     W: torch.Tensor,
     H: torch.Tensor,
@@ -71,24 +96,10 @@ def quantize_weight_gptq(
                 scale = scale.float()
                 offset = offset.float() if offset is not None else None
 
-            # store the int-quantized weight column
-            Q[:, cur_idx] = quantize_weight_rtn(
-                W[:, cur_idx : cur_idx + 1], scale, offset, bits, symmetric=symmetric
-            ).flatten()
+            gptq_inner_func(i, cur_idx, block_end_idx, 
+                    W, Q, Err_block, L_inv_transpose, 
+                    scale, offset, bits, symmetric)
 
-            # calculate the dequantized weight
-            if symmetric:
-                W_dequantized = Q[:, cur_idx] * scale.flatten()
-            else:
-                W_dequantized = (Q[:, cur_idx] - offset.flatten()) * scale.flatten()
-
-            # calculate quantization error (between original and dequantized weight column)
-            Err_block[:, i] = (W[:, cur_idx] - W_dequantized) / L_inv_transpose[cur_idx, cur_idx]
-
-            # update the rest of the weights in the block
-            W[:, cur_idx:block_end_idx] -= (
-                Err_block[:, i : i + 1] * L_inv_transpose[cur_idx : cur_idx + 1, cur_idx:block_end_idx]
-            )
 
         # update the rest of the weights in the tensor
         W[:, block_end_idx:] -= Err_block.matmul(L_inv_transpose[block_start_idx:block_end_idx, block_end_idx:])
@@ -127,8 +138,8 @@ def construct_hessian(X: list[torch.Tensor], ignore_masks: list[torch.Tensor] | 
             num_elements = batch_size * seq_len
 
         X_batch = X_batch.to('cuda', dtype=torch.float32) * torch.rsqrt(torch.tensor(num_elements, device='cuda'))
-        H_batch = torch.sum(X_batch.mT @ X_batch, dim=0)  # sum over the batch dimension.
-
+        #H_batch = torch.sum(X_batch.mT @ X_batch, dim=0)  # sum over the batch dimension.
+        H_batch = torch.einsum('bld,blc->dc', X_batch, X_batch)
         H = H * (num_samples / (num_samples + num_elements)) + H_batch * (num_elements / (num_samples + num_elements))
         num_samples += num_elements
 

@@ -103,6 +103,18 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
         help="Damping factor for GPTQ. (ignored for RTN quantization)"
     )
     parser.add_argument(
+        "--cal-nsamples",
+        type=int,
+        help="Number of samples of the calibration data to load for GPTQ",
+        default=128,
+    )
+    parser.add_argument(
+        "--cal-batch-size",
+        type=int,
+        help="Batch size of the calibration data to load for GPTQ",
+        default=4,
+    )
+    parser.add_argument(
         '--w-bits',
         type=int,
         default=16,
@@ -279,7 +291,7 @@ def quarot_main(args: argparse.Namespace) -> None:
     elif args.w_gptq:
         logging.info(f"Quantizing weights to INT{args.w_bits} using GPTQ.")
         train_loader = data_utils.prepare_dataloader(
-            dataset=dataset["train"], tokenizer=tokenizer, batch_size=args.ppl_eval_batch_size
+            dataset=dataset["train"], tokenizer=tokenizer, batch_size=args.cal_batch_size, nsamples=args.cal_nsamples,
         )
 
         quarot_model_adapter = LlamaModelAdapter(quarot_llama)
