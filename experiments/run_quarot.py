@@ -97,6 +97,12 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
         help='Quantize weights using GPTQ.',
     )
     parser.add_argument(
+        "--gptq-damping",
+        type=float,
+        default=0.01,
+        help="Damping factor for GPTQ. (ignored for RTN quantization)"
+    )
+    parser.add_argument(
         '--w-bits',
         type=int,
         default=16,
@@ -278,9 +284,11 @@ def quarot_main(args: argparse.Namespace) -> None:
 
         quarot_model_adapter = LlamaModelAdapter(quarot_llama)
         gptq.quantize_model_gptq(
-            quarot_model_adapter, train_loader, bits=args.w_bits, symmetric=False if args.w_asym else True
+            quarot_model_adapter, train_loader, bits=args.w_bits, symmetric=False if args.w_asym else True, damping=args.gptq_damping
         )
         logging.info("Quantization complete.")
+    else:
+        raise ValueError("Please specify a weight quantization method.")
 
     quarot_llama.to(config.device)
     dataset_ppl = gpu_utils.evaluate_ppl(quarot_llama, quarot_llama.config.pad_token_id, test_loader)

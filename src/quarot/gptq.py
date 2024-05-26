@@ -45,9 +45,10 @@ def quantize_weight_gptq(
     H.diagonal().add_(percdamp * torch.mean(torch.diag(H)))
 
     # calculate the inverse layer Hessian (Cholesky form)
-    L = torch.linalg.cholesky(H)
-    H_inv = torch.cholesky_inverse(L)
-    L_inv_transpose = torch.linalg.cholesky(H_inv, upper=True)
+    PHP = torch.flip(H, (0, 1))
+    L = torch.linalg.cholesky(PHP)
+    L_inv = torch.linalg.solve_triangular(L, torch.eye(L.shape[0], device=L.device, dtype=L.dtype), upper=False)
+    L_inv_transpose = torch.flip(L_inv.T, (0, 1)).T
 
     Q = torch.zeros_like(W)
     for block_start_idx in range(0, num_columns, max_blocksize):
@@ -211,6 +212,7 @@ def quantize_model_gptq(
     bits: int,
     symmetric: bool = True,
     apply_mask: bool = False,
+    damping: float = 0.01,
 ) -> None:
     """
     TODO
@@ -247,12 +249,11 @@ def quantize_model_gptq(
         W_down_proj = layer_adapter.get_mlp_output().weight.data
 
         # 4 calls to quantizer
-        Q_qkv, scale_qkv, offset_qkv = quantize_weight_gptq(W_qkv, H_qkv, bits, symmetric=symmetric)
-        Q_o_proj, scale_o_proj, offset_o_proj = quantize_weight_gptq(W_o_proj, H_o_proj, bits, symmetric=symmetric)
-        Q_upgate, scale_upgate, offset_upgate = quantize_weight_gptq(W_upgate, H_upgate, bits, symmetric=symmetric)
+        Q_qkv, scale_qkv, offset_qkv = quantize_weight_gptq(W_qkv, H_qkv, bits, symmetric=symmetric, percdamp=damping)
+        Q_o_proj, scale_o_proj, offset_o_proj = quantize_weight_gptq(W_o_proj, H_o_proj, bits, symmetric=symmetric, percdamp=damping)
+        Q_upgate, scale_upgate, offset_upgate = quantize_weight_gptq(W_upgate, H_upgate, bits, symmetric=symmetric, percdamp=damping)
         Q_down_proj, scale_down_proj, offset_down_proj = quantize_weight_gptq(
-            W_down_proj, H_down_proj, bits, symmetric=symmetric
-        )
+            W_down_proj, H_down_proj, bits, symmetric=symmetric, percdamp=damping)
 
         # set the quantized weights and scales
         attn_inputs = layer_adapter.get_attention_inputs()
