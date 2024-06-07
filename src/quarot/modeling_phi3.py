@@ -23,7 +23,6 @@ from transformers.models.phi3.modeling_phi3 import (
     Phi3FlashAttention2,
     Phi3ForCausalLM,
     Phi3MLP,
-    _flash_supports_window_size,
     apply_rotary_pos_emb,
     repeat_kv,
 )
@@ -35,6 +34,10 @@ from slicegpt.modules import RMSN
 
 ALL_LAYERNORM_LAYERS.append(RMSN)
 
+try:
+    from transformers.models.phi3.modeling_phi3 import _flash_supports_window_size
+except ImportError:
+    _flash_supports_window_size = False
 
 class QuarotPhi3Config(Phi3Config):
     model_type = "phi3_quarot"
