@@ -223,9 +223,10 @@ def set_tensors(
     """
     out_features, in_features = module.weight.data.shape
     assert quantized_weight.shape == (out_features, in_features)
-    assert scale.shape == (out_features, 1)
+    assert scale.shape[0] == out_features
     if offset is not None:
-        assert offset.shape == (out_features, 1)
+        assert offset.shape == scale.shape
+    
 
     if isinstance(module, QuarotFP16Linear):
         module.weight.data = quantized_weight  # out_features x in_features
@@ -245,6 +246,7 @@ def quantize_model_gptq(
     symmetric: bool = True,
     apply_mask: bool = False,
     damping: float = 0.01,
+    groupsize: int = None,
 ) -> None:
     """
     Quantize the model in-place using the GPTQ scheme, using the dataloader calibration data. All weights are stored in FP16.
@@ -280,15 +282,15 @@ def quantize_model_gptq(
         W_down_proj = layer_adapter.get_mlp_output().weight.data
 
         # 4 calls to quantizer
-        Q_qkv, scale_qkv, offset_qkv = quantize_weight_gptq(W_qkv, H_qkv, bits, symmetric=symmetric, percdamp=damping)
+        Q_qkv, scale_qkv, offset_qkv = quantize_weight_gptq(W_qkv, H_qkv, bits, symmetric=symmetric, percdamp=damping, groupsize=groupsize)
         Q_o_proj, scale_o_proj, offset_o_proj = quantize_weight_gptq(
-            W_o_proj, H_o_proj, bits, symmetric=symmetric, percdamp=damping
+            W_o_proj, H_o_proj, bits, symmetric=symmetric, percdamp=damping, groupsize=groupsize
         )
         Q_upgate, scale_upgate, offset_upgate = quantize_weight_gptq(
-            W_upgate, H_upgate, bits, symmetric=symmetric, percdamp=damping
+            W_upgate, H_upgate, bits, symmetric=symmetric, percdamp=damping, groupsize=groupsize
         )
         Q_down_proj, scale_down_proj, offset_down_proj = quantize_weight_gptq(
-            W_down_proj, H_down_proj, bits, symmetric=symmetric, percdamp=damping
+            W_down_proj, H_down_proj, bits, symmetric=symmetric, percdamp=damping, groupsize=groupsize
         )
 
         # set the quantized weights and scales of the attention inputs

@@ -297,7 +297,6 @@ def quarot_main(args: argparse.Namespace) -> None:
             tokenizer=tokenizer,
             batch_size=args.cal_batch_size,
             nsamples=args.cal_nsamples,
-            groupsize=args.w_groupsize,
         )
 
         if isinstance(quarot_model, QuarotLlamaForCausalLM):
@@ -313,6 +312,7 @@ def quarot_main(args: argparse.Namespace) -> None:
             bits=args.w_bits,
             symmetric=False if args.w_asym else True,
             damping=args.gptq_damping,
+            groupsize=args.w_groupsize,
         )
         logging.info("Quantization complete.")
     else:
