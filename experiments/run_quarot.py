@@ -258,7 +258,7 @@ def quarot_main(args: argparse.Namespace) -> None:
         # Rotate the model with fused Hadamard transformations.
         rotate.rotate_model(model_adapter, args.rotation_seed)
 
-    model_config = quarot_model_config(args.model, dtype=config.dtype)
+    model_config = quarot_model_config(args.model, dtype=config.dtype, groupsize=args.w_groupsize, offset=args.w_asym)
 
     with transformers.modeling_utils.no_init_weights():
         # initialize quarot model

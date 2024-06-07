@@ -35,6 +35,6 @@ def dequantize(W_ints: torch.Tensor, scale: torch.Tensor, offset: torch.Tensor |
     if offset is None:
         offset = 0
     else:
-        offset = torch.repeat_interleave(offset, W_ints.shape[1] // offset.shape[1], dim=1)
-    W = (W_ints - offset) * torch.repeat_interleave(scale,  W_ints.shape[1] // scale.shape[1], dim=1)
+        offset = torch.repeat_interleave(offset, W_ints.shape[-1] // offset.shape[-1], dim=1)
+    W = (W_ints - offset) * torch.repeat_interleave(scale,  W_ints.shape[-1] // scale.shape[-1], dim=1)
     return W

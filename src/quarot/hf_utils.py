@@ -14,17 +14,17 @@ from .modeling_llama import QuarotLlamaConfig, QuarotLlamaForCausalLM
 from .modeling_phi3 import QuarotPhi3Config, QuarotPhi3ForCausalLM
 
 
-def quarot_model_config(model_name_or_path: str, dtype: torch.dtype):
+def quarot_model_config(model_name_or_path: str, dtype: torch.dtype, groupsize: int | None = None, offset: bool = False):
     if model_name_or_path in ['meta-llama/Llama-2-7b-hf', 'meta-llama/Llama-2-13b-hf']:
         model_config = QuarotLlamaConfig.from_pretrained(model_name_or_path, dtype=dtype, use_cache=False)
-        model_config._attn_implementation = "flash_attention_2"
-        return model_config
     elif model_name_or_path == 'microsoft/Phi-3-mini-4k-instruct':
         model_config = QuarotPhi3Config.from_pretrained(model_name_or_path, dtype=dtype, use_cache=False)
-        model_config._attn_implementation = "flash_attention_2"
-        return model_config
     else:
         raise NotImplementedError("Model type not supported")
+    model_config._attn_implementation = "flash_attention_2"
+    model_config.groupsize = groupsize
+    model_config.offset = offset
+    return model_config
 
 
 def get_quarot_model(

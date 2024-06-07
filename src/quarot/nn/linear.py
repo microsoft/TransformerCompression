@@ -46,8 +46,10 @@ class QuarotFP16Linear(torch.nn.Module):
     def like(
         cls: type,
         module: torch.nn.Linear,
+        groupsize: int = None,
+        offset: bool = False
     ) -> 'QuarotFP16Linear':
         '''
         Generate a new QuarotFP16Linear module with the same shapes & bias flag as a given Linear module.
         '''
-        return cls(module.in_features, module.out_features, bias=module.bias is not None)
+        return cls(module.in_features, module.out_features, bias=module.bias is not None, group_size=groupsize, offset=offset)
