@@ -230,14 +230,16 @@ def set_tensors(
 
     if isinstance(module, QuarotFP16Linear):
         module.weight.data = quantized_weight  # out_features x in_features
-        module.weight_scales.data = scale  # out_features x 1
+        module.weight_scales.data = scale  # out_features x num_groups
         if offset is not None:
             module.offset.data = offset
     elif isinstance(module, torch.nn.Linear):
         # Here we dequantize the weights and set them back into the module
+        groupsize = module.in_features // scale.shape[1]
+        scale = torch.repeat_interleave(scale, groupsize, dim=1)
         module.weight.data = quantized_weight * scale
         if offset is not None:
-            module.weight.data -= offset * scale
+            module.weight.data -= torch.repeat_interleave(offset, groupsize, dim=1) * scale
     else:
         raise ValueError(f"Unsupported module type {type(module)}")
 
