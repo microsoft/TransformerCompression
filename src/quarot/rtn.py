@@ -176,6 +176,8 @@ def quantize_weight_rtn(
         _offset = torch.repeat_interleave(offset, weight.shape[1] // offset.shape[1], dim=1)
         
     min_int, max_int = calculate_min_max_int(bits, symmetric=offset is None)
+    min_int = min_int.to(weight.device, weight.dtype)
+    max_int = max_int.to(weight.device, weight.dtype)
     weight_ints = torch.round(weight / scale) + _offset
 
     quantized_weight = torch.clamp(weight_ints, min_int, max_int)
