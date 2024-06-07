@@ -148,7 +148,7 @@ def calculate_scales(
                     best_quantization_error[improved_idx] = quantization_error[improved_idx]
 
     if groupsize:
-        scale = scale = scale.squeeze(2)
+        scale = scale.squeeze(2)
         if offset is not None:
             offset = offset.squeeze(2)
 
