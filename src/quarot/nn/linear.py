@@ -8,29 +8,42 @@ class QuarotFP16Linear(torch.nn.Module):
     Linear module for emulating quantized weights and activations. All tensors are stored in FP16.
     """
 
-    def __init__(self, in_features, out_features, bias=False, dtype=torch.float16):
+    def __init__(self, in_features: int, out_features: int, bias: bool=False, offset: bool = False, group_size: int = None, dtype=torch.float16):
         super().__init__()
         self.in_features = in_features
         self.out_features = out_features
-        self.register_buffer('weight_scales', torch.ones((self.out_features, 1), dtype=dtype))
+        
+        # figure out group size
+        if group_size is None:
+            group_size = in_features # tensor-level scaling, one effective group
+        assert in_features % group_size == 0, "implied number of groups must be an integer!"
+        self.group_size = group_size
+        
+        # register necessary buffers
+        self.register_buffer('weight_scales', torch.ones((self.out_features, in_features // group_size), dtype=dtype))
         self.register_buffer('weight', torch.zeros((self.out_features, self.in_features), dtype=dtype))
         if bias:
             self.register_buffer('bias', torch.zeros((self.out_features), dtype=dtype))
         else:
             self.bias = None
+        if offset:
+            self.register_buffer('offset', torch.zeros((self.out_features, in_features // group_size), dtype=dtype))
+        else:
+            self.offset = None
 
     def forward(self, x: PackedQuantizedTensor) -> torch.tensor:
+        # de-quantize the activations
         x, scales_x = x.quantized_x, x.scales_x
-
-        # Perform matmul by first de-quantizing the activations and weights, and then multiplying.
-        # This is done for numerical stability. Note that in real quantization, the quantized weights and activations
-        # would be multiplied first using kernels, and then by the scales.
-        x = (x * scales_x) @ (self.weight.T * self.weight_scales.T)
-
-        if self.bias is not None:
-            x = x + self.bias
-
-        return x
+        x = x * scales_x
+        
+        # de-quantize the weights
+        W = self.weight
+        if self.offset is not None:
+            W = W - torch.repeat_interleave(self.offset, self.group_size, dim=1)
+        W = W * torch.repeat_interleave(self.weight_scales, self.group_size, dim=1)
+        
+        #  run standard linear on dequantized weights and activations
+        return torch.functional.F.linear(x, W, self.bias)
 
     @classmethod
     def like(

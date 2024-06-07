@@ -204,9 +204,20 @@ def quantize_module_rtn(
     scale, offset = calculate_scales(weight, bits, symmetric, clip_weights, vectorized=vectorized, groupsize=groupsize)
     quantized_weight = quantize_weight_rtn(weight, scale, offset, bits)
 
-    module.weight.data = quantized_weight - offset if not symmetric else quantized_weight
-    module.weight_scales = scale
-
+    if isinstance(module, QuarotFP16Linear):
+        module.weight.data = quantized_weight
+        module.weight_scales.data = scale
+        if not symmetric:
+            module.offset.data = offset
+    elif isinstance(module, torch.nn.Linear):
+        scale =  torch.repeat_interleave(scale, groupsize, dim=1)
+        if symmetric:
+            module.weight.data = quantized_weight * scale
+        else:
+            offset = torch.repeat_interleave(offset, groupsize, dim=1)
+            module.weight.data = (quantized_weight - offset) * scale
+    else:
+        raise NotImplementedError
 
 def quantize_model_rtn(
     model,

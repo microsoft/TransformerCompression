@@ -232,7 +232,7 @@ def set_tensors(
         module.weight.data = quantized_weight  # out_features x in_features
         module.weight_scales.data = scale  # out_features x 1
         if offset is not None:
-            module.weight.data -= offset
+            module.offset.data = offset
     elif isinstance(module, torch.nn.Linear):
         # Here we dequantize the weights and set them back into the module
         module.weight.data = quantized_weight * scale
