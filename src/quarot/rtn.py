@@ -178,6 +178,24 @@ def quantize_weight_rtn(
     return quantized_weight
 
 
+def dequantize(W_ints: torch.Tensor, scale: torch.Tensor, offset: torch.Tensor | None):
+    """
+    Reconstruct the (approximate) weight tensor from the quantized weights, scales, and offsets.
+    
+    Here, repeat_interleave is used apply the scale and offset accross each group.
+    
+    The shape of W_ints is (out_features, in_features)
+    The shape of scale is (out_features, in_features // group_size)
+    The shape of offset is (out_features, in_features // group_size) (optional)
+    """
+    if offset is None:
+        offset = 0
+    else:
+        offset = torch.repeat_interleave(offset, W_ints.shape[1] // offset.shape[1], dim=1)
+    W = (W_ints - offset) * torch.repeat_interleave(scale,  W_ints.shape[1] // scale.shape[1], dim=1)
+    return W
+
+
 def quantize_module_rtn(
     module: QuarotFP16Linear,
     bits: int,
@@ -201,12 +219,7 @@ def quantize_module_rtn(
         if not symmetric:
             module.offset.data = offset
     elif isinstance(module, torch.nn.Linear):
-        scale =  torch.repeat_interleave(scale, groupsize, dim=1)
-        if symmetric:
-            module.weight.data = quantized_weight * scale
-        else:
-            offset = torch.repeat_interleave(offset, groupsize, dim=1)
-            module.weight.data = (quantized_weight - offset) * scale
+        module.weight.data = dequantize(quantized_weight, scale, offset)
     else:
         raise NotImplementedError
 

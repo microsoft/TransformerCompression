@@ -7,7 +7,7 @@ from tqdm import tqdm
 from quarot.model_adapter import LayerAdapter, ModelAdapter
 from quarot.nn.linear import QuarotFP16Linear
 from quarot.quant_utils import PackedQuantizedTensor
-from quarot.rtn import calculate_scales, quantize_weight_rtn
+from quarot.rtn import calculate_scales, quantize_weight_rtn, dequantize
 from slicegpt.rotate import get_layer0_inputs
 from slicegpt.utils import cleanup_memory, map_tensors
 
@@ -234,12 +234,7 @@ def set_tensors(
         if offset is not None:
             module.offset.data = offset
     elif isinstance(module, torch.nn.Linear):
-        # Here we dequantize the weights and set them back into the module
-        groupsize = module.in_features // scale.shape[1]
-        scale = torch.repeat_interleave(scale, groupsize, dim=1)
-        module.weight.data = quantized_weight * scale
-        if offset is not None:
-            module.weight.data -= torch.repeat_interleave(offset, groupsize, dim=1) * scale
+            module.weight.data = dequantize(quantized_weight, scale, offset)
     else:
         raise ValueError(f"Unsupported module type {type(module)}")
 

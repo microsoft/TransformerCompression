@@ -1,6 +1,7 @@
 import torch
 
 from quarot.quant_utils import PackedQuantizedTensor
+from quarot.rtn import dequantize
 
 
 class QuarotFP16Linear(torch.nn.Module):
@@ -37,10 +38,7 @@ class QuarotFP16Linear(torch.nn.Module):
         x = x * scales_x
         
         # de-quantize the weights
-        W = self.weight
-        if self.offset is not None:
-            W = W - torch.repeat_interleave(self.offset, self.group_size, dim=1)
-        W = W * torch.repeat_interleave(self.weight_scales, self.group_size, dim=1)
+        W = dequantize(self.weight, self.weight_scales, self.offset)
         
         #  run standard linear on dequantized weights and activations
         return torch.functional.F.linear(x, W, self.bias)
