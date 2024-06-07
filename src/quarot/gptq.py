@@ -16,6 +16,9 @@ def gptq_quantize_column(i, col_idx, block_end_idx,
                     W, Q, Err_block, L_inv_transpose, 
                     scale, offset, bits, symmetric):
     """
+    Quantize one column of the weight matrix, W[:, col_idx]
+    
+    i indexes the current position in the block. 
     """
     # store the int-quantized weight column
     Q[:, col_idx] = quantize_weight_rtn(
@@ -155,7 +158,6 @@ def construct_hessian(X: list[torch.Tensor], ignore_masks: list[torch.Tensor] | 
             num_elements = batch_size * seq_len
 
         X_batch = X_batch.to('cuda', dtype=torch.float32) * torch.rsqrt(torch.tensor(num_elements, device='cuda'))
-        #H_batch = torch.sum(X_batch.mT @ X_batch, dim=0)  # sum over the batch dimension.
         H_batch = torch.einsum('bld,blc->dc', X_batch, X_batch)
         H = H * (num_samples / (num_samples + num_elements)) + H_batch * (num_elements / (num_samples + num_elements))
         num_samples += num_elements

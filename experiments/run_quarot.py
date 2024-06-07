@@ -300,7 +300,7 @@ def quarot_main(args: argparse.Namespace) -> None:
         )
         logging.info("Quantization complete.")
     else:
-        raise ValueError("Please specify a weight quantization method.")
+        logging.info("No weight quantization performed")
 
     quarot_llama.to(config.device)
     dataset_ppl = gpu_utils.evaluate_ppl(quarot_llama, quarot_llama.config.pad_token_id, test_loader)
