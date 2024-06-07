@@ -12,28 +12,28 @@ from slicegpt.rotate import get_layer0_inputs
 from slicegpt.utils import cleanup_memory, map_tensors
 
 @torch.compile
-def gptq_inner_func(i, cur_idx, block_end_idx, 
+def gptq_quantize_column(i, col_idx, block_end_idx, 
                     W, Q, Err_block, L_inv_transpose, 
                     scale, offset, bits, symmetric):
     """
     """
     # store the int-quantized weight column
-    Q[:, cur_idx] = quantize_weight_rtn(
-        W[:, cur_idx : cur_idx + 1], scale, offset, bits, symmetric=symmetric
+    Q[:, col_idx] = quantize_weight_rtn(
+        W[:, col_idx : col_idx + 1], scale, offset, bits, symmetric=symmetric
     ).flatten()
 
     # calculate the dequantized weight
     if symmetric:
-        W_dequantized = Q[:, cur_idx] * scale.flatten()
+        W_dequantized = Q[:, col_idx] * scale.flatten()
     else:
-        W_dequantized = (Q[:, cur_idx] - offset.flatten()) * scale.flatten()
+        W_dequantized = (Q[:, col_idx] - offset.flatten()) * scale.flatten()
 
     # calculate quantization error (between original and dequantized weight column)
-    Err_block[:, i] = (W[:, cur_idx] - W_dequantized) / L_inv_transpose[cur_idx, cur_idx]
+    Err_block[:, i] = (W[:, col_idx] - W_dequantized) / L_inv_transpose[col_idx, col_idx]
 
     # update the rest of the weights in the block
-    W[:, cur_idx:block_end_idx] -= (
-        Err_block[:, i : i + 1] * L_inv_transpose[cur_idx : cur_idx + 1, cur_idx:block_end_idx]
+    W[:, col_idx:block_end_idx] -= (
+        Err_block[:, i : i + 1] * L_inv_transpose[col_idx : col_idx + 1, col_idx:block_end_idx]
     )
 
 @torch.no_grad()
@@ -56,10 +56,16 @@ def quantize_weight_gptq(
     W = W.to('cuda').float()
     H = H.cuda()
 
+    # deal with group quantization. 
+    # If groupsize is None, we quantize the entire tensor at once (there's a single scale and offset).
+    # otherwise, we collect the scale/offset for each group in a list
     if groupsize is None:
         scale, offset = calculate_scales(W, bits, symmetric=symmetric, clip_weights=clip_weights, vectorized=False)
         scale = scale.float()
         offset = offset.float() if offset is not None else None
+    else:
+        group_scales = []
+        group_offsets = []
 
     # find dead weights and set them to zero, and their Hess value to 1
     dead = torch.diag(H) == 0
@@ -69,11 +75,15 @@ def quantize_weight_gptq(
     # add damping to the diagonal
     H.diagonal().add_(percdamp * torch.mean(torch.diag(H)))
 
-    # calculate the inverse layer Hessian (Cholesky form)
+    # calculate the inverse layer Hessian (Cholesky form). 
+    # NB this is different to the original implementation. We require the (transpose) of the choleskyu of the _inverse_ of H. 
+    # oringially this was done by chol(inv(H)). Here we do chol(H)^-1, with some re-ordering to ensure we get an equivalent solution. 
+    # chol(inv(H), upper=True) = flip(inv(chol(flip(H), upper=False)))
+    # This version requires fewer flops and should be numerically superior. 
     PHP = torch.flip(H, (0, 1))
     L = torch.linalg.cholesky(PHP)
     L_inv = torch.linalg.solve_triangular(L, torch.eye(L.shape[0], device=L.device, dtype=L.dtype), upper=False)
-    L_inv_transpose = torch.flip(L_inv.T, (0, 1)).T
+    L_inv_transpose = torch.flip(L_inv, (0, 1))
 
     Q = torch.zeros_like(W)
     for block_start_idx in range(0, num_columns, max_blocksize):
@@ -82,12 +92,13 @@ def quantize_weight_gptq(
 
         Err_block = torch.zeros((W.shape[0], blocksize)).cuda()
 
-        for i in range(blocksize):
-            cur_idx = block_start_idx + i
+        for i in range(blocksize): # i = which col to quantize (wrt block)
+            col_idx = block_start_idx + i # which ciolumn to quantize (wrt original matrix)
 
-            if groupsize is not None and cur_idx % groupsize == 0:
+            # if this is a new group, calculate the scales for the group
+            if groupsize is not None and col_idx % groupsize == 0:
                 scale, offset = calculate_scales(
-                    W[:, cur_idx : cur_idx + groupsize],
+                    W[:, col_idx : col_idx + groupsize],
                     bits,
                     symmetric=symmetric,
                     clip_weights=clip_weights,
@@ -95,19 +106,25 @@ def quantize_weight_gptq(
                 )
                 scale = scale.float()
                 offset = offset.float() if offset is not None else None
+                group_scales.append(scale)
+                group_offsets.append(offset)
 
-            gptq_inner_func(i, cur_idx, block_end_idx, 
+            gptq_quantize_column(i, col_idx, block_end_idx, 
                     W, Q, Err_block, L_inv_transpose, 
                     scale, offset, bits, symmetric)
 
-
         # update the rest of the weights in the tensor
-        W[:, block_end_idx:] -= Err_block.matmul(L_inv_transpose[block_start_idx:block_end_idx, block_end_idx:])
+        W[:, block_end_idx:] -= Err_block @ L_inv_transpose[block_start_idx:block_end_idx, block_end_idx:]
 
     if torch.any(torch.isnan(W)):
         print('NaN in weights')
         print(bits, scale, offset)
         raise ValueError('NaN in weights')
+    
+    # stack the scales for grouped quantization
+    if groupsize is not None:
+        scale = torch.cat(group_scales, dim=1)
+        offset = torch.cat(group_offsets, dim=1) if group_offsets[0] is not None else None
 
     Q = Q.to(orig_dev, dtype=orig_dtype)
     scale = scale.to(orig_dev, dtype=orig_dtype)
