@@ -19,7 +19,7 @@ def gptq_quantize_column(i, col_idx, block_end_idx, W, Q, Err_block, L_inv_trans
     i indexes the current position in the block.
     """
     # store the int-quantized weight column
-    Q[:, col_idx] = quantize_weight_rtn(W[:, col_idx : col_idx + 1], scale, offset, bits, symmetric=symmetric).flatten()
+    Q[:, col_idx] = quantize_weight_rtn(W[:, col_idx : col_idx + 1], scale, offset, bits).flatten()
 
     # calculate the dequantized weight
     if symmetric:
