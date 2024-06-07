@@ -21,18 +21,15 @@ def calculate_min_max_int(bits: int, symmetric: bool = True) -> tuple[torch.Tens
 
 
 def calculate_min_max_weight(
-    weight: torch.Tensor, symmetric: bool = True, perchannel: bool = True
+    weight: torch.Tensor, symmetric: bool = True
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """
-    Calculate the minimum and maximum weights in a weight tensor. If perchannel, these are calculated per-row. If symmetric, the max weight is
+    Calculate the minimum and maximum weights in a weight tensor. 
+    If symmetric, the max weight is
     the larger of max weight or the absolute value of min weight.
     """
-    if perchannel:
-        max_weight = torch.max(weight, torch.zeros_like(weight)).max(dim=-1, keepdim=True).values
-        min_weight = torch.min(weight, torch.zeros_like(weight)).min(dim=-1, keepdim=True).values
-    else:
-        max_weight = torch.max(weight, torch.zeros_like(weight)).max()
-        min_weight = torch.min(weight, torch.zeros_like(weight)).min()
+    max_weight = torch.max(weight, torch.zeros_like(weight)).max(dim=-1, keepdim=True).values
+    min_weight = torch.min(weight, torch.zeros_like(weight)).min(dim=-1, keepdim=True).values
 
     if symmetric:
         max_weight = torch.maximum(max_weight, torch.abs(min_weight)).clamp(min=1e-5)
@@ -48,16 +45,16 @@ def calculate_scales(
     vectorized: bool = True,
     clip_ratio: float = 1.0,
     groupsize: int | None = None,
+    device='cuda'
 ) -> tuple[torch.Tensor, torch.Tensor | None]:
     """
     Calculate the scales (and offsets if asymmetric) for quantizing a weight tensor to INT<bits> using the Round-to-Nearest scheme.
     """
-    device = weight.device
-    weight = weight.cuda()
+    orig_device = weight.device
+    weight = weight.to(device=device)
 
     if groupsize:
-        init_shape = weight.shape
-        weight = weight.reshape(-1, weight.shape[-2], weight.shape[-1] // groupsize, groupsize)
+        weight = weight.reshape(weight.shape[0], weight.shape[1] // groupsize, groupsize)
 
     min_weight, max_weight = calculate_min_max_weight(weight, symmetric=symmetric)
     min_weight *= clip_ratio
@@ -151,39 +148,33 @@ def calculate_scales(
                     best_quantization_error[improved_idx] = quantization_error[improved_idx]
 
     if groupsize:
-        scale = scale.repeat(1, 1, 1, groupsize).reshape(init_shape)
-        offset = offset.repeat(1, 1, 1, groupsize).reshape(init_shape)
+        scale = scale = scale.squeeze(2)
+        if offset is not None:
+            offset = offset.squeeze(2)
 
-    weight = weight.to(device)
-    scale = scale.to(device)
-    offset = offset.to(device) if offset is not None else None
+    weight = weight.to(orig_device)
+    scale = scale.to(orig_device)
+    offset = offset.to(orig_device) if offset is not None else None
 
     return scale, offset
 
 
 def quantize_weight_rtn(
-    weight: torch.Tensor, scale: torch.Tensor, offset: torch.Tensor | None, bits: int
-) -> torch.Tensor:
+    weight: torch.Tensor, scale: torch.Tensor, offset: torch.Tensor | None, bits: int):
     """
     Quantize a weight tensor to INT<bits> using the given scale and offset.
     """
-    device = weight.device
-    weight = weight.cuda()
-    scale = scale.cuda()
+    scale = torch.repeat_interleave(scale, weight.shape[1] // scale.shape[1], dim=1)
 
-    symmetric = offset is None
-    if not symmetric:
-        offset = offset.cuda()
+    if offset is None:
+        _offset = 0
+    else:
+        _offset = torch.repeat_interleave(offset, weight.shape[1] // offset.shape[1], dim=1)
+        
+    min_int, max_int = calculate_min_max_int(bits, symmetric=offset is None)
+    weight_ints = torch.round(weight / scale) + _offset
 
-    min_int, max_int = calculate_min_max_int(bits, symmetric)
-    min_int = min_int.to(device=weight.device, dtype=weight.dtype)
-    max_int = max_int.to(device=weight.device, dtype=weight.dtype)
-
-    weight_ints = torch.round(weight / scale)
-    if not symmetric:
-        weight_ints += offset
-
-    quantized_weight = torch.clamp(weight_ints, min_int, max_int).to(device)
+    quantized_weight = torch.clamp(weight_ints, min_int, max_int)
     return quantized_weight
 
 
