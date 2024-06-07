@@ -12,6 +12,31 @@ from slicegpt.rotate import get_layer0_inputs
 from slicegpt.utils import cleanup_memory, map_tensors
 
 
+def gptq_quantize_column(i, col_idx, block_end_idx, W, Q, Err_block, L_inv_transpose, scale, offset, bits, symmetric):
+    """
+    Quantize one column of the weight matrix, W[:, col_idx]
+
+    i indexes the current position in the block.
+    """
+    # store the int-quantized weight column
+    Q[:, col_idx] = quantize_weight_rtn(W[:, col_idx : col_idx + 1], scale, offset, bits).flatten()
+
+    # calculate the dequantized weight
+    if symmetric:
+        W_dequantized = Q[:, col_idx] * scale.flatten()
+    else:
+        W_dequantized = (Q[:, col_idx] - offset.flatten()) * scale.flatten()
+
+    # calculate quantization error (between original and dequantized weight column)
+    Err_block[:, i] = (W[:, col_idx] - W_dequantized) / L_inv_transpose[col_idx, col_idx]
+
+    # update the rest of the weights in the block
+    W[:, col_idx:block_end_idx] -= (
+        Err_block[:, i : i + 1] * L_inv_transpose[col_idx : col_idx + 1, col_idx:block_end_idx]
+    )
+
+
+@torch.no_grad()
 def quantize_weight_gptq(
     W: torch.Tensor,
     H: torch.Tensor,
@@ -41,13 +66,16 @@ def quantize_weight_gptq(
     W = W.to('cuda', dtype=torch.float32)
     H = H.to(W.device)
 
+    # deal with group quantization.
+    # If groupsize is None, we quantize the entire tensor at once (there's a single scale and offset).
+    # otherwise, we collect the scale/offset for each group in a list
     if groupsize is None:
         scale, offset = calculate_scales(W, bits, symmetric=symmetric, clip_weights=clip_weights, vectorized=False)
         scale = scale.float()
-        if not symmetric:
-            offset = offset.float()
+        offset = offset.float() if offset is not None else None
     else:
-        raise NotImplementedError("Groupwise quantization not yet tested for GPTQ")
+        group_scales = []
+        group_offsets = []
 
     # find dead weights and set them to zero, and their Hess value to 1
     dead = torch.diag(H) == 0.0
@@ -57,10 +85,15 @@ def quantize_weight_gptq(
     # add damping to the diagonal
     H.diagonal().add_(percdamp * torch.mean(torch.diag(H)))
 
-    # calculate the inverse layer Hessian (Cholesky form)
-    L = torch.linalg.cholesky(H)
-    H_inv = torch.cholesky_inverse(L)
-    L_inv_transpose = torch.linalg.cholesky(H_inv, upper=True)
+    # calculate the inverse layer Hessian (Cholesky form).
+    # NB this is different to the original implementation. We require the (transpose) of the choleskyu of the _inverse_ of H.
+    # oringially this was done by chol(inv(H)). Here we do chol(H)^-1, with some re-ordering to ensure we get an equivalent solution.
+    # chol(inv(H), upper=True) = flip(inv(chol(flip(H), upper=False)))
+    # This version requires fewer flops and should be numerically superior.
+    PHP = torch.flip(H, (0, 1))
+    L = torch.linalg.cholesky(PHP)
+    L_inv = torch.linalg.solve_triangular(L, torch.eye(L.shape[0], device=L.device, dtype=L.dtype), upper=False)
+    L_inv_transpose = torch.flip(L_inv, (0, 1))
 
     Q = torch.zeros_like(W)
     for block_start_idx in range(0, num_columns, max_blocksize):
@@ -69,37 +102,34 @@ def quantize_weight_gptq(
 
         Err_block = torch.zeros((W.shape[0], blocksize), dtype=W.dtype, device=W.device)
 
-        for i in range(blocksize):
-            cur_idx = block_start_idx + i
+        for i in range(blocksize):  # i = which col to quantize (wrt block)
+            col_idx = block_start_idx + i  # which ciolumn to quantize (wrt original matrix)
 
-            if groupsize is not None and cur_idx % groupsize == 0:
+            # if this is a new group, calculate the scales for the group
+            if groupsize is not None and col_idx % groupsize == 0:
                 scale, offset = calculate_scales(
-                    W[:, cur_idx : cur_idx + groupsize],
+                    W[:, col_idx : col_idx + groupsize],
                     bits,
                     symmetric=symmetric,
                     clip_weights=clip_weights,
                     vectorized=False,
                 )
+                scale = scale.float()
+                offset = offset.float() if offset is not None else None
+                group_scales.append(scale)
+                group_offsets.append(offset)
 
-            # store the int-quantized weight column
-            Q[:, cur_idx] = quantize_weight_rtn(W[:, cur_idx : cur_idx + 1], scale, offset, bits).flatten()
-
-            # calculate the dequantized weight
-            if symmetric:
-                W_dequantized = Q[:, cur_idx] * scale.flatten()
-            else:
-                W_dequantized = (Q[:, cur_idx] - offset.flatten()) * scale.flatten()
-
-            # calculate quantization error (between original and dequantized weight column)
-            Err_block[:, i] = (W[:, cur_idx] - W_dequantized) / L_inv_transpose[cur_idx, cur_idx]
-
-            # update the rest of the weights in the block
-            W[:, cur_idx:block_end_idx] -= (
-                Err_block[:, i : i + 1] * L_inv_transpose[cur_idx : cur_idx + 1, cur_idx:block_end_idx]
+            gptq_quantize_column(
+                i, col_idx, block_end_idx, W, Q, Err_block, L_inv_transpose, scale, offset, bits, symmetric
             )
 
         # update the rest of the weights in the tensor
-        W[:, block_end_idx:] -= Err_block.matmul(L_inv_transpose[block_start_idx:block_end_idx, block_end_idx:])
+        W[:, block_end_idx:] -= Err_block @ L_inv_transpose[block_start_idx:block_end_idx, block_end_idx:]
+
+    # stack the scales for grouped quantization
+    if groupsize is not None:
+        scale = torch.cat(group_scales, dim=1)
+        offset = torch.cat(group_offsets, dim=1) if group_offsets[0] is not None else None
 
     Q = Q.to(orig_dev, dtype=orig_dtype)
     scale = scale.to(orig_dev, dtype=orig_dtype)
@@ -134,8 +164,7 @@ def construct_hessian(
             num_elements = batch_size * seq_len
 
         X_batch = X_batch.to('cuda', dtype=torch.float32) * torch.rsqrt(torch.tensor(num_elements, device='cuda'))
-        H_batch = torch.sum(X_batch.mT @ X_batch, dim=0)  # sum over the batch dimension.
-
+        H_batch = torch.einsum('bld,blc->dc', X_batch, X_batch)
         H = H * (num_samples / (num_samples + num_elements)) + H_batch * (num_elements / (num_samples + num_elements))
         num_samples += num_elements
 
@@ -219,6 +248,7 @@ def quantize_model_gptq(
     bits: int,
     symmetric: bool = True,
     apply_mask: bool = False,
+    damping: float = 0.01,
 ) -> None:
     """
     Quantize the model in-place using the GPTQ scheme, using the dataloader calibration data. All weights are stored in FP16.
@@ -253,12 +283,16 @@ def quantize_model_gptq(
         W_upgate = torch.cat([w.weight.data for w in layer_adapter.get_mlp_inputs()], dim=0)
         W_down_proj = layer_adapter.get_mlp_output().weight.data
 
-        # call the quantizer
-        Q_qkv, scale_qkv, offset_qkv = quantize_weight_gptq(W_qkv, H_qkv, bits, symmetric=symmetric)
-        Q_o_proj, scale_o_proj, offset_o_proj = quantize_weight_gptq(W_o_proj, H_o_proj, bits, symmetric=symmetric)
-        Q_upgate, scale_upgate, offset_upgate = quantize_weight_gptq(W_upgate, H_upgate, bits, symmetric=symmetric)
+        # 4 calls to quantizer
+        Q_qkv, scale_qkv, offset_qkv = quantize_weight_gptq(W_qkv, H_qkv, bits, symmetric=symmetric, percdamp=damping)
+        Q_o_proj, scale_o_proj, offset_o_proj = quantize_weight_gptq(
+            W_o_proj, H_o_proj, bits, symmetric=symmetric, percdamp=damping
+        )
+        Q_upgate, scale_upgate, offset_upgate = quantize_weight_gptq(
+            W_upgate, H_upgate, bits, symmetric=symmetric, percdamp=damping
+        )
         Q_down_proj, scale_down_proj, offset_down_proj = quantize_weight_gptq(
-            W_down_proj, H_down_proj, bits, symmetric=symmetric
+            W_down_proj, H_down_proj, bits, symmetric=symmetric, percdamp=damping
         )
 
         # set the quantized weights and scales of the attention inputs

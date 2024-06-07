@@ -100,6 +100,21 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
         help='Quantize weights using GPTQ.',
     )
     parser.add_argument(
+        "--gptq-damping", type=float, default=0.01, help="Damping factor for GPTQ. (ignored for RTN quantization)"
+    )
+    parser.add_argument(
+        "--cal-nsamples",
+        type=int,
+        help="Number of samples of the calibration data to load for GPTQ",
+        default=128,
+    )
+    parser.add_argument(
+        "--cal-batch-size",
+        type=int,
+        help="Batch size of the calibration data to load for GPTQ",
+        default=4,
+    )
+    parser.add_argument(
         '--w-bits',
         type=int,
         default=16,
@@ -271,7 +286,10 @@ def quarot_main(args: argparse.Namespace) -> None:
     elif args.w_gptq:
         logging.info(f"Quantizing weights to INT{args.w_bits} using GPTQ.")
         train_loader = data_utils.prepare_dataloader(
-            dataset=dataset["train"], tokenizer=tokenizer, batch_size=args.ppl_eval_batch_size
+            dataset=dataset["train"],
+            tokenizer=tokenizer,
+            batch_size=args.cal_batch_size,
+            nsamples=args.cal_nsamples,
         )
 
         if isinstance(quarot_model, QuarotLlamaForCausalLM):
@@ -282,9 +300,15 @@ def quarot_main(args: argparse.Namespace) -> None:
             raise ValueError("Adapter for QuaRot model must be specified.")
 
         gptq.quantize_model_gptq(
-            quarot_model_adapter, train_loader, bits=args.w_bits, symmetric=False if args.w_asym else True
+            quarot_model_adapter,
+            train_loader,
+            bits=args.w_bits,
+            symmetric=False if args.w_asym else True,
+            damping=args.gptq_damping,
         )
         logging.info("Quantization complete.")
+    else:
+        logging.info("No weight quantization performed")
 
     quarot_model.to(config.device)
     dataset_ppl = gpu_utils.evaluate_ppl(quarot_model, quarot_model.config.pad_token_id, test_loader)
