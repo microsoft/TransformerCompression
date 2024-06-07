@@ -4,7 +4,9 @@
 import torch
 from tqdm import tqdm
 
-from quarot.nn.linear import QuarotFP16Linear
+from .nn.linear import QuarotFP16Linear
+from .quant_utils import dequantize
+
 
 
 def calculate_min_max_int(bits: int, symmetric: bool = True) -> tuple[torch.Tensor, torch.Tensor]:
@@ -54,7 +56,9 @@ def calculate_scales(
     weight = weight.to(device=device)
 
     if groupsize:
-        weight = weight.reshape(weight.shape[0], weight.shape[1] // groupsize, groupsize)
+        # reshape the last dimension into num_groups x group_size
+        new_shape = list(weight.shape[:-1]) + [weight.shape[-1] // groupsize, groupsize]
+        weight = weight.reshape(new_shape)
 
     min_weight, max_weight = calculate_min_max_weight(weight, symmetric=symmetric)
     min_weight *= clip_ratio
@@ -148,9 +152,9 @@ def calculate_scales(
                     best_quantization_error[improved_idx] = quantization_error[improved_idx]
 
     if groupsize:
-        scale = scale.squeeze(2)
+        scale = scale.squeeze(-1)
         if offset is not None:
-            offset = offset.squeeze(2)
+            offset = offset.squeeze(-1)
 
     weight = weight.to(orig_device)
     scale = scale.to(orig_device)
@@ -178,22 +182,7 @@ def quantize_weight_rtn(
     return quantized_weight
 
 
-def dequantize(W_ints: torch.Tensor, scale: torch.Tensor, offset: torch.Tensor | None):
-    """
-    Reconstruct the (approximate) weight tensor from the quantized weights, scales, and offsets.
-    
-    Here, repeat_interleave is used apply the scale and offset accross each group.
-    
-    The shape of W_ints is (out_features, in_features)
-    The shape of scale is (out_features, in_features // group_size)
-    The shape of offset is (out_features, in_features // group_size) (optional)
-    """
-    if offset is None:
-        offset = 0
-    else:
-        offset = torch.repeat_interleave(offset, W_ints.shape[1] // offset.shape[1], dim=1)
-    W = (W_ints - offset) * torch.repeat_interleave(scale,  W_ints.shape[1] // scale.shape[1], dim=1)
-    return W
+
 
 
 def quantize_module_rtn(

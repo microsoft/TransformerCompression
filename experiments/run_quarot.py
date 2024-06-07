@@ -130,6 +130,12 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
         action="store_true",
         help='Asymmetric weight quantization (else symmetric by default).',
     )
+    parser.add_argument(
+        '--w-groupsize',
+        type=int,
+        default=None,
+        help='Group size for groupwise weight quantization.'
+    )
 
     # Activation Quantization Arguments
     parser.add_argument(
@@ -279,6 +285,7 @@ def quarot_main(args: argparse.Namespace) -> None:
         rtn.quantize_model_rtn(
             quarot_model,
             bits=args.w_bits,
+            groupsize=args.w_groupsize,
             symmetric=False if args.w_asym else True,
             vectorized=True if args.w_clip_vec else False,
         )
@@ -290,6 +297,7 @@ def quarot_main(args: argparse.Namespace) -> None:
             tokenizer=tokenizer,
             batch_size=args.cal_batch_size,
             nsamples=args.cal_nsamples,
+            groupsize=args.w_groupsize,
         )
 
         if isinstance(quarot_model, QuarotLlamaForCausalLM):

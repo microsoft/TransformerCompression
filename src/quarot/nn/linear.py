@@ -1,7 +1,6 @@
 import torch
 
-from quarot.quant_utils import PackedQuantizedTensor
-from quarot.rtn import dequantize
+from ..quant_utils import PackedQuantizedTensor, dequantize
 
 
 class QuarotFP16Linear(torch.nn.Module):

@@ -1,6 +1,6 @@
 import torch
 
-from quarot.hadamard_utils import _apply_fast_hadamard, _apply_slow_hadamard, fht_available, get_hadK
+from ..hadamard_utils import _apply_fast_hadamard, _apply_slow_hadamard, fht_available, get_hadK
 
 
 class OnlineHadamard(torch.nn.Module):

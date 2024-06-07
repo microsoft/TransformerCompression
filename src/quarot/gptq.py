@@ -1,13 +1,12 @@
-import logging
 from typing import Any
 
 import torch
 from tqdm import tqdm
 
-from quarot.model_adapter import LayerAdapter, ModelAdapter
-from quarot.nn.linear import QuarotFP16Linear
-from quarot.quant_utils import PackedQuantizedTensor
-from quarot.rtn import calculate_scales, quantize_weight_rtn, dequantize
+from .model_adapter import LayerAdapter, ModelAdapter
+from .nn.linear import QuarotFP16Linear
+from .quant_utils import PackedQuantizedTensor, dequantize
+from .rtn import calculate_scales, quantize_weight_rtn
 from slicegpt.rotate import get_layer0_inputs
 from slicegpt.utils import cleanup_memory, map_tensors
 

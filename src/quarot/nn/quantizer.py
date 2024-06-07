@@ -1,7 +1,7 @@
 import torch
 
-from quarot.quant_utils import PackedQuantizedTensor
-from quarot.rtn import calculate_scales, quantize_weight_rtn
+from ..quant_utils import PackedQuantizedTensor, dequantize
+from ..rtn import calculate_scales, quantize_weight_rtn
 
 
 class DummyActQuantizer(torch.nn.Module):
@@ -46,5 +46,5 @@ class KVQuantizerDequantizer(torch.nn.Module):
             x, self.bits, symmetric=False, clip_weights=False, clip_ratio=self.clip_ratio, groupsize=self.groupsize
         )
         quantized_x = quantize_weight_rtn(x, x_scales, x_offsets, self.bits)
-        dequantized_x = (quantized_x - x_offsets) * x_scales
+        dequantized_x = dequantize(quantized_x, x_scales, x_offsets)
         return dequantized_x

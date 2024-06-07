@@ -28,8 +28,8 @@ from transformers.models.phi3.modeling_phi3 import (
 )
 from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
 
-from quarot.nn import OnlineHadamard, QuarotFP16Linear
-from quarot.nn.quantizer import ActQuantizer, DummyActQuantizer, KVQuantizerDequantizer
+from .nn import OnlineHadamard, QuarotFP16Linear
+from .nn.quantizer import ActQuantizer, DummyActQuantizer, KVQuantizerDequantizer
 from slicegpt.modules import RMSN
 
 ALL_LAYERNORM_LAYERS.append(RMSN)
