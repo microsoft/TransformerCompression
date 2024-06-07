@@ -11,7 +11,7 @@ from quarot.rtn import calculate_scales, quantize_weight_rtn
 from slicegpt.rotate import get_layer0_inputs
 from slicegpt.utils import cleanup_memory, map_tensors
 
-@torch.compile
+
 def gptq_quantize_column(i, col_idx, block_end_idx, 
                     W, Q, Err_block, L_inv_transpose, 
                     scale, offset, bits, symmetric):
