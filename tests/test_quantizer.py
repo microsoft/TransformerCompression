@@ -4,11 +4,11 @@
 import pytest
 import torch
 
-from quarot.nn.quantizer import ActQuantizer, DummyActQuantizer
-
 
 @pytest.mark.quarot
 def test_dummy_quantizer():
+    from quarot.nn.quantizer import DummyActQuantizer
+
     quantizer = DummyActQuantizer()
 
     act = torch.tensor([1.02, 0.056, -3.2, 4.999, 5.0])
@@ -16,14 +16,17 @@ def test_dummy_quantizer():
     packed_quantized_act = quantizer(act)
     quantized_x, scales_x = packed_quantized_act.quantized_x, packed_quantized_act.scales_x
 
-    # Check quantization error
+    # Check scales are ones and quantization error is nil
     dequantized_x = quantized_x * scales_x
+    assert torch.allclose(scales_x, torch.ones_like(scales_x))
     assert torch.allclose(act, dequantized_x)
 
 
 @pytest.mark.quarot
 @pytest.mark.gpu
 def test_act_quantizer():
+    from quarot.nn.quantizer import ActQuantizer
+
     quantizer = ActQuantizer(bits=8)
 
     batch_size = 2
