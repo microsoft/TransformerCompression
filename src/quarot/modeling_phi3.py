@@ -28,9 +28,10 @@ from transformers.models.phi3.modeling_phi3 import (
 )
 from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
 
+from slicegpt.modules import RMSN
+
 from .nn import OnlineHadamard, QuarotFP16Linear
 from .nn.quantizer import ActQuantizer, DummyActQuantizer, KVQuantizerDequantizer
-from slicegpt.modules import RMSN
 
 ALL_LAYERNORM_LAYERS.append(RMSN)
 
@@ -39,10 +40,11 @@ try:
 except ImportError:
     _flash_supports_window_size = False
 
+
 class QuarotPhi3Config(Phi3Config):
     model_type = "phi3_quarot"
-    groupsize=None
-    offset=False
+    groupsize = None
+    offset = False
 
 
 class QuarotPhi3MLP(Phi3MLP):

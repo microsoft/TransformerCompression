@@ -8,7 +8,6 @@ from .nn.linear import QuarotFP16Linear
 from .quant_utils import dequantize
 
 
-
 def calculate_min_max_int(bits: int, symmetric: bool = True) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Calculate the maximum representable integer value given the number of bits and the quantization scheme.
@@ -22,11 +21,9 @@ def calculate_min_max_int(bits: int, symmetric: bool = True) -> tuple[torch.Tens
     return min_int, max_int
 
 
-def calculate_min_max_weight(
-    weight: torch.Tensor, symmetric: bool = True
-) -> tuple[torch.Tensor, torch.Tensor]:
+def calculate_min_max_weight(weight: torch.Tensor, symmetric: bool = True) -> tuple[torch.Tensor, torch.Tensor]:
     """
-    Calculate the minimum and maximum weights in a weight tensor. 
+    Calculate the minimum and maximum weights in a weight tensor.
     If symmetric, the max weight is
     the larger of max weight or the absolute value of min weight.
     """
@@ -47,7 +44,7 @@ def calculate_scales(
     vectorized: bool = True,
     clip_ratio: float = 1.0,
     groupsize: int | None = None,
-    device='cuda'
+    device='cuda',
 ) -> tuple[torch.Tensor, torch.Tensor | None]:
     """
     Calculate the scales (and offsets if asymmetric) for quantizing a weight tensor to INT<bits> using the Round-to-Nearest scheme.
@@ -163,8 +160,7 @@ def calculate_scales(
     return scale, offset
 
 
-def quantize_weight_rtn(
-    weight: torch.Tensor, scale: torch.Tensor, offset: torch.Tensor | None, bits: int):
+def quantize_weight_rtn(weight: torch.Tensor, scale: torch.Tensor, offset: torch.Tensor | None, bits: int):
     """
     Quantize a weight tensor to INT<bits> using the given scale and offset.
     """
@@ -174,7 +170,7 @@ def quantize_weight_rtn(
         _offset = 0
     else:
         _offset = torch.repeat_interleave(offset, weight.shape[1] // offset.shape[1], dim=1)
-        
+
     min_int, max_int = calculate_min_max_int(bits, symmetric=offset is None)
     min_int = min_int.to(weight.device, weight.dtype)
     max_int = max_int.to(weight.device, weight.dtype)
@@ -182,9 +178,6 @@ def quantize_weight_rtn(
 
     quantized_weight = torch.clamp(weight_ints, min_int, max_int)
     return quantized_weight
-
-
-
 
 
 def quantize_module_rtn(
@@ -213,6 +206,7 @@ def quantize_module_rtn(
         module.weight.data = dequantize(quantized_weight, scale, offset)
     else:
         raise NotImplementedError
+
 
 def quantize_model_rtn(
     model,

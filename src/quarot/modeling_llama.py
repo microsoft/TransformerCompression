@@ -18,17 +18,18 @@ from transformers.models.llama.modeling_llama import (
 )
 from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
 
+from slicegpt.modules import RMSN
+
 from .nn import OnlineHadamard, QuarotFP16Linear
 from .nn.quantizer import ActQuantizer, DummyActQuantizer, KVQuantizerDequantizer
-from slicegpt.modules import RMSN
 
 ALL_LAYERNORM_LAYERS.append(RMSN)
 
 
 class QuarotLlamaConfig(LlamaConfig):
     model_type = "llama_quarot"
-    groupsize=None
-    offset=False
+    groupsize = None
+    offset = False
 
 
 class QuarotLlamaMLP(LlamaMLP):

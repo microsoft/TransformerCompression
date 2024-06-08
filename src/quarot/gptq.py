@@ -3,12 +3,13 @@ from typing import Any
 import torch
 from tqdm import tqdm
 
+from slicegpt.rotate import get_layer0_inputs
+from slicegpt.utils import cleanup_memory, map_tensors
+
 from .model_adapter import LayerAdapter, ModelAdapter
 from .nn.linear import QuarotFP16Linear
 from .quant_utils import PackedQuantizedTensor, dequantize
 from .rtn import calculate_scales, quantize_weight_rtn
-from slicegpt.rotate import get_layer0_inputs
-from slicegpt.utils import cleanup_memory, map_tensors
 
 
 def gptq_quantize_column(i, col_idx, block_end_idx, W, Q, Err_block, L_inv_transpose, scale, offset, bits, symmetric):
@@ -226,7 +227,6 @@ def set_tensors(
     assert scale.shape[0] == out_features
     if offset is not None:
         assert offset.shape == scale.shape
-    
 
     if isinstance(module, QuarotFP16Linear):
         module.weight.data = quantized_weight  # out_features x in_features
@@ -234,7 +234,7 @@ def set_tensors(
         if offset is not None:
             module.offset.data = offset
     elif isinstance(module, torch.nn.Linear):
-            module.weight.data = dequantize(quantized_weight, scale, offset)
+        module.weight.data = dequantize(quantized_weight, scale, offset)
     else:
         raise ValueError(f"Unsupported module type {type(module)}")
 
@@ -282,7 +282,9 @@ def quantize_model_gptq(
         W_down_proj = layer_adapter.get_mlp_output().weight.data
 
         # 4 calls to quantizer
-        Q_qkv, scale_qkv, offset_qkv = quantize_weight_gptq(W_qkv, H_qkv, bits, symmetric=symmetric, percdamp=damping, groupsize=groupsize)
+        Q_qkv, scale_qkv, offset_qkv = quantize_weight_gptq(
+            W_qkv, H_qkv, bits, symmetric=symmetric, percdamp=damping, groupsize=groupsize
+        )
         Q_o_proj, scale_o_proj, offset_o_proj = quantize_weight_gptq(
             W_o_proj, H_o_proj, bits, symmetric=symmetric, percdamp=damping, groupsize=groupsize
         )

@@ -130,12 +130,7 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
         action="store_true",
         help='Asymmetric weight quantization (else symmetric by default).',
     )
-    parser.add_argument(
-        '--w-groupsize',
-        type=int,
-        default=None,
-        help='Group size for groupwise weight quantization.'
-    )
+    parser.add_argument('--w-groupsize', type=int, default=None, help='Group size for groupwise weight quantization.')
 
     # Activation Quantization Arguments
     parser.add_argument(
