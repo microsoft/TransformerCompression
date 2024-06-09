@@ -46,6 +46,7 @@ def quantize_weight_gptq(
     percdamp: float = 0.01,
     groupsize: int | None = None,
     clip_weights: bool = True,
+    device='cuda',
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]:
     """
     Quantize a weight tensor to INT<bits> using the GPTQ scheme.
@@ -63,14 +64,14 @@ def quantize_weight_gptq(
     num_features, num_columns = W.shape
     orig_dev = W.device
     orig_dtype = W.dtype
-    W = W.to('cuda', dtype=torch.float32)
-    H = H.to(W.device)
+    W = W.to(device=device, dtype=torch.float32)
+    H = H.to(W.device, dtype=torch.float32)
 
     # deal with group quantization.
     # If groupsize is None, we quantize the entire tensor at once (there's a single scale and offset).
     # otherwise, we collect the scale/offset for each group in a list
     if groupsize is None:
-        scale, offset = calculate_scales(W, bits, symmetric=symmetric, clip_weights=clip_weights, vectorized=False)
+        scale, offset = calculate_scales(W, bits, symmetric=symmetric, clip_weights=clip_weights, vectorized=False, device=device)
         scale = scale.float()
         offset = offset.float() if offset is not None else None
     else:
