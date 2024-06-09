@@ -114,6 +114,7 @@ def quantize_weight_gptq(
                     symmetric=symmetric,
                     clip_weights=clip_weights,
                     vectorized=False,
+                    device=device,
                 )
                 scale = scale.float()
                 offset = offset.float() if offset is not None else None
