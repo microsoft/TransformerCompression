@@ -26,6 +26,8 @@ class LayerAdapter(ABC):
     """
     To implement a new layer adapter, implement the interface defined in this class
     """
+    
+    is_moe = False
 
     @property
     @abstractmethod
