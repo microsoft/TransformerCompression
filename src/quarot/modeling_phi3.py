@@ -317,7 +317,7 @@ class QuarotPhi3ForCausalLM(Phi3ForCausalLM):
                 config=config,
                 act_bits=act_bits,
                 act_clip_ratio=act_clip_ratio,
-                act_gropusize=act_groupsize,
+                act_groupsize=act_groupsize,
                 k_bits=k_bits,
                 k_clip_ratio=k_clip_ratio,
                 k_groupsize=k_groupsize,

@@ -9,6 +9,7 @@ import lm_eval
 import torch
 import transformers
 import wandb
+import mlflow
 from lm_eval import utils as lm_eval_utils
 from lm_eval.api.registry import ALL_TASKS
 from lm_eval.models.huggingface import HFLM
@@ -232,6 +233,11 @@ def quarot_main(args: argparse.Namespace) -> None:
         # environment, e.g. notebook, IDE, no-shell process, etc. In this case, we want to continue without wandb.
         logging.info(f'Failed to initialize wandb: {e}, continuing without wandb')
         wandb.init(project=args.wandb_project, mode='disabled')
+        
+    # sort out mlflow
+    mlflow.config.enable_async_logging()
+    mlflow.start_run()
+    [mlflow.log_param(arg, argv) for arg, argv in vars(args).items()]
 
     # load one of the pre-trained models
     model_adapter, tokenizer = hf_utils.get_model_and_tokenizer(
@@ -252,6 +258,7 @@ def quarot_main(args: argparse.Namespace) -> None:
         dataset_ppl = gpu_utils.evaluate_ppl(model, model.config.pad_token_id, test_loader)
         logging.info(f'Original ppl: {dataset_ppl:.4f}')
         wandb.log({"original_ppl": dataset_ppl})
+        mlflow.log_metric("original_ppl", dataset_ppl)
         model.cpu()
         utils.cleanup_memory()
 
@@ -329,9 +336,11 @@ def quarot_main(args: argparse.Namespace) -> None:
     if args.rotate:
         logging.info(f'QuaRot ppl: {dataset_ppl:.4f}')
         wandb.log({"quarot_ppl": dataset_ppl})
+        mlflow.log_metric("quarot_ppl", dataset_ppl)
     else:
         logging.info(f'ppl: {dataset_ppl:.4f}')
         wandb.log({"ppl": dataset_ppl})
+        mlflow.log_metric("ppl", dataset_ppl)
 
     if not args.lm_eval:
         return
@@ -346,6 +355,7 @@ def quarot_main(args: argparse.Namespace) -> None:
     metric_vals['acc_avg'] = round(sum(metric_vals.values()) / len(metric_vals.values()), 4)
     logging.info(f"LM Eval results: {metric_vals}")
     wandb.log(metric_vals)
+    [mlflow.log_metric(task, metric) for task, metric in metric_vals.items()]
 
 
 if __name__ == "__main__":
