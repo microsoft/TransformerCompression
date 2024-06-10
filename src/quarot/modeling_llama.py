@@ -50,8 +50,12 @@ class QuarotLlamaMLP(LlamaMLP):
         self.down_proj = QuarotFP16Linear.like(self.down_proj, groupsize=config.groupsize, offset=config.offset)
         self.online_down_proj_hadamard = OnlineHadamard(self.intermediate_size)
         if act_bits < 16:
-            self.input_quantizer = ActQuantizer(act_bits, symmetric=True, clip_ratio=act_clip_ratio, groupsize=act_groupsize)
-            self.down_proj_input_quantizer = ActQuantizer(act_bits, symmetric=True, clip_ratio=act_clip_ratio, groupsize=act_groupsize)
+            self.input_quantizer = ActQuantizer(
+                act_bits, symmetric=True, clip_ratio=act_clip_ratio, groupsize=act_groupsize
+            )
+            self.down_proj_input_quantizer = ActQuantizer(
+                act_bits, symmetric=True, clip_ratio=act_clip_ratio, groupsize=act_groupsize
+            )
         else:
             self.input_quantizer = DummyActQuantizer()
             self.down_proj_input_quantizer = DummyActQuantizer()
@@ -102,8 +106,12 @@ class QuarotFP16LlamaFlashAttention2(LlamaFlashAttention2):
         self.online_q_hadamard = OnlineHadamard(self.head_dim)
 
         if act_bits < 16:
-            self.input_quantizer = ActQuantizer(act_bits, symmetric=True, clip_ratio=act_clip_ratio, groupsize=act_groupsize)
-            self.o_proj_input_quantizer = ActQuantizer(act_bits, symmetric=True, clip_ratio=act_clip_ratio, groupsize=act_groupsize)
+            self.input_quantizer = ActQuantizer(
+                act_bits, symmetric=True, clip_ratio=act_clip_ratio, groupsize=act_groupsize
+            )
+            self.o_proj_input_quantizer = ActQuantizer(
+                act_bits, symmetric=True, clip_ratio=act_clip_ratio, groupsize=act_groupsize
+            )
         else:
             self.input_quantizer = DummyActQuantizer()
             self.o_proj_input_quantizer = DummyActQuantizer()
@@ -237,7 +245,11 @@ class QuarotLlamaForCausalLM(LlamaForCausalLM):
                 layer_idx=layer_idx,
             )
             layer.mlp = QuarotLlamaMLP(
-                config=config, act_bits=act_bits, act_clip_ratio=act_clip_ratio, act_groupsize=act_groupsize, online_had=online_had_mlp
+                config=config,
+                act_bits=act_bits,
+                act_clip_ratio=act_clip_ratio,
+                act_groupsize=act_groupsize,
+                online_had=online_had_mlp,
             )
             if rms_norm:
                 layer.input_layernorm = RMSN(config.hidden_size, eps=config.rms_norm_eps)
