@@ -72,7 +72,9 @@ def quantize_weight_gptq(
     # If groupsize is None, we quantize the entire tensor at once (there's a single scale and offset).
     # otherwise, we collect the scale/offset for each group in a list
     if groupsize is None:
-        scale, offset = calculate_scales(W, bits, symmetric=symmetric, clip_weights=clip_weights, vectorized=False, device=device)
+        scale, offset = calculate_scales(
+            W, bits, symmetric=symmetric, clip_weights=clip_weights, vectorized=False, device=device
+        )
         scale = scale.float()
         offset = offset.float() if offset is not None else None
     else:
@@ -133,7 +135,7 @@ def quantize_weight_gptq(
     if groupsize is not None:
         scale = torch.cat(group_scales, dim=1)
         offset = torch.cat(group_offsets, dim=1) if group_offsets[0] is not None else None
-        
+
     # if optimize_scales is True, solve for the optimal scaling factors
     if optimize_scales:
         scale = solve_optimal_scales(W, Q, H, groupsize=groupsize, offset=offset)
@@ -150,13 +152,13 @@ def quantize_weight_gptq(
 def solve_optimal_scales(W, W_int, H, groupsize=None, offset=None):
     """
     Given a weight matrix W, and its quantized version W_int, solve for the optimal scaling factors.
-    
+
     Note that the _optimal_ scaling factors are not necessarily the same as the ones used in the quantization process. To derive this, consider the GPTQ loss function:
-    
+
       W_recon = (W_int - offset) * scale
       L = trace( [W - W_recon] H [W - W_recon]^T )
-    
-    differentiate with respect to scale, set to zero, and solve for scale, being careful of the tiling used in reconstructing across groups. 
+
+    differentiate with respect to scale, set to zero, and solve for scale, being careful of the tiling used in reconstructing across groups.
     """
     assert W.shape == W_int.shape
     assert len(W.shape) == 2
@@ -293,7 +295,7 @@ def quantize_model_gptq(
     Quantize the model in-place using the GPTQ scheme, using the dataloader calibration data. All weights are stored in FP16.
     If the model is a QuaRot model, the weights-minus-offsets and scales are stored in the QuarotFP16Linear modules. If the model is not a QuaRot model,
     the weights are dequantized and stored in the torch.nn.Linear modules.
-    
+
     Arguments:
     - model_adapter: the model adapter to quantize.
     - dataloader: the dataloader to use for calibration.
@@ -334,16 +336,40 @@ def quantize_model_gptq(
 
         # 4 calls to quantizer
         Q_qkv, scale_qkv, offset_qkv = quantize_weight_gptq(
-            W_qkv, H_qkv, bits, symmetric=symmetric, percdamp=damping, groupsize=groupsize, optimize_scales=optimize_scales,
+            W_qkv,
+            H_qkv,
+            bits,
+            symmetric=symmetric,
+            percdamp=damping,
+            groupsize=groupsize,
+            optimize_scales=optimize_scales,
         )
         Q_o_proj, scale_o_proj, offset_o_proj = quantize_weight_gptq(
-            W_o_proj, H_o_proj, bits, symmetric=symmetric, percdamp=damping, groupsize=groupsize, optimize_scales=optimize_scales,
+            W_o_proj,
+            H_o_proj,
+            bits,
+            symmetric=symmetric,
+            percdamp=damping,
+            groupsize=groupsize,
+            optimize_scales=optimize_scales,
         )
         Q_upgate, scale_upgate, offset_upgate = quantize_weight_gptq(
-            W_upgate, H_upgate, bits, symmetric=symmetric, percdamp=damping, groupsize=groupsize, optimize_scales=optimize_scales,
+            W_upgate,
+            H_upgate,
+            bits,
+            symmetric=symmetric,
+            percdamp=damping,
+            groupsize=groupsize,
+            optimize_scales=optimize_scales,
         )
         Q_down_proj, scale_down_proj, offset_down_proj = quantize_weight_gptq(
-            W_down_proj, H_down_proj, bits, symmetric=symmetric, percdamp=damping, groupsize=groupsize, optimize_scales=optimize_scales,
+            W_down_proj,
+            H_down_proj,
+            bits,
+            symmetric=symmetric,
+            percdamp=damping,
+            groupsize=groupsize,
+            optimize_scales=optimize_scales,
         )
 
         # set the quantized weights and scales of the attention inputs
