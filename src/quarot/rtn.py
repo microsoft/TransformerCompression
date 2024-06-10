@@ -164,12 +164,12 @@ def quantize_weight_rtn(weight: torch.Tensor, scale: torch.Tensor, offset: torch
     """
     Quantize a weight tensor to INT<bits> using the given scale and offset.
     """
-    scale = torch.repeat_interleave(scale, weight.shape[1] // scale.shape[1], dim=1)
+    scale = torch.repeat_interleave(scale, weight.shape[-1] // scale.shape[-1], dim=-1)
 
     if offset is None:
         _offset = 0
     else:
-        _offset = torch.repeat_interleave(offset, weight.shape[1] // offset.shape[1], dim=1)
+        _offset = torch.repeat_interleave(offset, weight.shape[-1] // offset.shape[-1], dim=-1)
 
     min_int, max_int = calculate_min_max_int(bits, symmetric=offset is None)
     min_int = min_int.to(weight.device, weight.dtype)
