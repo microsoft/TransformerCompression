@@ -198,6 +198,7 @@ class QuarotLlamaForCausalLM(LlamaForCausalLM):
         rms_norm: bool = False,
         act_bits: int = 16,
         act_clip_ratio: float = 1.0,
+        act_groupsize: int | None = None,
         k_bits: int = 16,
         k_clip_ratio: float = 1.0,
         k_groupsize: int | None = None,
@@ -223,6 +224,7 @@ class QuarotLlamaForCausalLM(LlamaForCausalLM):
                 config=config,
                 act_bits=act_bits,
                 act_clip_ratio=act_clip_ratio,
+                act_groupsize=act_groupsize,
                 k_bits=k_bits,
                 k_clip_ratio=k_clip_ratio,
                 k_groupsize=k_groupsize,
@@ -233,7 +235,7 @@ class QuarotLlamaForCausalLM(LlamaForCausalLM):
                 layer_idx=layer_idx,
             )
             layer.mlp = QuarotLlamaMLP(
-                config=config, act_bits=act_bits, act_clip_ratio=act_clip_ratio, online_had=online_had_mlp
+                config=config, act_bits=act_bits, act_clip_ratio=act_clip_ratio, act_groupsize=act_groupsize, online_had=online_had_mlp
             )
             if rms_norm:
                 layer.input_layernorm = RMSN(config.hidden_size, eps=config.rms_norm_eps)

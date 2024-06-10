@@ -289,6 +289,7 @@ class QuarotPhi3ForCausalLM(Phi3ForCausalLM):
         rms_norm: bool = False,
         act_bits: int = 16,
         act_clip_ratio: float = 1.0,
+        act_groupsize: int | None = None,
         k_bits: int = 16,
         k_clip_ratio: float = 1.0,
         k_groupsize: int | None = None,

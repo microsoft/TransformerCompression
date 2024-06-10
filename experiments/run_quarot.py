@@ -148,6 +148,12 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
         default=1.0,
         help='Clip ratio for activation quantization: new_max = max * clip_ratio.',
     )
+    parser.add_argument(
+        '--a-groupsize',
+        type=int,
+        default=None,
+        help='Group size for groupwise activation quantization, default is None.',
+    )
 
     # KV Quantization Arguments
     parser.add_argument(
