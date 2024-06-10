@@ -103,6 +103,9 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
         "--gptq-damping", type=float, default=0.01, help="Damping factor for GPTQ. (ignored for RTN quantization)"
     )
     parser.add_argument(
+        "--gptq-opt-scales", action="store_true", help="Optimize scales for GPTQ (ignored for RTN quantization)"
+    )
+    parser.add_argument(
         "--cal-nsamples",
         type=int,
         help="Number of samples of the calibration data to load for GPTQ",
@@ -130,6 +133,7 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
         action="store_true",
         help='Asymmetric weight quantization (else symmetric by default).',
     )
+    parser.add_argument('--w-groupsize', type=int, default=None, help='Group size for groupwise weight quantization.')
 
     # Activation Quantization Arguments
     parser.add_argument(
@@ -252,7 +256,7 @@ def quarot_main(args: argparse.Namespace) -> None:
         # Rotate the model with fused Hadamard transformations.
         rotate.rotate_model(model_adapter, args.rotation_seed)
 
-    model_config = quarot_model_config(args.model, dtype=config.dtype)
+    model_config = quarot_model_config(args.model, dtype=config.dtype, groupsize=args.w_groupsize, offset=args.w_asym)
 
     with transformers.modeling_utils.no_init_weights():
         # initialize quarot model
@@ -279,6 +283,7 @@ def quarot_main(args: argparse.Namespace) -> None:
         rtn.quantize_model_rtn(
             quarot_model,
             bits=args.w_bits,
+            groupsize=args.w_groupsize,
             symmetric=False if args.w_asym else True,
             vectorized=True if args.w_clip_vec else False,
         )
@@ -305,6 +310,8 @@ def quarot_main(args: argparse.Namespace) -> None:
             bits=args.w_bits,
             symmetric=False if args.w_asym else True,
             damping=args.gptq_damping,
+            groupsize=args.w_groupsize,
+            optimize_scales=args.gptq_opt_scales,
         )
         logging.info("Quantization complete.")
     else:

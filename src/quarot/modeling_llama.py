@@ -18,15 +18,18 @@ from transformers.models.llama.modeling_llama import (
 )
 from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
 
-from quarot.nn import OnlineHadamard, QuarotFP16Linear
-from quarot.nn.quantizer import ActQuantizer, DummyActQuantizer, KVQuantizerDequantizer
 from slicegpt.modules import RMSN
+
+from .nn import OnlineHadamard, QuarotFP16Linear
+from .nn.quantizer import ActQuantizer, DummyActQuantizer, KVQuantizerDequantizer
 
 ALL_LAYERNORM_LAYERS.append(RMSN)
 
 
 class QuarotLlamaConfig(LlamaConfig):
     model_type = "llama_quarot"
+    groupsize = None
+    offset = False
 
 
 class QuarotLlamaMLP(LlamaMLP):
@@ -41,9 +44,9 @@ class QuarotLlamaMLP(LlamaMLP):
     ):
         super().__init__(config, *args, **kwargs)
         self.online_had = online_had
-        self.up_proj = QuarotFP16Linear.like(self.up_proj)
-        self.gate_proj = QuarotFP16Linear.like(self.gate_proj)
-        self.down_proj = QuarotFP16Linear.like(self.down_proj)
+        self.up_proj = QuarotFP16Linear.like(self.up_proj, groupsize=config.groupsize, offset=config.offset)
+        self.gate_proj = QuarotFP16Linear.like(self.gate_proj, groupsize=config.groupsize, offset=config.offset)
+        self.down_proj = QuarotFP16Linear.like(self.down_proj, groupsize=config.groupsize, offset=config.offset)
         self.online_down_proj_hadamard = OnlineHadamard(self.intermediate_size)
         if act_bits < 16:
             self.input_quantizer = ActQuantizer(act_bits, symmetric=True, clip_ratio=act_clip_ratio)
@@ -73,7 +76,7 @@ class QuarotLlamaMLP(LlamaMLP):
 class QuarotFP16LlamaFlashAttention2(LlamaFlashAttention2):
     def __init__(
         self,
-        config,
+        config: QuarotLlamaConfig,
         act_bits: int = 16,
         act_clip_ratio: float = 1.0,
         k_bits: int = 16,
@@ -88,10 +91,10 @@ class QuarotFP16LlamaFlashAttention2(LlamaFlashAttention2):
     ):
         super().__init__(config, *args, **kwargs)
         self.online_had = online_had
-        self.q_proj = QuarotFP16Linear.like(self.q_proj)
-        self.k_proj = QuarotFP16Linear.like(self.k_proj)
-        self.v_proj = QuarotFP16Linear.like(self.v_proj)
-        self.o_proj = QuarotFP16Linear.like(self.o_proj)
+        self.q_proj = QuarotFP16Linear.like(self.q_proj, groupsize=config.groupsize, offset=config.offset)
+        self.k_proj = QuarotFP16Linear.like(self.k_proj, groupsize=config.groupsize, offset=config.offset)
+        self.v_proj = QuarotFP16Linear.like(self.v_proj, groupsize=config.groupsize, offset=config.offset)
+        self.o_proj = QuarotFP16Linear.like(self.o_proj, groupsize=config.groupsize, offset=config.offset)
         self.online_o_proj_hadamard = OnlineHadamard(self.num_heads)
         self.online_k_hadamard = OnlineHadamard(self.head_dim)
         self.online_q_hadamard = OnlineHadamard(self.head_dim)

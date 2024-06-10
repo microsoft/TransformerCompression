@@ -23,21 +23,28 @@ from transformers.models.phi3.modeling_phi3 import (
     Phi3FlashAttention2,
     Phi3ForCausalLM,
     Phi3MLP,
-    _flash_supports_window_size,
     apply_rotary_pos_emb,
     repeat_kv,
 )
 from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
 
-from quarot.nn import OnlineHadamard, QuarotFP16Linear
-from quarot.nn.quantizer import ActQuantizer, DummyActQuantizer, KVQuantizerDequantizer
 from slicegpt.modules import RMSN
 
+from .nn import OnlineHadamard, QuarotFP16Linear
+from .nn.quantizer import ActQuantizer, DummyActQuantizer, KVQuantizerDequantizer
+
 ALL_LAYERNORM_LAYERS.append(RMSN)
+
+try:
+    from transformers.models.phi3.modeling_phi3 import _flash_supports_window_size
+except ImportError:
+    _flash_supports_window_size = False
 
 
 class QuarotPhi3Config(Phi3Config):
     model_type = "phi3_quarot"
+    groupsize = None
+    offset = False
 
 
 class QuarotPhi3MLP(Phi3MLP):
@@ -52,8 +59,8 @@ class QuarotPhi3MLP(Phi3MLP):
     ):
         super().__init__(config, *args, **kwargs)
         self.online_had = online_had
-        self.gate_up_proj = QuarotFP16Linear.like(self.gate_up_proj)
-        self.down_proj = QuarotFP16Linear.like(self.down_proj)
+        self.gate_up_proj = QuarotFP16Linear.like(self.gate_up_proj, groupsize=config.groupsize, offset=config.offset)
+        self.down_proj = QuarotFP16Linear.like(self.down_proj, groupsize=config.groupsize, offset=config.offset)
         self.online_down_proj_hadamard = OnlineHadamard(config.intermediate_size)
         if act_bits < 16:
             self.input_quantizer = ActQuantizer(act_bits, symmetric=True, clip_ratio=act_clip_ratio)
@@ -85,7 +92,7 @@ class QuarotPhi3MLP(Phi3MLP):
 class QuarotFP16Phi3FlashAttention2(Phi3FlashAttention2):
     def __init__(
         self,
-        config,
+        config: QuarotPhi3Config,
         act_bits: int = 16,
         act_clip_ratio: float = 1.0,
         k_bits: int = 16,
@@ -100,8 +107,8 @@ class QuarotFP16Phi3FlashAttention2(Phi3FlashAttention2):
     ):
         super().__init__(config, *args, **kwargs)
         self.online_had = online_had
-        self.qkv_proj = QuarotFP16Linear.like(self.qkv_proj)
-        self.o_proj = QuarotFP16Linear.like(self.o_proj)
+        self.qkv_proj = QuarotFP16Linear.like(self.qkv_proj, groupsize=config.groupsize, offset=config.offset)
+        self.o_proj = QuarotFP16Linear.like(self.o_proj, groupsize=config.groupsize, offset=config.offset)
         self.online_o_proj_hadamard = OnlineHadamard(self.num_heads)
         self.online_k_hadamard = OnlineHadamard(self.head_dim)
         self.online_q_hadamard = OnlineHadamard(self.head_dim)

@@ -3,7 +3,6 @@
 
 import torch
 import tqdm
-from transformers.models.phi3.modeling_phi3 import Phi3ForCausalLM
 
 from slicegpt import utils
 from slicegpt.rotate import (
