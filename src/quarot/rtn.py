@@ -4,7 +4,8 @@
 import torch
 from tqdm import tqdm
 
-from quarot.nn.linear import QuarotFP16Linear
+from .nn.linear import QuarotFP16Linear
+from .quant_utils import dequantize
 
 
 def calculate_min_max_int(bits: int, symmetric: bool = True) -> tuple[torch.Tensor, torch.Tensor]:
@@ -20,19 +21,14 @@ def calculate_min_max_int(bits: int, symmetric: bool = True) -> tuple[torch.Tens
     return min_int, max_int
 
 
-def calculate_min_max_weight(
-    weight: torch.Tensor, symmetric: bool = True, perchannel: bool = True
-) -> tuple[torch.Tensor, torch.Tensor]:
+def calculate_min_max_weight(weight: torch.Tensor, symmetric: bool = True) -> tuple[torch.Tensor, torch.Tensor]:
     """
-    Calculate the minimum and maximum weights in a weight tensor. If perchannel, these are calculated per-row. If symmetric, the max weight is
+    Calculate the minimum and maximum weights in a weight tensor.
+    If symmetric, the max weight is
     the larger of max weight or the absolute value of min weight.
     """
-    if perchannel:
-        max_weight = torch.max(weight, torch.zeros_like(weight)).max(dim=-1, keepdim=True).values
-        min_weight = torch.min(weight, torch.zeros_like(weight)).min(dim=-1, keepdim=True).values
-    else:
-        max_weight = torch.max(weight, torch.zeros_like(weight)).max()
-        min_weight = torch.min(weight, torch.zeros_like(weight)).min()
+    max_weight = torch.max(weight, torch.zeros_like(weight)).max(dim=-1, keepdim=True).values
+    min_weight = torch.min(weight, torch.zeros_like(weight)).min(dim=-1, keepdim=True).values
 
     if symmetric:
         max_weight = torch.maximum(max_weight, torch.abs(min_weight)).clamp(min=1e-5)
@@ -48,16 +44,18 @@ def calculate_scales(
     vectorized: bool = True,
     clip_ratio: float = 1.0,
     groupsize: int | None = None,
+    device='cuda',
 ) -> tuple[torch.Tensor, torch.Tensor | None]:
     """
     Calculate the scales (and offsets if asymmetric) for quantizing a weight tensor to INT<bits> using the Round-to-Nearest scheme.
     """
-    device = weight.device
-    weight = weight.cuda()
+    orig_device = weight.device
+    weight = weight.to(device=device)
 
     if groupsize:
-        init_shape = weight.shape
-        weight = weight.reshape(-1, weight.shape[-2], weight.shape[-1] // groupsize, groupsize)
+        # reshape the last dimension into num_groups x group_size
+        new_shape = list(weight.shape[:-1]) + [weight.shape[-1] // groupsize, groupsize]
+        weight = weight.reshape(new_shape)
 
     min_weight, max_weight = calculate_min_max_weight(weight, symmetric=symmetric)
     min_weight *= clip_ratio
@@ -100,9 +98,7 @@ def calculate_scales(
             weight = weight.unsqueeze(-1)
 
             # Quantize weights
-            candidate_quantized_weights = quantize_weight_rtn(
-                weight, candidate_scales, candidate_offset, bits, symmetric=symmetric
-            )
+            candidate_quantized_weights = quantize_weight_rtn(weight, candidate_scales, candidate_offset, bits)
 
             # Dequantize weights
             if symmetric:
@@ -134,9 +130,7 @@ def calculate_scales(
                     candidate_offset = torch.round(-candidate_min_weight / candidate_scale)
 
                 # Quantize weights
-                candidate_quantized_weight = quantize_weight_rtn(
-                    weight, candidate_scale, candidate_offset, bits, symmetric=symmetric
-                )
+                candidate_quantized_weight = quantize_weight_rtn(weight, candidate_scale, candidate_offset, bits)
 
                 # Dequantize weights
                 if symmetric:
@@ -155,37 +149,34 @@ def calculate_scales(
                     best_quantization_error[improved_idx] = quantization_error[improved_idx]
 
     if groupsize:
-        scale = scale.repeat(1, 1, 1, groupsize).reshape(init_shape)
-        offset = offset.repeat(1, 1, 1, groupsize).reshape(init_shape)
+        scale = scale.squeeze(-1)
+        if offset is not None:
+            offset = offset.squeeze(-1)
 
-    weight = weight.to(device)
-    scale = scale.to(device)
-    offset = offset.to(device) if offset is not None else None
+    weight = weight.to(orig_device)
+    scale = scale.to(orig_device)
+    offset = offset.to(orig_device) if offset is not None else None
 
     return scale, offset
 
 
-def quantize_weight_rtn(
-    weight: torch.Tensor, scale: torch.Tensor, offset: torch.Tensor | None, bits: int, symmetric: bool = True
-) -> torch.Tensor:
+def quantize_weight_rtn(weight: torch.Tensor, scale: torch.Tensor, offset: torch.Tensor | None, bits: int):
     """
     Quantize a weight tensor to INT<bits> using the given scale and offset.
     """
-    device = weight.device
-    weight = weight.cuda()
-    scale = scale.cuda()
-    offset = offset.cuda() if offset is not None else None
+    scale = torch.repeat_interleave(scale, weight.shape[1] // scale.shape[1], dim=1)
 
-    min_int, max_int = calculate_min_max_int(bits, symmetric)
-    min_int = min_int.to(device=weight.device, dtype=weight.dtype)
-    max_int = max_int.to(device=weight.device, dtype=weight.dtype)
-    if symmetric:
-        quantized_weight = torch.clamp(torch.round(weight / scale), min_int, max_int)
+    if offset is None:
+        _offset = 0
     else:
-        offset = offset.to(device=weight.device)
-        quantized_weight = torch.clamp(torch.round(weight / scale) + offset, min_int, max_int)
+        _offset = torch.repeat_interleave(offset, weight.shape[1] // offset.shape[1], dim=1)
 
-    quantized_weight = quantized_weight.to(device)
+    min_int, max_int = calculate_min_max_int(bits, symmetric=offset is None)
+    min_int = min_int.to(weight.device, weight.dtype)
+    max_int = max_int.to(weight.device, weight.dtype)
+    weight_ints = torch.round(weight / scale) + _offset
+
+    quantized_weight = torch.clamp(weight_ints, min_int, max_int)
     return quantized_weight
 
 
@@ -204,10 +195,17 @@ def quantize_module_rtn(
     weight = module.weight
 
     scale, offset = calculate_scales(weight, bits, symmetric, clip_weights, vectorized=vectorized, groupsize=groupsize)
-    quantized_weight = quantize_weight_rtn(weight, scale, offset, bits, symmetric)
+    quantized_weight = quantize_weight_rtn(weight, scale, offset, bits)
 
-    module.weight.data = quantized_weight - offset if offset is not None else quantized_weight
-    module.weight_scales = scale
+    if isinstance(module, QuarotFP16Linear):
+        module.weight.data = quantized_weight
+        module.weight_scales.data = scale
+        if not symmetric:
+            module.offset.data = offset
+    elif isinstance(module, torch.nn.Linear):
+        module.weight.data = dequantize(quantized_weight, scale, offset)
+    else:
+        raise NotImplementedError
 
 
 def quantize_model_rtn(
@@ -219,20 +217,17 @@ def quantize_model_rtn(
     groupsize: int | None = None,
 ) -> None:
     """
-    Quantize the weights of a model using the Round-to-Nearest scheme.
+    Quantize the weights (in QuarotFP16Linear modules) of a QuaRot model using the Round-to-Nearest scheme.
 
     Args:
         model: the model to quantize
         bits: the number of bits to quantize the weights to
         symmetric: whether to use symmetric quantization
-        clip_weights: whether to clip the weights to the maximum representable value
+        clip_weights: whether to perform a search for the best clip ratio for weight clipping
+        vectorized: whether to use a vectorized implementation for weight clipping
+        groupsize: the groupsize for quantization. If None, quantize each channel in full.
     """
-    layers = model.model.layers
-    for layer in tqdm(layers, desc="Quantizing layers", unit="layer"):
-        quantize_module_rtn(layer.mlp.up_proj, bits, symmetric, clip_weights, vectorized, groupsize)
-        quantize_module_rtn(layer.mlp.gate_proj, bits, symmetric, clip_weights, vectorized, groupsize)
-        quantize_module_rtn(layer.mlp.down_proj, bits, symmetric, clip_weights, vectorized, groupsize)
-        quantize_module_rtn(layer.self_attn.q_proj, bits, symmetric, clip_weights, vectorized, groupsize)
-        quantize_module_rtn(layer.self_attn.k_proj, bits, symmetric, clip_weights, vectorized, groupsize)
-        quantize_module_rtn(layer.self_attn.v_proj, bits, symmetric, clip_weights, vectorized, groupsize)
-        quantize_module_rtn(layer.self_attn.o_proj, bits, symmetric, clip_weights, vectorized, groupsize)
+    for layer in tqdm(model.model.layers, unit="layer", desc="Quantizing layer"):
+        for _, module in layer.named_modules():
+            if isinstance(module, QuarotFP16Linear):
+                quantize_module_rtn(module, bits, symmetric, clip_weights, vectorized, groupsize)
