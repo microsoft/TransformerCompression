@@ -103,6 +103,9 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
         "--gptq-damping", type=float, default=0.01, help="Damping factor for GPTQ. (ignored for RTN quantization)"
     )
     parser.add_argument(
+        "--gptq-opt-scales", action="store_true", help="Optimize scales for GPTQ (ignored for RTN quantization)"
+    )
+    parser.add_argument(
         "--cal-nsamples",
         type=int,
         help="Number of samples of the calibration data to load for GPTQ",
@@ -308,6 +311,7 @@ def quarot_main(args: argparse.Namespace) -> None:
             symmetric=False if args.w_asym else True,
             damping=args.gptq_damping,
             groupsize=args.w_groupsize,
+            optimize_scales=args.gptq_opt_scales,
         )
         logging.info("Quantization complete.")
     else:
