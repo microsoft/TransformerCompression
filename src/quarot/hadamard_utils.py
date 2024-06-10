@@ -1,8 +1,6 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
-import math
-
 import torch
 
 from .hadamard_tensors import (
@@ -115,11 +113,12 @@ def _apply_fast_hadamard(X: torch.tensor, hadK: torch.tensor) -> torch.tensor:
     n = X.shape[-1]
     K = hadK.shape[0]
     scale = 1.0 / torch.tensor(n).sqrt()
+    X = X.contiguous()
     if K == 1:
-        return hadamard_transform(X.contiguous(), scale)
+        return hadamard_transform(X, scale)
 
     input = X.view(-1, K, n // K)
-    input = hadamard_transform(input.contiguous(), scale)
+    input = hadamard_transform(input, scale)
     input = hadK.to(input.device).to(input.dtype) @ input
     return input.reshape(X.shape)
 
@@ -133,35 +132,50 @@ def apply_hadamard_headwise(module: torch.nn.Linear, head_dim: int):
     - module: the torch.nn.Linear instance to modify.
     - head_dim: the head dimension. Must be a power of 2.
     """
-    assert is_pow2(head_dim), "Head dimension must be a power of 2!"
+    W_ = module.weight.data
 
-    W_ = module.weight.data.t()
     dtype = W_.dtype
     dev = W_.device
     W_ = W_.float().cuda()
 
-    scale = 1 / math.sqrt(head_dim)
-    num_heads = module.out_features // head_dim
-    W_ = hadamard_transform(W_.reshape(module.in_features, num_heads, head_dim), scale=scale)
-    W_ = W_.reshape((module.in_features, module.out_features)).t()
+    out_features, in_features = W_.shape
+    num_heads = out_features // head_dim
+    W_ = W_.t()  # (in_features, out_features)
+    W_ = W_.reshape(in_features, num_heads, head_dim)  # (in_features, num_heads, head_dim)
+    W_ = factored_hadamard(W_)  # hadamard along the head dimension
+    W_ = W_.reshape((in_features, out_features)).t()  # (out_features, in_features)
 
-    module.weight.data = W_.to(device=dev, dtype=dtype)
+    module.weight.data[:, :] = W_.to(device=dev, dtype=dtype)[
+        :, :
+    ]  # in-place replacement needed when updating v_proj in Phi3 so that parent qkv is updated
 
 
-def apply_hadamard(module: torch.nn.Linear) -> None:
+def apply_hadamard(module: torch.nn.Linear, head_dim: int | None = None) -> None:
     """
     Modifies the weights contained in a torch.nn.Linear instance. If the weights are W,
     this turns them into HW, where H is a Hadamard matrix.
 
     Args:
     - module: the torch.nn.Linear instance to modify.
+    - head_dim: the head dimension (if applicable). If provided, the Hadamard transform is applied headwise (default: None).
     """
     W_ = module.weight.data
     dtype = W_.dtype
     dev = W_.device
     W_ = W_.float().cuda()
 
-    W_ = factored_fast_hadamard(W_) if fht_available else factored_slow_hadamard(W_)
+    out_features, in_features = W_.shape
+    if head_dim is not None and not is_pow2(in_features):
+        num_heads = in_features // head_dim
+        W_ = W_.reshape(out_features, num_heads, head_dim)
+        W_ = factored_hadamard(W_)
+        W_ = W_.mT
+        W_ = factored_hadamard(W_)
+        W_ = W_.mT
+        W_ = W_.reshape(out_features, in_features)
+    else:
+        W_ = factored_fast_hadamard(W_) if fht_available else factored_slow_hadamard(W_)
+
     module.weight.data = W_.to(device=dev, dtype=dtype)
 
 
@@ -176,5 +190,5 @@ def random_hadamard_matrix(size: int, seed: int = 0) -> torch.Tensor:
     return factored_slow_hadamard(Q)
 
 
-def is_pow2(n):
+def is_pow2(n: int) -> bool:
     return (n & (n - 1) == 0) and (n > 0)
