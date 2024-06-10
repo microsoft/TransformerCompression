@@ -6,10 +6,10 @@ import logging
 import os
 
 import lm_eval
+import mlflow
 import torch
 import transformers
 import wandb
-import mlflow
 from lm_eval import utils as lm_eval_utils
 from lm_eval.api.registry import ALL_TASKS
 from lm_eval.models.huggingface import HFLM
@@ -233,7 +233,7 @@ def quarot_main(args: argparse.Namespace) -> None:
         # environment, e.g. notebook, IDE, no-shell process, etc. In this case, we want to continue without wandb.
         logging.info(f'Failed to initialize wandb: {e}, continuing without wandb')
         wandb.init(project=args.wandb_project, mode='disabled')
-        
+
     # sort out mlflow
     mlflow.config.enable_async_logging()
     mlflow.start_run()
