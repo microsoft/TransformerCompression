@@ -17,15 +17,16 @@ class DummyActQuantizer(torch.nn.Module):
 class ActQuantizer(torch.nn.Module):
     '''Quantizer for activations. Applies round-to-nearest quantization tensor-wise across the seqlen and hidden_dim dimensions.'''
 
-    def __init__(self, bits: int, symmetric: bool = True, clip_ratio: float = 1.0) -> None:
+    def __init__(self, bits: int, symmetric: bool = True, clip_ratio: float = 1.0, groupsize: int|None = None) -> None:
         super().__init__()
         self.bits = bits
         assert symmetric, "Activation quantization should be symmetric."
         self.clip_ratio = clip_ratio
+        self.groupsize = groupsize
 
     def forward(self, x: torch.Tensor) -> PackedQuantizedTensor:
-        x_scales, _ = calculate_scales(x, self.bits, symmetric=True, clip_weights=False, clip_ratio=self.clip_ratio)
-        quantized_x = quantize_weight_rtn(x, x_scales, None, self.bits)
+        x_scales, offset = calculate_scales(x, self.bits, symmetric=True, clip_weights=False, clip_ratio=self.clip_ratio, groupsize=self.groupsize)
+        quantized_x = quantize_weight_rtn(weight=x, scale=x_scales, offset=offset, bits=self.bits) # note that offset is always none becasue symmteric is True.
         return PackedQuantizedTensor(quantized_x, x_scales)
 
 

@@ -38,6 +38,7 @@ class QuarotLlamaMLP(LlamaMLP):
         config: QuarotLlamaConfig,
         act_bits: int = 16,
         act_clip_ratio: float = 1.0,
+        act_groupsize: int | None = None,
         online_had: bool = False,
         *args,
         **kwargs,
@@ -49,8 +50,8 @@ class QuarotLlamaMLP(LlamaMLP):
         self.down_proj = QuarotFP16Linear.like(self.down_proj, groupsize=config.groupsize, offset=config.offset)
         self.online_down_proj_hadamard = OnlineHadamard(self.intermediate_size)
         if act_bits < 16:
-            self.input_quantizer = ActQuantizer(act_bits, symmetric=True, clip_ratio=act_clip_ratio)
-            self.down_proj_input_quantizer = ActQuantizer(act_bits, symmetric=True, clip_ratio=act_clip_ratio)
+            self.input_quantizer = ActQuantizer(act_bits, symmetric=True, clip_ratio=act_clip_ratio, groupsize=act_groupsize)
+            self.down_proj_input_quantizer = ActQuantizer(act_bits, symmetric=True, clip_ratio=act_clip_ratio, groupsize=act_groupsize)
         else:
             self.input_quantizer = DummyActQuantizer()
             self.down_proj_input_quantizer = DummyActQuantizer()
@@ -79,6 +80,7 @@ class QuarotFP16LlamaFlashAttention2(LlamaFlashAttention2):
         config: QuarotLlamaConfig,
         act_bits: int = 16,
         act_clip_ratio: float = 1.0,
+        act_groupsize: int | None = None,
         k_bits: int = 16,
         k_clip_ratio: float = 1.0,
         k_groupsize: int | None = None,
@@ -100,8 +102,8 @@ class QuarotFP16LlamaFlashAttention2(LlamaFlashAttention2):
         self.online_q_hadamard = OnlineHadamard(self.head_dim)
 
         if act_bits < 16:
-            self.input_quantizer = ActQuantizer(act_bits, symmetric=True, clip_ratio=act_clip_ratio)
-            self.o_proj_input_quantizer = ActQuantizer(act_bits, symmetric=True, clip_ratio=act_clip_ratio)
+            self.input_quantizer = ActQuantizer(act_bits, symmetric=True, clip_ratio=act_clip_ratio, groupsize=act_groupsize)
+            self.o_proj_input_quantizer = ActQuantizer(act_bits, symmetric=True, clip_ratio=act_clip_ratio, groupsize=act_groupsize)
         else:
             self.input_quantizer = DummyActQuantizer()
             self.o_proj_input_quantizer = DummyActQuantizer()
