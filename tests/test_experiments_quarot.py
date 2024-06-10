@@ -15,34 +15,76 @@ def verify(log: str, pattern: str, value: float | int) -> None:
     match = re.search(pattern, log)
     assert match, f'Expected to find pattern {pattern} in the log'
     assert np.isclose(
-        float(match.group(1).replace(',', '')), value, atol=5e-1, rtol=1e-2
+        float(match.group(1).replace(',', '')), value, atol=1e-1, rtol=1e-2
     ), f'Expected {value} but got {match.group(1)}'
 
 
-def verify_run_quarot_no_quant(model: str, expected_ppl: float) -> None:
-    """Test the run_quarot.py script with the provided parameters."""
-
-    # test rotate, quantize and save model
+def verify_run_quarot(args: list[str], expected_ppl: float) -> None:
+    """Test QuaRot computational invariance: ppl should be same as the base model."""
     tests_dir = get_test_dir()
     script = tests_dir.parent / 'experiments' / 'run_quarot.py'
-
-    args = ['--no-wandb', '--model', str(model)]
-
     log = run_python_script(script, args)
     verify(log, r'(?:QuaRot ppl:) (\d+\.\d+)', expected_ppl)
 
-    # TODO: test load a quarot model
 
-
-@pytest.mark.experiment
+@pytest.mark.quarot_experiment
 @pytest.mark.gpu
-def test_llama2_7b():
-    """Test run_quarot.py with the meta-llama/Llama-2-7b model."""
+def test_phi3_rotate():
+    """Test applying QuaRot to microsoft/Phi-3-mini-4k-instruct."""
     assert torch.cuda.is_available()
 
-    # Test QuaRot with no quantization.
-    model = 'meta-llama/Llama-2-7b-hf'
-    verify_run_quarot_no_quant(
-        model=model,
-        expected_ppl=5.47,
+    model = 'microsoft/Phi-3-mini-4k-instruct'
+    args = ['--no-wandb', '--model', str(model), '--rotate']
+
+    verify_run_quarot(
+        args=args,
+        expected_ppl=6.35,
+    )
+
+
+@pytest.mark.quarot_experiment
+@pytest.mark.gpu
+def test_phi3_weight_only_rtn():
+    """Test QuaRot 4-bit asymmetric weight-only RTN with microsoft/Phi-3-mini-4k-instruct."""
+    assert torch.cuda.is_available()
+
+    model = 'microsoft/Phi-3-mini-4k-instruct'
+    bits = 4
+    args = ['--no-wandb', '--model', str(model), '--rotate', '--w-rtn', '--w-bits', str(bits), '--w-asym']
+
+    verify_run_quarot(
+        args=args,
+        expected_ppl=8.57,
+    )
+
+
+@pytest.mark.quarot_experiment
+@pytest.mark.gpu
+def test_phi3_rtn():
+    """Test QuaRot A4W4KV4 RTN with microsoft/Phi-3-mini-4k-instruct."""
+    assert torch.cuda.is_available()
+
+    model = 'microsoft/Phi-3-mini-4k-instruct'
+    bits = 4
+    args = [
+        '--no-wandb',
+        '--model',
+        str(model),
+        '--rotate',
+        '--w-rtn',
+        '--w-bits',
+        str(bits),
+        '--a-bits',
+        str(bits),
+        '--a-clip-ratio',
+        '0.8',
+        '--k-bits',
+        str(bits),
+        '--v-bits',
+        str(bits),
+    ]
+
+    verify_run_quarot(
+        args=args,
+        expected_ppl=11.69,
     )

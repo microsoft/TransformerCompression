@@ -43,7 +43,7 @@ def rotate_model(model_adapter: ModelAdapter, seed: int = 0) -> None:
         rotate_mlp_input(layer_adapter, Q)
         rotate_mlp_output(layer_adapter, Q)
         apply_hadamard(layer_adapter.get_mlp_output())
-        apply_hadamard_headwise(layer_adapter.get_v_proj(), head_dim=head_dim)
-        apply_hadamard(layer_adapter.get_attention_output())
+        apply_hadamard_headwise(layer_adapter.get_v_proj(), head_dim)
+        apply_hadamard(layer_adapter.get_attention_output(), head_dim)
 
     utils.cleanup_memory()

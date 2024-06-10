@@ -14,8 +14,12 @@ from lm_eval.api.registry import ALL_TASKS
 from lm_eval.models.huggingface import HFLM
 from lm_eval.tasks import initialize_tasks
 
-from quarot import hf_utils, rotation, rtn
-from quarot.modeling_llama import QuarotLlamaConfig, QuarotLlamaForCausalLM
+from quarot import gptq, hf_utils, rotate, rtn
+from quarot.adapters.llama_adapter import LlamaModelAdapter
+from quarot.adapters.phi3_adapter import Phi3ModelAdapter
+from quarot.hf_utils import get_quarot_model, quarot_model_config
+from quarot.modeling_llama import QuarotLlamaForCausalLM
+from quarot.modeling_phi3 import QuarotPhi3ForCausalLM
 from slicegpt import data_utils, gpu_utils, layernorm_fusion, utils
 from slicegpt.config import config
 
@@ -91,10 +95,96 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
         help='Quantize weights using RTN.',
     )
     parser.add_argument(
+        '--w-gptq',
+        action="store_true",
+        help='Quantize weights using GPTQ.',
+    )
+    parser.add_argument(
+        "--gptq-damping", type=float, default=0.01, help="Damping factor for GPTQ. (ignored for RTN quantization)"
+    )
+    parser.add_argument(
+        "--gptq-opt-scales", action="store_true", help="Optimize scales for GPTQ (ignored for RTN quantization)"
+    )
+    parser.add_argument(
+        "--cal-nsamples",
+        type=int,
+        help="Number of samples of the calibration data to load for GPTQ",
+        default=128,
+    )
+    parser.add_argument(
+        "--cal-batch-size",
+        type=int,
+        help="Batch size of the calibration data to load for GPTQ",
+        default=4,
+    )
+    parser.add_argument(
         '--w-bits',
         type=int,
-        default=4,
+        default=16,
         help='Number of bits to quantize the weights to.',
+    )
+    parser.add_argument(
+        '--w-clip-vec',
+        action="store_true",
+        help='Vectorized weight clipping ratio search.',
+    )
+    parser.add_argument(
+        '--w-asym',
+        action="store_true",
+        help='Asymmetric weight quantization (else symmetric by default).',
+    )
+    parser.add_argument('--w-groupsize', type=int, default=None, help='Group size for groupwise weight quantization.')
+
+    # Activation Quantization Arguments
+    parser.add_argument(
+        '--a-bits',
+        type=int,
+        default=16,
+        help='Number of bits to quantize the weights to.',
+    )
+    parser.add_argument(
+        '--a-clip-ratio',
+        type=float,
+        default=1.0,
+        help='Clip ratio for activation quantization: new_max = max * clip_ratio.',
+    )
+
+    # KV Quantization Arguments
+    parser.add_argument(
+        '--k-bits',
+        type=int,
+        default=16,
+        help='Number of bits to quantize the keys to.',
+    )
+    parser.add_argument(
+        '--k-clip-ratio',
+        type=float,
+        default=1.0,
+        help='Clip ratio for keys quantization: new_max = max * clip_ratio.',
+    )
+    parser.add_argument(
+        '--k-groupsize',
+        type=int,
+        default=None,
+        help='Group size for groupwise keys quantization.',
+    )
+    parser.add_argument(
+        '--v-bits',
+        type=int,
+        default=16,
+        help='Number of bits to quantize the values to.',
+    )
+    parser.add_argument(
+        '--v-clip-ratio',
+        type=float,
+        default=1.0,
+        help='Clip ratio for values quantization: new_max = max * clip_ratio.',
+    )
+    parser.add_argument(
+        '--v-groupsize',
+        type=int,
+        default=None,
+        help='Group size for groupwise values quantization.',
     )
 
     # LM Eval Arguments
@@ -102,7 +192,7 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
     parser.add_argument(
         '--tasks',
         nargs='+',
-        default=["piqa", "hellaswag", "arc_easy", "arc_challenge", "winogrande", "lambada"],
+        default=["piqa", "hellaswag", "arc_easy", "arc_challenge", "winogrande", "lambada_openai"],
     )
     parser.add_argument(
         '--lm-eval-batch-size', type=int, default=128, help='Batch size for evaluating with lm eval harness.'
@@ -128,8 +218,6 @@ def quarot_main(args: argparse.Namespace) -> None:
     logging.info("Running QuaRot experiment.")
     logging.info(f"PyTorch device: {config.device}")
     logging.info(f"Number of available cuda devices: {torch.cuda.device_count()}")
-
-    torch.set_default_dtype(config.dtype)
 
     try:
         wandb.init(project=args.wandb_project, config=args, mode='disabled' if args.no_wandb else None)
@@ -166,36 +254,83 @@ def quarot_main(args: argparse.Namespace) -> None:
         layernorm_fusion.fuse_modules(model_adapter)  # TODO: fix expected adapter type
 
         # Rotate the model with fused Hadamard transformations.
-        rotation.rotate_model(model_adapter, args.rotation_seed)
+        rotate.rotate_model(model_adapter, args.rotation_seed)
 
-    model_config = QuarotLlamaConfig.from_pretrained(args.model, dtype=config.dtype)
-    model_config._attn_implementation = "flash_attention_2"
+    model_config = quarot_model_config(args.model, dtype=config.dtype, groupsize=args.w_groupsize, offset=args.w_asym)
+
     with transformers.modeling_utils.no_init_weights():
         # initialize quarot model
-        online_had_mlp = True if args.rotate else False
-        online_had_attn = True if args.rotate else False
-        rms_norm = True if args.rotate else False
-        quarot_llama = QuarotLlamaForCausalLM(
-            online_had_mlp=online_had_mlp, online_had_attn=online_had_attn, rms_norm=rms_norm, config=model_config
+
+        act_args = {'a_bits': args.a_bits, 'a_clip_ratio': args.a_clip_ratio}
+        key_args = {'k_bits': args.k_bits, 'k_clip_ratio': args.k_clip_ratio, 'k_groupsize': args.k_groupsize}
+        value_args = {'v_bits': args.v_bits, 'v_clip_ratio': args.v_clip_ratio, 'v_groupsize': args.v_groupsize}
+        quarot_model = get_quarot_model(
+            model_name_or_path=args.model,
+            rotate=args.rotate,
+            act_args=act_args,
+            key_args=key_args,
+            value_args=value_args,
+            model_config=model_config,
         )
 
+        quarot_model = quarot_model.to(config.dtype)
+
         # load the rotated weights into the quarot model
-        quarot_llama.load_state_dict(model_adapter.model.state_dict(), strict=False)
+        quarot_model.load_state_dict(model_adapter.model.state_dict(), strict=False)
 
     if args.w_rtn:
         logging.info(f"Quantizing weights to INT{args.w_bits} using RTN.")
-        rtn.quantize_model_rtn(quarot_llama, bits=args.w_bits)
+        rtn.quantize_model_rtn(
+            quarot_model,
+            bits=args.w_bits,
+            groupsize=args.w_groupsize,
+            symmetric=False if args.w_asym else True,
+            vectorized=True if args.w_clip_vec else False,
+        )
         logging.info("Quantization complete.")
+    elif args.w_gptq:
+        logging.info(f"Quantizing weights to INT{args.w_bits} using GPTQ.")
+        train_loader = data_utils.prepare_dataloader(
+            dataset=dataset["train"],
+            tokenizer=tokenizer,
+            batch_size=args.cal_batch_size,
+            nsamples=args.cal_nsamples,
+        )
 
-    quarot_llama.to(config.device)
-    dataset_ppl = gpu_utils.evaluate_ppl(quarot_llama, quarot_llama.config.pad_token_id, test_loader)
-    logging.info(f'QuaRot ppl: {dataset_ppl:.4f}')
-    wandb.log({"quarot_ppl": dataset_ppl})
+        if isinstance(quarot_model, QuarotLlamaForCausalLM):
+            quarot_model_adapter = LlamaModelAdapter(quarot_model)
+        elif isinstance(quarot_model, QuarotPhi3ForCausalLM):
+            quarot_model_adapter = Phi3ModelAdapter(quarot_model)
+        else:
+            raise ValueError("Adapter for QuaRot model must be specified.")
+
+        gptq.quantize_model_gptq(
+            quarot_model_adapter,
+            train_loader,
+            bits=args.w_bits,
+            symmetric=False if args.w_asym else True,
+            damping=args.gptq_damping,
+            groupsize=args.w_groupsize,
+            optimize_scales=args.gptq_opt_scales,
+        )
+        logging.info("Quantization complete.")
+    else:
+        logging.info("No weight quantization performed")
+
+    quarot_model.to(config.device)
+    dataset_ppl = gpu_utils.evaluate_ppl(quarot_model, quarot_model.config.pad_token_id, test_loader)
+
+    if args.rotate:
+        logging.info(f'QuaRot ppl: {dataset_ppl:.4f}')
+        wandb.log({"quarot_ppl": dataset_ppl})
+    else:
+        logging.info(f'ppl: {dataset_ppl:.4f}')
+        wandb.log({"ppl": dataset_ppl})
 
     if not args.lm_eval:
         return
 
-    hflm = HFLM(pretrained=model, tokenizer=tokenizer, batch_size=args.lm_eval_batch_size)
+    hflm = HFLM(pretrained=quarot_model, tokenizer=tokenizer, batch_size=args.lm_eval_batch_size)
 
     initialize_tasks()
     task_names = lm_eval_utils.pattern_match(args.tasks, ALL_TASKS)
