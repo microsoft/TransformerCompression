@@ -73,8 +73,9 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
     # Rotation Arguments
     parser.add_argument(
         '--rotate',
-        action="store_true",
-        help='Rotate the model.',
+        type=bool,
+        default=False,
+        help='Apply QuaRot/Hadamard rotation to the model.',
     )
     parser.add_argument(
         '--rotation-seed',
@@ -131,7 +132,8 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
     )
     parser.add_argument(
         '--w-asym',
-        action="store_true",
+        type=bool,
+        default=False,
         help='Asymmetric weight quantization (else symmetric by default).',
     )
     parser.add_argument('--w-groupsize', type=int, default=None, help='Group size for groupwise weight quantization.')
@@ -217,6 +219,16 @@ def process_quarot_args(args):
 
     if args.distribute_model:
         raise NotImplementedError("Distributed evaluation is not supported yet.")
+    
+    # if the user passed groupsize of zero, interpret this the same as None
+    if args.a_groupsize == 0:
+        args.a_groupsize = None
+    if args.k_groupsize == 0:
+        args.k_groupsize = None
+    if args.v_groupsize == 0:
+        args.v_groupsize = None
+    if args.w_groupsize == 0:
+        args.w_groupsize = None
 
     config.dtype = torch.float16
 
