@@ -53,6 +53,7 @@ class QuarotPhi3MLP(Phi3MLP):
         config: QuarotPhi3Config,
         act_bits: int = 16,
         act_clip_ratio: float = 1.0,
+        act_groupsize: int | None = None,
         online_had: bool = False,
         *args,
         **kwargs,
@@ -63,8 +64,12 @@ class QuarotPhi3MLP(Phi3MLP):
         self.down_proj = QuarotFP16Linear.like(self.down_proj, groupsize=config.groupsize, offset=config.offset)
         self.online_down_proj_hadamard = OnlineHadamard(config.intermediate_size)
         if act_bits < 16:
-            self.input_quantizer = ActQuantizer(act_bits, symmetric=True, clip_ratio=act_clip_ratio)
-            self.down_proj_input_quantizer = ActQuantizer(act_bits, symmetric=True, clip_ratio=act_clip_ratio)
+            self.input_quantizer = ActQuantizer(
+                act_bits, symmetric=True, clip_ratio=act_clip_ratio, groupsize=act_groupsize
+            )
+            self.down_proj_input_quantizer = ActQuantizer(
+                act_bits, symmetric=True, clip_ratio=act_clip_ratio, groupsize=act_groupsize
+            )
         else:
             self.input_quantizer = DummyActQuantizer()
             self.down_proj_input_quantizer = DummyActQuantizer()
@@ -95,6 +100,7 @@ class QuarotFP16Phi3FlashAttention2(Phi3FlashAttention2):
         config: QuarotPhi3Config,
         act_bits: int = 16,
         act_clip_ratio: float = 1.0,
+        act_groupsize: int | None = None,
         k_bits: int = 16,
         k_clip_ratio: float = 1.0,
         k_groupsize: int | None = None,
@@ -114,8 +120,12 @@ class QuarotFP16Phi3FlashAttention2(Phi3FlashAttention2):
         self.online_q_hadamard = OnlineHadamard(self.head_dim)
 
         if act_bits < 16:
-            self.input_quantizer = ActQuantizer(act_bits, symmetric=True, clip_ratio=act_clip_ratio)
-            self.o_proj_input_quantizer = ActQuantizer(act_bits, symmetric=True, clip_ratio=act_clip_ratio)
+            self.input_quantizer = ActQuantizer(
+                act_bits, symmetric=True, clip_ratio=act_clip_ratio, groupsize=act_groupsize
+            )
+            self.o_proj_input_quantizer = ActQuantizer(
+                act_bits, symmetric=True, clip_ratio=act_clip_ratio, groupsize=act_groupsize
+            )
         else:
             self.input_quantizer = DummyActQuantizer()
             self.o_proj_input_quantizer = DummyActQuantizer()
@@ -289,6 +299,7 @@ class QuarotPhi3ForCausalLM(Phi3ForCausalLM):
         rms_norm: bool = False,
         act_bits: int = 16,
         act_clip_ratio: float = 1.0,
+        act_groupsize: int | None = None,
         k_bits: int = 16,
         k_clip_ratio: float = 1.0,
         k_groupsize: int | None = None,
@@ -314,6 +325,7 @@ class QuarotPhi3ForCausalLM(Phi3ForCausalLM):
                 config=config,
                 act_bits=act_bits,
                 act_clip_ratio=act_clip_ratio,
+                act_groupsize=act_groupsize,
                 k_bits=k_bits,
                 k_clip_ratio=k_clip_ratio,
                 k_groupsize=k_groupsize,
@@ -324,7 +336,11 @@ class QuarotPhi3ForCausalLM(Phi3ForCausalLM):
                 layer_idx=layer_idx,
             )
             layer.mlp = QuarotPhi3MLP(
-                config=config, act_bits=act_bits, act_clip_ratio=act_clip_ratio, online_had=online_had_mlp
+                config=config,
+                act_bits=act_bits,
+                act_clip_ratio=act_clip_ratio,
+                act_groupsize=act_groupsize,
+                online_had=online_had_mlp,
             )
             if rms_norm:
                 layer.input_layernorm = RMSN(config.hidden_size, eps=config.rms_norm_eps)

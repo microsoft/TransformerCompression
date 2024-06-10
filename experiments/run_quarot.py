@@ -6,6 +6,7 @@ import logging
 import os
 
 import lm_eval
+import mlflow
 import torch
 import transformers
 import wandb
@@ -148,6 +149,12 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
         default=1.0,
         help='Clip ratio for activation quantization: new_max = max * clip_ratio.',
     )
+    parser.add_argument(
+        '--a-groupsize',
+        type=int,
+        default=None,
+        help='Group size for groupwise activation quantization, default is None.',
+    )
 
     # KV Quantization Arguments
     parser.add_argument(
@@ -227,6 +234,11 @@ def quarot_main(args: argparse.Namespace) -> None:
         logging.info(f'Failed to initialize wandb: {e}, continuing without wandb')
         wandb.init(project=args.wandb_project, mode='disabled')
 
+    # sort out mlflow
+    mlflow.config.enable_async_logging()
+    mlflow.start_run()
+    [mlflow.log_param(arg, argv) for arg, argv in vars(args).items()]
+
     # load one of the pre-trained models
     model_adapter, tokenizer = hf_utils.get_model_and_tokenizer(
         args.model, args.model_path, token=args.hf_token, dtype=config.dtype
@@ -246,6 +258,7 @@ def quarot_main(args: argparse.Namespace) -> None:
         dataset_ppl = gpu_utils.evaluate_ppl(model, model.config.pad_token_id, test_loader)
         logging.info(f'Original ppl: {dataset_ppl:.4f}')
         wandb.log({"original_ppl": dataset_ppl})
+        mlflow.log_metric("original_ppl", dataset_ppl)
         model.cpu()
         utils.cleanup_memory()
 
@@ -261,7 +274,7 @@ def quarot_main(args: argparse.Namespace) -> None:
     with transformers.modeling_utils.no_init_weights():
         # initialize quarot model
 
-        act_args = {'a_bits': args.a_bits, 'a_clip_ratio': args.a_clip_ratio}
+        act_args = {'a_bits': args.a_bits, 'a_clip_ratio': args.a_clip_ratio, 'a_groupsize': args.a_groupsize}
         key_args = {'k_bits': args.k_bits, 'k_clip_ratio': args.k_clip_ratio, 'k_groupsize': args.k_groupsize}
         value_args = {'v_bits': args.v_bits, 'v_clip_ratio': args.v_clip_ratio, 'v_groupsize': args.v_groupsize}
         quarot_model = get_quarot_model(
@@ -323,9 +336,11 @@ def quarot_main(args: argparse.Namespace) -> None:
     if args.rotate:
         logging.info(f'QuaRot ppl: {dataset_ppl:.4f}')
         wandb.log({"quarot_ppl": dataset_ppl})
+        mlflow.log_metric("quarot_ppl", dataset_ppl)
     else:
         logging.info(f'ppl: {dataset_ppl:.4f}')
         wandb.log({"ppl": dataset_ppl})
+        mlflow.log_metric("ppl", dataset_ppl)
 
     if not args.lm_eval:
         return
@@ -340,6 +355,7 @@ def quarot_main(args: argparse.Namespace) -> None:
     metric_vals['acc_avg'] = round(sum(metric_vals.values()) / len(metric_vals.values()), 4)
     logging.info(f"LM Eval results: {metric_vals}")
     wandb.log(metric_vals)
+    [mlflow.log_metric(task, metric) for task, metric in metric_vals.items()]
 
 
 if __name__ == "__main__":

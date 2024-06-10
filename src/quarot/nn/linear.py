@@ -41,8 +41,7 @@ class QuarotFP16Linear(torch.nn.Module):
 
     def forward(self, x: PackedQuantizedTensor) -> torch.tensor:
         # de-quantize the activations
-        x, scales_x = x.quantized_x, x.scales_x
-        x = x * scales_x
+        x = dequantize(x.quantized_x, x.scales_x, offset=None)
 
         # de-quantize the weights
         W = dequantize(self.weight, self.weight_scales, self.offset)
