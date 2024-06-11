@@ -191,7 +191,7 @@ class QuarotMixtralFlashAttention2(MixtralFlashAttention2):
         cos, sin = self.rotary_emb(value_states, seq_len=rotary_seq_len)
 
         query_states, key_states = apply_rotary_pos_emb(
-            query_states, key_states, cos, sin, unsqueeze_dim=2
+            query_states, key_states, cos, sin, position_ids, unsqueeze_dim=2
         )  # QuaRot: requires unsqueeze
 
         # QuaRot: apply online hadamard to queries and keys
