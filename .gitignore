@@ -13,6 +13,9 @@ log/
 wandb/*
 experiments/wandb/*
 
+# mlflow
+mlruns/*
+
 # User-specific files
 *.rsuser
 *.suo
