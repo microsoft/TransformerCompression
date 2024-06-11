@@ -115,7 +115,6 @@ class LayerAdapter(ABC):
         """
         raise NotImplementedError
 
-    @abstractmethod
     def get_moe_router(self) -> Linear | list:
         """
         Returns the Linear layer (nn.module) that is the router in a Mixture of Experts model. If the model is not a MOE, return an empty list.
