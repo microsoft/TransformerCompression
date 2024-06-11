@@ -24,6 +24,15 @@ from quarot.modeling_phi3 import QuarotPhi3ForCausalLM
 from slicegpt import data_utils, gpu_utils, layernorm_fusion, utils
 from slicegpt.config import config
 
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
 
 def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
@@ -73,7 +82,7 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
     # Rotation Arguments
     parser.add_argument(
         '--rotate',
-        type=bool,
+        type=str2bool,
         default=False,
         help='Apply QuaRot/Hadamard rotation to the model.',
     )
@@ -132,7 +141,7 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
     )
     parser.add_argument(
         '--w-asym',
-        type=bool,
+        type=str2bool,
         default=False,
         help='Asymmetric weight quantization (else symmetric by default).',
     )
