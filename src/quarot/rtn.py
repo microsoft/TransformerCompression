@@ -115,7 +115,7 @@ def calculate_scales(
 
         else:
             best_quantization_error = torch.full(
-                (weight.shape[0],), float("inf"), device=weight.device, dtype=weight.dtype
+                weight.shape[:-1], float("inf"), device=weight.device, dtype=weight.dtype
             )
             for i in range(n_steps):
                 shrink_factor = shrink_factors[i]
@@ -139,7 +139,7 @@ def calculate_scales(
                     reconstructed_weight = (candidate_quantized_weight - candidate_offset) * candidate_scale
 
                 # Compute quantization error and find the best scale (and offset if asymmetric)
-                quantization_error = torch.sum(torch.abs(reconstructed_weight - weight).pow_(error_norm), 1)
+                quantization_error = torch.sum(torch.abs(reconstructed_weight - weight).pow_(error_norm), -1)
                 if i == 0 or torch.any(quantization_error < best_quantization_error):
                     improved_idx = torch.where(quantization_error < best_quantization_error)
                     scale[improved_idx] = candidate_scale[improved_idx]

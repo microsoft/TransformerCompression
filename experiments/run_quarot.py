@@ -17,12 +17,15 @@ from lm_eval.tasks import initialize_tasks
 
 from quarot import gptq, hf_utils, rotate, rtn
 from quarot.adapters.llama_adapter import LlamaModelAdapter
+from quarot.adapters.mixtral_adapter import MixtralModelAdapter
 from quarot.adapters.phi3_adapter import Phi3ModelAdapter
 from quarot.hf_utils import get_quarot_model, quarot_model_config
 from quarot.modeling_llama import QuarotLlamaForCausalLM
+from quarot.modeling_mixtral import QuarotMixtralForCausalLM
 from quarot.modeling_phi3 import QuarotPhi3ForCausalLM
 from slicegpt import data_utils, gpu_utils, layernorm_fusion, utils
 from slicegpt.config import config
+
 
 def str2bool(v):
     if isinstance(v, bool):
@@ -33,6 +36,7 @@ def str2bool(v):
         return False
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
+
 
 def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
@@ -226,9 +230,6 @@ def process_quarot_args(args):
     if args.device:
         config.device = torch.device(args.device)
 
-    if args.distribute_model:
-        raise NotImplementedError("Distributed evaluation is not supported yet.")
-    
     # if the user passed groupsize of zero, interpret this the same as None
     if args.a_groupsize == 0:
         args.a_groupsize = None
@@ -312,6 +313,16 @@ def quarot_main(args: argparse.Namespace) -> None:
         # load the rotated weights into the quarot model
         quarot_model.load_state_dict(model_adapter.model.state_dict(), strict=False)
 
+    # Wrap the quarot model in an adapter, required for GPTQ and for distributing the model across GPUs.
+    if isinstance(quarot_model, QuarotLlamaForCausalLM):
+        quarot_model_adapter = LlamaModelAdapter(quarot_model)
+    elif isinstance(quarot_model, QuarotPhi3ForCausalLM):
+        quarot_model_adapter = Phi3ModelAdapter(quarot_model)
+    elif isinstance(quarot_model, QuarotMixtralForCausalLM):
+        quarot_model_adapter = MixtralModelAdapter(quarot_model)
+    else:
+        raise ValueError("Adapter for QuaRot model must be specified.")
+
     if args.w_rtn:
         logging.info(f"Quantizing weights to INT{args.w_bits} using RTN.")
         rtn.quantize_model_rtn(
@@ -331,13 +342,6 @@ def quarot_main(args: argparse.Namespace) -> None:
             nsamples=args.cal_nsamples,
         )
 
-        if isinstance(quarot_model, QuarotLlamaForCausalLM):
-            quarot_model_adapter = LlamaModelAdapter(quarot_model)
-        elif isinstance(quarot_model, QuarotPhi3ForCausalLM):
-            quarot_model_adapter = Phi3ModelAdapter(quarot_model)
-        else:
-            raise ValueError("Adapter for QuaRot model must be specified.")
-
         gptq.quantize_model_gptq(
             quarot_model_adapter,
             train_loader,
@@ -351,7 +355,14 @@ def quarot_main(args: argparse.Namespace) -> None:
     else:
         logging.info("No weight quantization performed")
 
-    quarot_model.to(config.device)
+    def reset_model_device() -> None:
+        if args.distribute_model:
+            # distribute model across available GPUs
+            gpu_utils.distribute_model(quarot_model_adapter)
+        else:
+            quarot_model.to(config.device)
+
+    reset_model_device()
     dataset_ppl = gpu_utils.evaluate_ppl(quarot_model, quarot_model.config.pad_token_id, test_loader)
 
     if args.rotate:

@@ -15,6 +15,7 @@ experiments/wandb/*
 
 # mlflow
 mlruns/*
+experiments/mlruns/*
 
 # User-specific files
 *.rsuser

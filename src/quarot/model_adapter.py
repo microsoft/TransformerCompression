@@ -26,7 +26,7 @@ class LayerAdapter(ABC):
     """
     To implement a new layer adapter, implement the interface defined in this class
     """
-    
+
     is_moe = False
 
     @property
@@ -114,6 +114,13 @@ class LayerAdapter(ABC):
         Returns the Linear layer (nn.module) that is the v projection in the attention component.
         """
         raise NotImplementedError
+
+    @abstractmethod
+    def get_moe_router(self) -> Linear | list:
+        """
+        Returns the Linear layer (nn.module) that is the router in a Mixture of Experts model. If the model is not a MOE, return an empty list.
+        """
+        return []
 
 
 class ModelAdapter(ABC):

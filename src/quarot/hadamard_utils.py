@@ -24,6 +24,8 @@ try:
 except ImportError:
     fht_available = False
 
+from slicegpt.utils import flatten
+
 
 def factored_hadamard(X: torch.Tensor) -> torch.Tensor:
     """
@@ -150,7 +152,8 @@ def apply_hadamard_headwise(module: torch.nn.Linear, head_dim: int):
     ]  # in-place replacement needed when updating v_proj in Phi3 so that parent qkv is updated
 
 
-def apply_hadamard(module: torch.nn.Linear, head_dim: int | None = None) -> None:
+# TODO: typing
+def apply_hadamard(modules, head_dim=None):
     """
     Modifies the weights contained in a torch.nn.Linear instance. If the weights are W,
     this turns them into HW, where H is a Hadamard matrix.
@@ -159,24 +162,27 @@ def apply_hadamard(module: torch.nn.Linear, head_dim: int | None = None) -> None
     - module: the torch.nn.Linear instance to modify.
     - head_dim: the head dimension (if applicable). If provided, the Hadamard transform is applied headwise (default: None).
     """
-    W_ = module.weight.data
-    dtype = W_.dtype
-    dev = W_.device
-    W_ = W_.float().cuda()
 
-    out_features, in_features = W_.shape
-    if head_dim is not None and not is_pow2(in_features):
-        num_heads = in_features // head_dim
-        W_ = W_.reshape(out_features, num_heads, head_dim)
-        W_ = factored_hadamard(W_)
-        W_ = W_.mT
-        W_ = factored_hadamard(W_)
-        W_ = W_.mT
-        W_ = W_.reshape(out_features, in_features)
-    else:
-        W_ = factored_fast_hadamard(W_) if fht_available else factored_slow_hadamard(W_)
+    for module in flatten(modules):
 
-    module.weight.data = W_.to(device=dev, dtype=dtype)
+        W_ = module.weight.data
+        dtype = W_.dtype
+        dev = W_.device
+        W_ = W_.float().cuda()
+
+        out_features, in_features = W_.shape
+        if head_dim is not None and not is_pow2(in_features):
+            num_heads = in_features // head_dim
+            W_ = W_.reshape(out_features, num_heads, head_dim)
+            W_ = factored_hadamard(W_)
+            W_ = W_.mT
+            W_ = factored_hadamard(W_)
+            W_ = W_.mT
+            W_ = W_.reshape(out_features, in_features)
+        else:
+            W_ = factored_fast_hadamard(W_) if fht_available else factored_slow_hadamard(W_)
+
+        module.weight.data = W_.to(device=dev, dtype=dtype)
 
 
 def random_hadamard_matrix(size: int, seed: int = 0) -> torch.Tensor:

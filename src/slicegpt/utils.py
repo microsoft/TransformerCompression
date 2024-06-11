@@ -89,3 +89,13 @@ def map_tensors(obj: T, device: torch.device | str | None = None, dtype: torch.d
         return {k: map_tensors(v, device, dtype) for k, v in obj.items()}  # type: ignore
     else:
         return obj
+
+
+# TODO: typing
+def flatten(input):
+    """Flatten a list into a iterable. If input is not a list return iter(input)."""
+    if isinstance(input, list):
+        for item in input:
+            yield from flatten(item)
+    else:
+        yield input

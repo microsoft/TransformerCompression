@@ -8,6 +8,8 @@ import torch
 import torch.nn as nn
 from tqdm import tqdm
 
+from slicegpt.utils import flatten
+
 from .config import config
 from .model_adapter import LayerAdapter, ModelAdapter
 from .model_utils import get_layer0_inputs, get_signals
@@ -55,7 +57,7 @@ def slice_attention_output(layer_adapter: LayerAdapter, new_embedding_dimension:
 
 def rotate_mlp_input(layer_adapter: LayerAdapter, Q: torch.Tensor) -> None:
     # Rotate the MLP input weights.
-    for W in layer_adapter.get_mlp_inputs():
+    for W in flatten([layer_adapter.get_mlp_inputs(), layer_adapter.get_moe_router()]):
         dtype = W.weight.dtype
         W_ = W.weight.data.to(device=config.device, dtype=torch.float64)
         W.weight.data = torch.matmul(W_, Q).to(device="cpu", dtype=dtype)
@@ -70,13 +72,13 @@ def slice_mlp_input(layer_adapter: LayerAdapter, new_embedding_dimension: int) -
 
 def rotate_mlp_output(layer_adapter: LayerAdapter, Q: torch.Tensor) -> None:
     # Rotate the MLP output weights and bias.
-    W = layer_adapter.get_mlp_output()
-    dtype = W.weight.data.dtype
-    W_ = W.weight.data.to(device=config.device, dtype=torch.float64)
-    W.weight.data = torch.matmul(Q.T, W_).to(device="cpu", dtype=dtype)
-    if W.bias is not None:
-        b = W.bias.data.to(device=config.device, dtype=torch.float64)
-        W.bias.data = torch.matmul(Q.T, b).to(device="cpu", dtype=dtype)
+    for W in flatten(layer_adapter.get_mlp_output()):
+        dtype = W.weight.data.dtype
+        W_ = W.weight.data.to(device=config.device, dtype=torch.float64)
+        W.weight.data = torch.matmul(Q.T, W_).to(device="cpu", dtype=dtype)
+        if W.bias is not None:
+            b = W.bias.data.to(device=config.device, dtype=torch.float64)
+            W.bias.data = torch.matmul(Q.T, b).to(device="cpu", dtype=dtype)
 
 
 def slice_mlp_output(layer_adapter: LayerAdapter, new_embedding_dimension: int) -> None:

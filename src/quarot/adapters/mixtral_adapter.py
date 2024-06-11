@@ -5,14 +5,19 @@ import torch
 from torch import FloatTensor, Tensor
 from torch.nn import Linear, Module
 from transformers import PretrainedConfig, PreTrainedTokenizerBase
-
-from transformers.models.mixtral.modeling_mixtral import MixtralConfig, MixtralDecoderLayer, MixtralForCausalLM, MixtralRMSNorm
+from transformers.models.mixtral.modeling_mixtral import (
+    MixtralConfig,
+    MixtralDecoderLayer,
+    MixtralForCausalLM,
+    MixtralRMSNorm,
+)
 
 from quarot.model_adapter import LayerAdapter, ModelAdapter
 
 
 class MixtralLayerAdapter(LayerAdapter):
     is_moe = True
+
     def __init__(self, layer: MixtralDecoderLayer) -> None:
         super().__init__()
         self._layer = layer
@@ -50,6 +55,9 @@ class MixtralLayerAdapter(LayerAdapter):
     # QuaRot specific.
     def get_v_proj(self) -> Linear:
         return self.layer.self_attn.v_proj
+
+    def get_moe_router(self) -> Linear:
+        return self.layer.block_sparse_moe.gate
 
 
 class MixtralModelAdapter(ModelAdapter):
