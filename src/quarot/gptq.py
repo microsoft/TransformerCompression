@@ -373,12 +373,17 @@ def quantize_model_gptq(
         )
 
         # set the quantized weights and scales of the attention inputs
+        # now that we deconcateenate here, with start/end accounting for the different sizes
+        # in the case of grouped keys.
+        qkv_sizes = [w.weight.shape[0] for w in layer_adapter.get_attention_inputs()]
+        qkv_starts = [0] + list(torch.cumsum(torch.tensor(qkv_sizes), 0).numpy())
+        qkv_ends = qkv_starts[1:]
         attn_inputs = layer_adapter.get_attention_inputs()
         for module, quantized_weight, scale, offset in zip(
             attn_inputs,
-            torch.chunk(Q_qkv, len(attn_inputs), dim=0),
-            torch.chunk(scale_qkv, len(attn_inputs), dim=0),
-            torch.chunk(offset_qkv, len(attn_inputs), dim=0) if offset_qkv is not None else [None] * len(attn_inputs),
+            [Q_qkv[start:end] for start, end in zip(qkv_starts, qkv_ends)],
+            [scale_qkv[start:end] for start, end in zip(qkv_starts, qkv_ends)],
+            [offset_qkv[start:end] for start, end in zip(qkv_starts, qkv_ends)] if offset_qkv is not None else [None] * len(attn_inputs),
         ):
             set_tensors(module, quantized_weight, scale, offset)
 
