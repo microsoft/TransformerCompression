@@ -160,6 +160,12 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
         help='Clip ratio for activation quantization: new_max = max * clip_ratio.',
     )
     parser.add_argument(
+        '--a-quantile',
+        type=float,
+        default=None,
+        help='Quantile for activation quantization, default is None.',
+    )
+    parser.add_argument(
         '--a-groupsize',
         type=int,
         default=None,
@@ -180,6 +186,12 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
         help='Clip ratio for keys quantization: new_max = max * clip_ratio.',
     )
     parser.add_argument(
+        '--k-quantile',
+        type=float,
+        default=None,
+        help='Quantile for keys quantization, default is None.',
+    )
+    parser.add_argument(
         '--k-groupsize',
         type=int,
         default=None,
@@ -196,6 +208,12 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
         type=float,
         default=1.0,
         help='Clip ratio for values quantization: new_max = max * clip_ratio.',
+    )
+    parser.add_argument(
+        '--v-quantile',
+        type=float,
+        default=None,
+        help='Quantile for values quantization, default is None.',
     )
     parser.add_argument(
         '--v-groupsize',
