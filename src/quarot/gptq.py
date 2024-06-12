@@ -72,9 +72,7 @@ def quantize_weight_gptq(
     # If groupsize is None, we quantize the entire tensor at once (there's a single scale and offset).
     # otherwise, we collect the scale/offset for each group in a list
     if groupsize is None:
-        scale, offset = calculate_scales(
-            W, bits, symmetric=symmetric, clip_weights=clip_weights, vectorized=False, device=device
-        )
+        scale, offset = calculate_scales(W, bits, symmetric=symmetric, search=clip_weights, device=device)
         scale = scale.float()
         offset = offset.float() if offset is not None else None
     else:
@@ -115,8 +113,7 @@ def quantize_weight_gptq(
                     W[:, col_idx : col_idx + groupsize],
                     bits,
                     symmetric=symmetric,
-                    clip_weights=clip_weights,
-                    vectorized=False,
+                    search=clip_weights,
                     device=device,
                 )
                 scale = scale.float()
@@ -383,7 +380,9 @@ def quantize_model_gptq(
             attn_inputs,
             [Q_qkv[start:end] for start, end in zip(qkv_starts, qkv_ends)],
             [scale_qkv[start:end] for start, end in zip(qkv_starts, qkv_ends)],
-            [offset_qkv[start:end] for start, end in zip(qkv_starts, qkv_ends)] if offset_qkv is not None else [None] * len(attn_inputs),
+            [offset_qkv[start:end] for start, end in zip(qkv_starts, qkv_ends)]
+            if offset_qkv is not None
+            else [None] * len(attn_inputs),
         ):
             set_tensors(module, quantized_weight, scale, offset)
 
