@@ -7,6 +7,8 @@ from typing import Callable, Iterable, Optional, TypeVar
 import torch
 from torch.nn import Linear, Module, Parameter
 
+from slicegpt.utils import flatten
+
 from .model_adapter import ModelAdapter
 from .modules import RMSN
 
@@ -100,7 +102,10 @@ def fuse_modules(model_adapter: ModelAdapter) -> None:
             )
         else:
             fuse_ln_linear(layer_adapter.get_first_layernorm(), layer_adapter.get_attention_inputs())
-            fuse_ln_linear(layer_adapter.get_second_layernorm(), layer_adapter.get_mlp_inputs())
+            fuse_ln_linear(
+                layer_adapter.get_second_layernorm(),
+                flatten([layer_adapter.get_mlp_inputs(), layer_adapter.get_moe_router()]),
+            )
 
         if model_adapter.should_bake_mean_into_linear:
             # Then we bake the mean substitution into the previous linear layers

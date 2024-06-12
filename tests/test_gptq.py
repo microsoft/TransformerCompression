@@ -25,7 +25,7 @@ def test_gptq_eye_hessian(weight, bits, symmetric):
         weight, hessian, bits, symmetric=symmetric, clip_weights=False
     )
 
-    rtn_scale, rtn_offset = calculate_scales(weight, bits, symmetric=symmetric, clip_weights=False)
+    rtn_scale, rtn_offset = calculate_scales(weight, bits, symmetric=symmetric, search=False)
     rtn_quantized_weight = quantize_weight_rtn(weight, rtn_scale, rtn_offset, bits)
 
     assert torch.allclose(gptq_quantized_weight, rtn_quantized_weight)

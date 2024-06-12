@@ -1,25 +1,26 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
-#
-# This file contains derivations from
-# https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
-# Copyright 2022 EleutherAI and the HuggingFace Inc. team. All rights reserved.
-# https://www.apache.org/licenses/LICENSE-2.0
-from typing import cast
 
 import torch
-from torch import FloatTensor, LongTensor, Tensor, matmul
+from torch import FloatTensor, Tensor
 from torch.nn import Linear, Module
 from transformers import PretrainedConfig, PreTrainedTokenizerBase
-from transformers.models.llama.modeling_llama import LlamaConfig, LlamaDecoderLayer, LlamaForCausalLM, LlamaRMSNorm
+from transformers.models.mixtral.modeling_mixtral import (
+    MixtralConfig,
+    MixtralDecoderLayer,
+    MixtralForCausalLM,
+    MixtralRMSNorm,
+)
 
 from quarot.model_adapter import LayerAdapter, ModelAdapter
 
 
-class LlamaLayerAdapter(LayerAdapter):
-    def __init__(self, layer: LlamaDecoderLayer) -> None:
+class MixtralLayerAdapter(LayerAdapter):
+    is_moe = True
+
+    def __init__(self, layer: MixtralDecoderLayer) -> None:
         super().__init__()
-        self._layer: LlamaDecoderLayer = layer
+        self._layer = layer
 
     @property
     def layer(self) -> Module:
@@ -46,20 +47,23 @@ class LlamaLayerAdapter(LayerAdapter):
         return self.layer.self_attn.o_proj
 
     def get_mlp_inputs(self) -> list[Linear]:
-        return [self.layer.mlp.gate_proj, self.layer.mlp.up_proj]
+        return [[expert.w1, expert.w3] for expert in self.layer.block_sparse_moe.experts]
 
     def get_mlp_output(self) -> Linear:
-        return self.layer.mlp.down_proj
+        return [expert.w2 for expert in self.layer.block_sparse_moe.experts]
 
     # QuaRot specific.
     def get_v_proj(self) -> Linear:
         return self.layer.self_attn.v_proj
 
+    def get_moe_router(self) -> Linear:
+        return self.layer.block_sparse_moe.gate
 
-class LlamaModelAdapter(ModelAdapter):
-    def __init__(self, model: LlamaForCausalLM) -> None:
+
+class MixtralModelAdapter(ModelAdapter):
+    def __init__(self, model: MixtralForCausalLM) -> None:
         super().__init__()
-        self._model: LlamaForCausalLM = model
+        self._model = model
 
     @property
     def model(self) -> Module:
@@ -71,7 +75,7 @@ class LlamaModelAdapter(ModelAdapter):
 
     @property
     def config_type(self) -> type:
-        return LlamaConfig
+        return MixtralConfig
 
     @property
     def parallel_blocks(self) -> bool:
@@ -91,20 +95,20 @@ class LlamaModelAdapter(ModelAdapter):
 
     @property
     def original_layer_type(self) -> type:
-        return LlamaDecoderLayer
+        return MixtralDecoderLayer
 
     @property
     def original_layer_norm_type(self) -> type:
-        return LlamaRMSNorm
+        return MixtralRMSNorm
 
     @property
     def layer_adapter_type(self) -> type:
-        return LlamaLayerAdapter
+        return MixtralLayerAdapter
 
     # QuaRot specific
     @property
     def quarot_layer_type(self) -> type:
-        return LlamaDecoderLayer
+        return MixtralLayerAdapter
 
     @property
     def use_cache(self) -> bool:
@@ -138,7 +142,6 @@ class LlamaModelAdapter(ModelAdapter):
         return self.model.lm_head
 
     def post_init(self, tokenizer: PreTrainedTokenizerBase) -> None:
-        # Llama-2 doesn't have a pad token by default
         tokenizer.pad_token = tokenizer.eos_token
         self.config.pad_token_id = tokenizer.pad_token_id
 
@@ -152,15 +155,15 @@ class LlamaModelAdapter(ModelAdapter):
         local_files_only: bool = False,
         token: str | bool | None = None,
     ) -> ModelAdapter | None:
-        if not (model_name.startswith("meta-llama/Llama-2") or model_name.startswith("meta-llama/Meta-Llama-3")):
+        if not model_name.startswith("mistralai/Mixtral"):
             return None
 
-        model = LlamaForCausalLM.from_pretrained(
+        model = MixtralForCausalLM.from_pretrained(
             model_path, torch_dtype=dtype, token=token, local_files_only=local_files_only
         )
         model.config.torch_dtype = dtype
 
-        return LlamaModelAdapter(model)
+        return MixtralModelAdapter(model)
 
     @classmethod
     def _from_uninitialized(
@@ -172,18 +175,18 @@ class LlamaModelAdapter(ModelAdapter):
         local_files_only: bool = False,
         token: str | bool | None = None,
     ) -> ModelAdapter | None:
-        if not (model_name.startswith("meta-llama/Llama-2") or model_name.startswith("meta-llama/Meta-Llama-3")):
+        if not model_name.startswith("mistralai/Mixtral"):
             return None
 
-        class UninitializedLlamaForCausalLM(LlamaForCausalLM):
+        class UninitializedMixtralForCausalLM(MixtralForCausalLM):
             def _init_weights(self, _) -> None:
                 # Prevent weight initialization
                 pass
 
-        config = LlamaConfig.from_pretrained(
+        config = MixtralConfig.from_pretrained(
             model_path, torch_dtype=dtype, token=token, local_files_only=local_files_only
         )
-        model = UninitializedLlamaForCausalLM(config)
+        model = UninitializedMixtralForCausalLM(config)
         model = model.to(dtype=dtype)
 
-        return LlamaModelAdapter(model)
+        return MixtralModelAdapter(model)

@@ -17,12 +17,25 @@ from lm_eval.tasks import initialize_tasks
 
 from quarot import gptq, hf_utils, rotate, rtn
 from quarot.adapters.llama_adapter import LlamaModelAdapter
+from quarot.adapters.mixtral_adapter import MixtralModelAdapter
 from quarot.adapters.phi3_adapter import Phi3ModelAdapter
 from quarot.hf_utils import get_quarot_model, quarot_model_config
 from quarot.modeling_llama import QuarotLlamaForCausalLM
+from quarot.modeling_mixtral import QuarotMixtralForCausalLM
 from quarot.modeling_phi3 import QuarotPhi3ForCausalLM
 from slicegpt import data_utils, gpu_utils, layernorm_fusion, utils
 from slicegpt.config import config
+
+
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
 
 
 def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
@@ -73,8 +86,9 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
     # Rotation Arguments
     parser.add_argument(
         '--rotate',
-        action="store_true",
-        help='Rotate the model.',
+        type=str2bool,
+        default=False,
+        help='Apply QuaRot/Hadamard rotation to the model.',
     )
     parser.add_argument(
         '--rotation-seed',
@@ -125,13 +139,9 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
         help='Number of bits to quantize the weights to.',
     )
     parser.add_argument(
-        '--w-clip-vec',
-        action="store_true",
-        help='Vectorized weight clipping ratio search.',
-    )
-    parser.add_argument(
         '--w-asym',
-        action="store_true",
+        type=str2bool,
+        default=False,
         help='Asymmetric weight quantization (else symmetric by default).',
     )
     parser.add_argument('--w-groupsize', type=int, default=None, help='Group size for groupwise weight quantization.')
@@ -148,6 +158,12 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
         type=float,
         default=1.0,
         help='Clip ratio for activation quantization: new_max = max * clip_ratio.',
+    )
+    parser.add_argument(
+        '--a-quantile',
+        type=float,
+        default=None,
+        help='Quantile for activation quantization, default is None.',
     )
     parser.add_argument(
         '--a-groupsize',
@@ -170,6 +186,12 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
         help='Clip ratio for keys quantization: new_max = max * clip_ratio.',
     )
     parser.add_argument(
+        '--k-quantile',
+        type=float,
+        default=None,
+        help='Quantile for keys quantization, default is None.',
+    )
+    parser.add_argument(
         '--k-groupsize',
         type=int,
         default=None,
@@ -186,6 +208,12 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
         type=float,
         default=1.0,
         help='Clip ratio for values quantization: new_max = max * clip_ratio.',
+    )
+    parser.add_argument(
+        '--v-quantile',
+        type=float,
+        default=None,
+        help='Quantile for values quantization, default is None.',
     )
     parser.add_argument(
         '--v-groupsize',
@@ -215,8 +243,15 @@ def process_quarot_args(args):
     if args.device:
         config.device = torch.device(args.device)
 
-    if args.distribute_model:
-        raise NotImplementedError("Distributed evaluation is not supported yet.")
+    # if the user passed groupsize of zero, interpret this the same as None
+    if args.a_groupsize == 0:
+        args.a_groupsize = None
+    if args.k_groupsize == 0:
+        args.k_groupsize = None
+    if args.v_groupsize == 0:
+        args.v_groupsize = None
+    if args.w_groupsize == 0:
+        args.w_groupsize = None
 
     config.dtype = torch.float16
 
@@ -274,9 +309,24 @@ def quarot_main(args: argparse.Namespace) -> None:
     with transformers.modeling_utils.no_init_weights():
         # initialize quarot model
 
-        act_args = {'a_bits': args.a_bits, 'a_clip_ratio': args.a_clip_ratio, 'a_groupsize': args.a_groupsize}
-        key_args = {'k_bits': args.k_bits, 'k_clip_ratio': args.k_clip_ratio, 'k_groupsize': args.k_groupsize}
-        value_args = {'v_bits': args.v_bits, 'v_clip_ratio': args.v_clip_ratio, 'v_groupsize': args.v_groupsize}
+        act_args = {
+            'a_bits': args.a_bits,
+            'a_clip_ratio': args.a_clip_ratio,
+            'a_groupsize': args.a_groupsize,
+            'a_quantile': args.a_quantile,
+        }
+        key_args = {
+            'k_bits': args.k_bits,
+            'k_clip_ratio': args.k_clip_ratio,
+            'k_groupsize': args.k_groupsize,
+            'k_quantile': args.k_quantile,
+        }
+        value_args = {
+            'v_bits': args.v_bits,
+            'v_clip_ratio': args.v_clip_ratio,
+            'v_groupsize': args.v_groupsize,
+            'v_quantile': args.v_quantile,
+        }
         quarot_model = get_quarot_model(
             model_name_or_path=args.model,
             rotate=args.rotate,
@@ -291,14 +341,20 @@ def quarot_main(args: argparse.Namespace) -> None:
         # load the rotated weights into the quarot model
         quarot_model.load_state_dict(model_adapter.model.state_dict(), strict=False)
 
+    # Wrap the quarot model in an adapter, required for GPTQ and for distributing the model across GPUs.
+    if isinstance(quarot_model, QuarotLlamaForCausalLM):
+        quarot_model_adapter = LlamaModelAdapter(quarot_model)
+    elif isinstance(quarot_model, QuarotPhi3ForCausalLM):
+        quarot_model_adapter = Phi3ModelAdapter(quarot_model)
+    elif isinstance(quarot_model, QuarotMixtralForCausalLM):
+        quarot_model_adapter = MixtralModelAdapter(quarot_model)
+    else:
+        raise ValueError("Adapter for QuaRot model must be specified.")
+
     if args.w_rtn:
         logging.info(f"Quantizing weights to INT{args.w_bits} using RTN.")
         rtn.quantize_model_rtn(
-            quarot_model,
-            bits=args.w_bits,
-            groupsize=args.w_groupsize,
-            symmetric=False if args.w_asym else True,
-            vectorized=True if args.w_clip_vec else False,
+            quarot_model, bits=args.w_bits, groupsize=args.w_groupsize, symmetric=False if args.w_asym else True
         )
         logging.info("Quantization complete.")
     elif args.w_gptq:
@@ -309,13 +365,6 @@ def quarot_main(args: argparse.Namespace) -> None:
             batch_size=args.cal_batch_size,
             nsamples=args.cal_nsamples,
         )
-
-        if isinstance(quarot_model, QuarotLlamaForCausalLM):
-            quarot_model_adapter = LlamaModelAdapter(quarot_model)
-        elif isinstance(quarot_model, QuarotPhi3ForCausalLM):
-            quarot_model_adapter = Phi3ModelAdapter(quarot_model)
-        else:
-            raise ValueError("Adapter for QuaRot model must be specified.")
 
         gptq.quantize_model_gptq(
             quarot_model_adapter,
@@ -330,7 +379,14 @@ def quarot_main(args: argparse.Namespace) -> None:
     else:
         logging.info("No weight quantization performed")
 
-    quarot_model.to(config.device)
+    def reset_model_device() -> None:
+        if args.distribute_model:
+            # distribute model across available GPUs
+            gpu_utils.distribute_model(quarot_model_adapter)
+        else:
+            quarot_model.to(config.device)
+
+    reset_model_device()
     dataset_ppl = gpu_utils.evaluate_ppl(quarot_model, quarot_model.config.pad_token_id, test_loader)
 
     if args.rotate:

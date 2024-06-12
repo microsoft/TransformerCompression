@@ -1,30 +1,22 @@
-# coding=utf-8
-# Copyright 2024 Microsoft and the HuggingFace Inc. team. All rights reserved.
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-""" PyTorch Phi-3 model."""
+# This file contains derivations from
+# https://github.com/huggingface/transformers/blob/main/src/transformers/models/mixtral/modeling_mixtral.py
+# Copyright 2023 Mistral AI and the HuggingFace Inc. team. All rights reserved.
+# https://www.apache.org/licenses/LICENSE-2.0
 
 from typing import Optional, Tuple
 
 import torch
-from transformers import Cache, Phi3Config
-from transformers.models.phi3.modeling_phi3 import (
-    Phi3FlashAttention2,
-    Phi3ForCausalLM,
-    Phi3MLP,
+from torch import nn
+from transformers import Cache, MixtralConfig
+from transformers.models.mixtral.modeling_mixtral import (
+    MixtralBlockSparseTop2MLP,
+    MixtralFlashAttention2,
+    MixtralForCausalLM,
+    MixtralSparseMoeBlock,
     apply_rotary_pos_emb,
-    repeat_kv,
 )
 from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
 
@@ -33,24 +25,22 @@ from slicegpt.modules import RMSN
 from .nn import OnlineHadamard, QuarotFP16Linear
 from .nn.quantizer import ActQuantizer, DummyActQuantizer, KVQuantizerDequantizer
 
-ALL_LAYERNORM_LAYERS.append(RMSN)
-
 try:
-    from transformers.models.phi3.modeling_phi3 import _flash_supports_window_size
+    from transformers.models.mistral.modeling_mistral import _flash_supports_window_size
 except ImportError:
     _flash_supports_window_size = False
 
 
-class QuarotPhi3Config(Phi3Config):
-    model_type = "phi3_quarot"
+class QuarotMixtralConfig(MixtralConfig):
+    model_type = "mixtral_quarot"
     groupsize = None
     offset = False
 
 
-class QuarotPhi3MLP(Phi3MLP):
+class QuarotMixtralBlockSparseTop2MLP(MixtralBlockSparseTop2MLP):
     def __init__(
         self,
-        config: QuarotPhi3Config,
+        config: QuarotMixtralConfig,
         act_bits: int = 16,
         act_clip_ratio: float | None = None,
         act_quantile: float | None = None,
@@ -61,9 +51,10 @@ class QuarotPhi3MLP(Phi3MLP):
     ):
         super().__init__(config, *args, **kwargs)
         self.online_had = online_had
-        self.gate_up_proj = QuarotFP16Linear.like(self.gate_up_proj, groupsize=config.groupsize, offset=config.offset)
-        self.down_proj = QuarotFP16Linear.like(self.down_proj, groupsize=config.groupsize, offset=config.offset)
-        self.online_down_proj_hadamard = OnlineHadamard(config.intermediate_size)
+        self.w1 = QuarotFP16Linear.like(self.w1, groupsize=config.groupsize, offset=config.offset)
+        self.w2 = QuarotFP16Linear.like(self.w2, groupsize=config.groupsize, offset=config.offset)
+        self.w3 = QuarotFP16Linear.like(self.w3, groupsize=config.groupsize, offset=config.offset)
+        self.online_down_proj_hadamard = OnlineHadamard(self.ffn_dim)
         if act_bits < 16:
             self.input_quantizer = ActQuantizer(
                 act_bits, symmetric=True, clip_ratio=act_clip_ratio, quantile=act_quantile, groupsize=act_groupsize
@@ -75,40 +66,60 @@ class QuarotPhi3MLP(Phi3MLP):
             self.input_quantizer = DummyActQuantizer()
             self.down_proj_input_quantizer = DummyActQuantizer()
 
-    def forward(self, x):
+    def forward(self, hidden_states):
         # Quantize inputs to mlp
-        x = self.input_quantizer(x)
+        hidden_states = self.input_quantizer(hidden_states)
 
         # Calculate activations
-        x = self.gate_up_proj(x)
-        gate, x = x.chunk(2, dim=-1)
-        x = x * self.activation_fn(gate)
+        hidden_states = self.act_fn(self.w1(hidden_states)) * self.w3(hidden_states)
 
         # Apply online hadamard if needed
         if self.online_had:
-            x = self.online_down_proj_hadamard(x)
+            hidden_states = self.online_down_proj_hadamard(hidden_states)
 
         # Quantize inputs to down_proj
-        x = self.down_proj_input_quantizer(x)
+        hidden_states = self.down_proj_input_quantizer(hidden_states)
 
         # Return final activations
-        return self.down_proj(x)
+        return self.w2(hidden_states)
 
 
-class QuarotFP16Phi3FlashAttention2(Phi3FlashAttention2):
+class QuarotMixtralSparseMoeBlock(MixtralSparseMoeBlock):
     def __init__(
         self,
-        config: QuarotPhi3Config,
+        config: QuarotMixtralConfig,
+        act_bits: int = 16,
+        act_clip_ratio: float = 1.0,
+        act_groupsize: int | None = None,
+        online_had: bool = False,
+        *args,
+        **kwargs,
+    ):
+        super().__init__(config, *args, **kwargs)
+
+        # No change to gate, but experts must be replaced
+        self.experts = nn.ModuleList(
+            [
+                QuarotMixtralBlockSparseTop2MLP(config, act_bits, act_clip_ratio, act_groupsize, online_had)
+                for _ in range(config.num_local_experts)
+            ]
+        )
+
+
+class QuarotMixtralFlashAttention2(MixtralFlashAttention2):
+    def __init__(
+        self,
+        config: QuarotMixtralConfig,
         act_bits: int = 16,
         act_clip_ratio: float | None = None,
-        act_quantile: float | None = None,
+        act_quantile: int | None = None,
         act_groupsize: int | None = None,
         k_bits: int = 16,
         k_clip_ratio: float | None = None,
         k_quantile: float | None = None,
         k_groupsize: int | None = None,
         v_bits: int = 16,
-        v_clip_ratio: float = 1.0,
+        v_clip_ratio: float | None = None,
         v_quantile: float | None = None,
         v_groupsize: int | None = None,
         online_had=False,
@@ -117,7 +128,9 @@ class QuarotFP16Phi3FlashAttention2(Phi3FlashAttention2):
     ):
         super().__init__(config, *args, **kwargs)
         self.online_had = online_had
-        self.qkv_proj = QuarotFP16Linear.like(self.qkv_proj, groupsize=config.groupsize, offset=config.offset)
+        self.q_proj = QuarotFP16Linear.like(self.q_proj, groupsize=config.groupsize, offset=config.offset)
+        self.k_proj = QuarotFP16Linear.like(self.k_proj, groupsize=config.groupsize, offset=config.offset)
+        self.v_proj = QuarotFP16Linear.like(self.v_proj, groupsize=config.groupsize, offset=config.offset)
         self.o_proj = QuarotFP16Linear.like(self.o_proj, groupsize=config.groupsize, offset=config.offset)
         self.online_o_proj_hadamard = OnlineHadamard(self.num_heads)
         self.online_k_hadamard = OnlineHadamard(self.head_dim)
@@ -156,49 +169,34 @@ class QuarotFP16Phi3FlashAttention2(Phi3FlashAttention2):
         past_key_value: Optional[Cache] = None,
         output_attentions: bool = False,
         use_cache: bool = False,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
-        # Phi3FlashAttention2 attention does not support output_attentions
-
-        if not _flash_supports_window_size:
-            raise ValueError("The current flash attention version does not support sliding window attention.")
-
-        output_attentions = False
-
+    ):
         bsz, q_len, _ = hidden_states.size()
 
         # QuaRot: quantize hidden states at input of attention
         hidden_states = self.input_quantizer(hidden_states)
 
-        qkv = self.qkv_proj(hidden_states)
-        query_pos = self.num_heads * self.head_dim
-        query_states = qkv[..., :query_pos]
-        key_states = qkv[..., query_pos : query_pos + self.num_key_value_heads * self.head_dim]
-        value_states = qkv[..., query_pos + self.num_key_value_heads * self.head_dim :]
+        query_states = self.q_proj(hidden_states)
+        key_states = self.k_proj(hidden_states)
+        value_states = self.v_proj(hidden_states)
 
         # Flash attention requires the input to have the shape
         # batch_size x seq_length x head_dim x hidden_dim
         # therefore we just need to keep the original shape
-        query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim)
-        key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim)
-        value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim)
+        query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim)  # QuaRot: remove transpose
+        key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim)  # QuaRot: remove transpose
+        value_states = value_states.view(
+            bsz, q_len, self.num_key_value_heads, self.head_dim
+        )  # QuaRot: remove transpose
 
-        kv_seq_len = key_states.shape[1]
-        if past_key_value is not None:
-            if self.layer_idx is None:
-                raise ValueError(
-                    f"The cache structure has changed since version v4.36. If you are using {self.__class__.__name__} "
-                    "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
-                    "with a layer index."
-                )
-            kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
+        kv_seq_len = key_states.shape[-3]  # QuaRot: get sequence length
 
         # Because the input can be padded, the absolute sequence length depends on the max position id.
         rotary_seq_len = max(kv_seq_len, position_ids[:, -1].max().item()) + 1
-        cos, sin = self.rotary_emb(value_states, position_ids, seq_len=rotary_seq_len)
+        cos, sin = self.rotary_emb(value_states, seq_len=rotary_seq_len)
 
         query_states, key_states = apply_rotary_pos_emb(
             query_states, key_states, cos, sin, position_ids, unsqueeze_dim=2
-        )
+        )  # QuaRot: requires unsqueeze
 
         # QuaRot: apply online hadamard to queries and keys
         if self.online_had:
@@ -215,59 +213,9 @@ class QuarotFP16Phi3FlashAttention2(Phi3FlashAttention2):
             and kv_seq_len > self.config.sliding_window
         )
 
-        if past_key_value is not None:
-            # Activate slicing cache only if the config has a value `sliding_windows` attribute
-            cache_has_contents = past_key_value.get_seq_length(self.layer_idx) > 0
-            if (
-                getattr(self.config, "sliding_window", None) is not None
-                and kv_seq_len > self.config.sliding_window
-                and cache_has_contents
-            ):
-                slicing_tokens = 1 - self.config.sliding_window
-
-                past_key = past_key_value[self.layer_idx][0]
-                past_value = past_key_value[self.layer_idx][1]
-
-                past_key = past_key[:, :, slicing_tokens:, :].contiguous()
-                past_value = past_value[:, :, slicing_tokens:, :].contiguous()
-
-                if past_key.shape[-2] != self.config.sliding_window - 1:
-                    raise ValueError(
-                        f"past key must have a shape of (`batch_size, num_heads, self.config.sliding_window-1, head_dim`), got"
-                        f" {past_key.shape}"
-                    )
-
-                if attention_mask is not None:
-                    attention_mask = attention_mask[:, slicing_tokens:]
-                    attention_mask = torch.cat([attention_mask, torch.ones_like(attention_mask[:, -1:])], dim=-1)
-
-            cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
-            key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
-
-        # repeat k/v heads if n_kv_heads < n_heads
-        key_states = repeat_kv(key_states, self.num_key_value_groups)
-        value_states = repeat_kv(value_states, self.num_key_value_groups)
-
-        attn_dropout = self.attention_dropout if self.training else 0.0
-
-        # In PEFT, usually we cast the layer norms in float32 for training stability reasons
-        # therefore the input hidden states gets silently casted in float32. Hence, we need
-        # cast them back in the correct dtype just to be sure everything works as expected.
-        # This might slowdown training & inference so it is recommended to not cast the LayerNorms
-        # in fp32.
-
-        if query_states.dtype == torch.float32:
-            if torch.is_autocast_enabled():
-                target_dtype = torch.get_autocast_gpu_dtype()
-            # Handle the case where the model is quantized
-            elif hasattr(self.config, "_pre_quantization_dtype"):
-                target_dtype = self.config._pre_quantization_dtype
-            else:
-                target_dtype = self.qkv_proj.weight.dtype
-
-            query_states = query_states.to(target_dtype)
-            key_states = key_states.to(target_dtype)
-            value_states = value_states.to(target_dtype)
+        torch.repeat_interleave(key_states, dim=2, repeats=self.num_key_value_groups)
+        torch.repeat_interleave(value_states, dim=2, repeats=self.num_key_value_groups)
+        dropout_rate = 0.0 if not self.training else self.attention_dropout
 
         attn_output = self._flash_attention_forward(
             query_states,
@@ -275,7 +223,7 @@ class QuarotFP16Phi3FlashAttention2(Phi3FlashAttention2):
             value_states,
             attention_mask,
             q_len,
-            dropout=attn_dropout,
+            dropout=dropout_rate,
             use_sliding_windows=use_sliding_windows,
         )
 
@@ -295,7 +243,7 @@ class QuarotFP16Phi3FlashAttention2(Phi3FlashAttention2):
         return attn_output, attn_weights, past_key_value
 
 
-class QuarotPhi3ForCausalLM(Phi3ForCausalLM):
+class QuarotMixtralForCausalLM(MixtralForCausalLM):
     def __init__(
         self,
         online_had_mlp: bool = False,
@@ -313,7 +261,7 @@ class QuarotPhi3ForCausalLM(Phi3ForCausalLM):
         v_clip_ratio: float = 1.0,
         v_quantile: float | None = None,
         v_groupsize: int | None = None,
-        config: QuarotPhi3Config = None,
+        config: QuarotMixtralConfig = None,
     ) -> None:
         """
         Args:
@@ -328,7 +276,7 @@ class QuarotPhi3ForCausalLM(Phi3ForCausalLM):
             self.model.norm = RMSN(config.hidden_size, eps=config.rms_norm_eps)
 
         for layer_idx, layer in enumerate(self.model.layers):
-            layer.self_attn = QuarotFP16Phi3FlashAttention2(
+            layer.self_attn = QuarotMixtralFlashAttention2(
                 config=config,
                 act_bits=act_bits,
                 act_clip_ratio=act_clip_ratio,
@@ -345,7 +293,8 @@ class QuarotPhi3ForCausalLM(Phi3ForCausalLM):
                 online_had=online_had_attn,
                 layer_idx=layer_idx,
             )
-            layer.mlp = QuarotPhi3MLP(
+
+            layer.block_sparse_moe = QuarotMixtralSparseMoeBlock(
                 config=config,
                 act_bits=act_bits,
                 act_clip_ratio=act_clip_ratio,

@@ -11,18 +11,25 @@ from slicegpt.hf_utils import do_not_initialize
 
 from .model_adapter import ModelAdapter
 from .modeling_llama import QuarotLlamaConfig, QuarotLlamaForCausalLM
+from .modeling_mixtral import QuarotMixtralConfig, QuarotMixtralForCausalLM
 from .modeling_phi3 import QuarotPhi3Config, QuarotPhi3ForCausalLM
 
 
 def quarot_model_config(
     model_name_or_path: str, dtype: torch.dtype, groupsize: int | None = None, offset: bool = False
 ):
-    if model_name_or_path in ['meta-llama/Llama-2-7b-hf', 'meta-llama/Llama-2-13b-hf', 'meta-llama/Meta-Llama-3-8B']:
-        model_config = QuarotLlamaConfig.from_pretrained(model_name_or_path, dtype=dtype, use_cache=False)
-    elif model_name_or_path == 'microsoft/Phi-3-mini-4k-instruct':
-        model_config = QuarotPhi3Config.from_pretrained(model_name_or_path, dtype=dtype, use_cache=False)
-    else:
+    lm_configs = {
+        'meta-llama/Llama-2-7b-hf': QuarotLlamaConfig,
+        'meta-llama/Llama-2-13b-hf': QuarotLlamaConfig,
+        'meta-llama/Meta-Llama-3-8B': QuarotLlamaConfig,
+        'microsoft/Phi-3-mini-4k-instruct': QuarotPhi3Config,
+        'mistralai/Mixtral-8x7B-v0.1': QuarotMixtralConfig,
+    }
+
+    if model_name_or_path not in lm_configs:
         raise NotImplementedError("Model type not supported")
+
+    model_config = lm_configs[model_name_or_path].from_pretrained(model_name_or_path, dtype=dtype, use_cache=False)
     model_config._attn_implementation = "flash_attention_2"
     model_config.groupsize = groupsize
     model_config.offset = offset
@@ -37,43 +44,39 @@ def get_quarot_model(
     value_args: dict,
     model_config: PretrainedConfig,
 ):
+
+    lm_classes = {
+        'meta-llama/Llama-2-7b-hf': QuarotLlamaForCausalLM,
+        'meta-llama/Llama-2-13b-hf': QuarotLlamaForCausalLM,
+        'meta-llama/Meta-Llama-3-8B': QuarotLlamaForCausalLM,
+        'microsoft/Phi-3-mini-4k-instruct': QuarotPhi3ForCausalLM,
+        'mistralai/Mixtral-8x7B-v0.1': QuarotMixtralForCausalLM,
+    }
+
+    if model_name_or_path not in lm_classes:
+        raise NotImplementedError("Model type not supported")
+
     online_had_mlp = True if rotate else False
     online_had_attn = True if rotate else False
     rms_norm = True if rotate else False
-    if model_name_or_path in ['meta-llama/Llama-2-7b-hf', 'meta-llama/Llama-2-13b-hf', 'meta-llama/Meta-Llama-3-8B']:
-        return QuarotLlamaForCausalLM(
-            online_had_mlp=online_had_mlp,
-            online_had_attn=online_had_attn,
-            rms_norm=rms_norm,
-            act_bits=act_args['a_bits'],
-            act_clip_ratio=act_args['a_clip_ratio'],
-            act_groupsize=act_args['a_groupsize'],
-            k_bits=key_args['k_bits'],
-            k_clip_ratio=key_args['k_clip_ratio'],
-            k_groupsize=key_args['k_groupsize'],
-            v_bits=value_args['v_bits'],
-            v_clip_ratio=value_args['v_clip_ratio'],
-            v_groupsize=value_args['v_groupsize'],
-            config=model_config,
-        )
-    elif model_name_or_path == 'microsoft/Phi-3-mini-4k-instruct':
-        return QuarotPhi3ForCausalLM(
-            online_had_mlp=online_had_mlp,
-            online_had_attn=online_had_attn,
-            rms_norm=rms_norm,
-            act_bits=act_args['a_bits'],
-            act_clip_ratio=act_args['a_clip_ratio'],
-            act_groupsize=act_args['a_groupsize'],
-            k_bits=key_args['k_bits'],
-            k_clip_ratio=key_args['k_clip_ratio'],
-            k_groupsize=key_args['k_groupsize'],
-            v_bits=value_args['v_bits'],
-            v_clip_ratio=value_args['v_clip_ratio'],
-            v_groupsize=value_args['v_groupsize'],
-            config=model_config,
-        )
-    else:
-        raise NotImplementedError("Model type not supported")
+    return lm_classes[model_name_or_path](
+        online_had_mlp=online_had_mlp,
+        online_had_attn=online_had_attn,
+        rms_norm=rms_norm,
+        act_bits=act_args['a_bits'],
+        act_clip_ratio=act_args['a_clip_ratio'],
+        act_quantile=act_args['a_quantile'],
+        act_groupsize=act_args['a_groupsize'],
+        k_bits=key_args['k_bits'],
+        k_clip_ratio=key_args['k_clip_ratio'],
+        k_quantile=key_args['k_quantile'],
+        k_groupsize=key_args['k_groupsize'],
+        v_bits=value_args['v_bits'],
+        v_clip_ratio=value_args['v_clip_ratio'],
+        v_quantile=value_args['v_quantile'],
+        v_groupsize=value_args['v_groupsize'],
+        config=model_config,
+    )
 
 
 @do_not_initialize
