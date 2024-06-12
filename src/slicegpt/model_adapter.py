@@ -107,6 +107,12 @@ class LayerAdapter(ABC):
             args[: self.hidden_states_args_position] + (hidden_states,) + args[self.hidden_states_args_position + 1 :]
         )
 
+    def get_moe_router(self) -> Linear | list:
+        """
+        TODO: technical debt from QuaRot (Required for tests to pass because layernorm fusion now expects this method). Returns the Linear layer (nn.module) that is the router in a Mixture of Experts model. If the model is not a MOE, return an empty list.
+        """
+        return []
+
 
 class ModelAdapter(ABC):
     """
