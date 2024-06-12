@@ -73,7 +73,7 @@ def quantize_weight_gptq(
     # otherwise, we collect the scale/offset for each group in a list
     if groupsize is None:
         scale, offset = calculate_scales(
-            W, bits, symmetric=symmetric, clip_weights=clip_weights, vectorized=False, device=device
+            W, bits, symmetric=symmetric, search=clip_weights, vectorized=False, device=device
         )
         scale = scale.float()
         offset = offset.float() if offset is not None else None
@@ -115,7 +115,7 @@ def quantize_weight_gptq(
                     W[:, col_idx : col_idx + groupsize],
                     bits,
                     symmetric=symmetric,
-                    clip_weights=clip_weights,
+                    search=clip_weights,
                     vectorized=False,
                     device=device,
                 )
