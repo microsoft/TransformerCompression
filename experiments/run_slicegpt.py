@@ -8,8 +8,8 @@ import pathlib
 import shutil
 
 import torch
-import wandb
 
+import wandb
 from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate, utils
 from slicegpt.config import config
 from slicegpt.slicing_scheduler import ConstSlicingScheduler

@@ -47,17 +47,15 @@ def calculate_scales_search(weight, bits, symmetric):
     error_norm = 2.4
     shrink_factors = torch.linspace(1.0, 1 - max_shrink_factor, n_steps).to(weight.device)
 
-    best_quantization_error = torch.full(
-        weight.shape[:-1], float("inf"), device=weight.device, dtype=weight.dtype
-    )
-    
+    best_quantization_error = torch.full(weight.shape[:-1], float("inf"), device=weight.device, dtype=weight.dtype)
+
     min_weight, max_weight = calculate_min_max_weight(weight, symmetric=symmetric)
     _, max_int = calculate_min_max_int(bits, symmetric=symmetric)
-    
+
     # initialize scale and offset
     scale = max_weight / max_int
     offset = None if symmetric else torch.round(-min_weight / scale)
-    
+
     for shrink_factor in shrink_factors:
         # find the scale & offset for this shrink factor, quantize and reconstruct weights
         candidate_max_weight = shrink_factor * max_weight
@@ -81,7 +79,7 @@ def calculate_scales_search(weight, bits, symmetric):
                 offset[improved_idx] = candidate_offset[improved_idx]
 
             best_quantization_error[improved_idx] = quantization_error[improved_idx]
-            
+
     return scale, offset
 
 
@@ -106,7 +104,7 @@ def calculate_scales_clip(weight, bits, symmetric, clip_ratio):
     Calculate the scales (and offsets if asymmetric) for quantizing a weight tensor to INT<bits>
     Scale by a factor of clip_ratio times the max weight.
     """
-    
+
     min_weight, max_weight = calculate_min_max_weight(weight, symmetric=symmetric)
     min_weight *= clip_ratio
     max_weight *= clip_ratio
@@ -120,27 +118,27 @@ def calculate_scales_clip(weight, bits, symmetric, clip_ratio):
         scale = (max_weight - min_weight) / max_int
         offset = torch.round(-min_weight / scale)
     return scale, offset
-    
+
 
 def calculate_scales(
     weight: torch.Tensor,
     bits: int,
     symmetric: bool,
     search: bool = False,
-    quantile: float|None = None,
-    clip_ratio: float=1.0,
-    groupsize: int|None = None,
+    quantile: float | None = None,
+    clip_ratio: float = 1.0,
+    groupsize: int | None = None,
     device='cuda',
 ) -> tuple[torch.Tensor, torch.Tensor | None]:
     """
     Calculate the scales (and offsets if asymmetric) for quantizing a weight tensor to INT<bits>
-    
+
     If search is true, we run a grid search for the best scalubg factor
     otherwise, we use the quantile of the data to scale
     if quantile is None we use a 'clip ratio' time the max weight.
-    
+
     Quantile is ignored if doing a search. Clip ratio is ignored if quantile is not None.
-    
+
     This method account for grouping: we reshape the data into num_groups x group_size, and then squeeze out at the end.
     """
     orig_device = weight.device

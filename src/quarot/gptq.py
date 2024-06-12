@@ -72,9 +72,7 @@ def quantize_weight_gptq(
     # If groupsize is None, we quantize the entire tensor at once (there's a single scale and offset).
     # otherwise, we collect the scale/offset for each group in a list
     if groupsize is None:
-        scale, offset = calculate_scales(
-            W, bits, symmetric=symmetric, search=clip_weights, device=device
-        )
+        scale, offset = calculate_scales(W, bits, symmetric=symmetric, search=clip_weights, device=device)
         scale = scale.float()
         offset = offset.float() if offset is not None else None
     else:
@@ -180,77 +178,94 @@ def solve_optimal_scales(W, W_int, H, groupsize=None, offset=None):
     return scales
 
 
-def construct_hessian(
-    X: list[torch.Tensor | PackedQuantizedTensor], ignore_masks: list[torch.Tensor] | None = None
-) -> torch.Tensor:
+class HessianHook:
     """
-    Construct the Hessian matrix for a given set of activations.
+    A Hook function designed to colect the input to a layer, and compute the Hessian of the layer online.
+
+    Onnce the hook is applied to a module, each batch gets stored in the hook. Between batches, update_hessian()
+    is called to compute the Hessian of the layer.
     """
-    # Run GC and cleanup GPU memory
-    cleanup_memory()
 
-    if isinstance(X[0], PackedQuantizedTensor):
-        X = [x.quantized_x for x in X]
+    def __init__(self):
+        self.H = None
+        self.num_samples = 0
+        self.X = None
 
-    H = None
-    num_samples = 0
-    hidden_dim = X[0].shape[-1]
-    H = torch.zeros(hidden_dim, hidden_dim, device='cuda')
-    for idx, X_batch in enumerate(X):
-        batch_size, seq_len = X_batch.shape[:2]
-        if ignore_masks:
-            X_batch[ignore_masks[idx] == 0] = 0
-            num_elements = ignore_masks[idx].sum()
+    def __call__(self, _, args: tuple, _output: Any) -> None:
+        if self.X is not None:
+            raise ValueError("HessianHook called multiple times without update")
+        self.X = args[0]
+
+    def update_hessian(self, ignore_mask: torch.Tensor | None = None) -> None:
+        if self.X is None:
+            raise ValueError("No input to compute Hessian")
+
+        # remove reference to this match
+        X = self.X
+        self.X = None
+
+        # maske as needed, count elements
+        batch_size, seq_len = X.shape[:2]
+        if ignore_mask is not None:
+            X[ignore_mask == 0] = 0
+            num_elements = ignore_mask.sum()
         else:
             num_elements = batch_size * seq_len
 
-        X_batch = X_batch.to('cuda', dtype=torch.float32) * torch.rsqrt(torch.tensor(num_elements, device='cuda'))
-        H_batch = torch.einsum('bld,blc->dc', X_batch, X_batch)
-        H = H * (num_samples / (num_samples + num_elements)) + H_batch * (num_elements / (num_samples + num_elements))
-        num_samples += num_elements
-
-    return H
+        # compute the Hessian update
+        X = X * torch.rsqrt(torch.tensor(num_elements, device=X.device, dtype=X.dtype))
+        H_batch = torch.einsum('bld,blc->dc', X, X)
+        if self.H is None:
+            self.H = H_batch
+        else:
+            H = H * (self.num_samples / (self.num_samples + num_elements)) + H_batch * (
+                num_elements / (self.num_samples + num_elements)
+            )
+        self.num_samples += num_elements
 
 
 @torch.no_grad()
-def get_signals(
-    layer_adapter: LayerAdapter, layer_args: list[tuple], layer_kwargs: list[dict[str, Any]]
-) -> tuple[list[torch.Tensor], list[torch.Tensor], list[torch.Tensor], list[torch.Tensor], list[torch.Tensor]]:
+def get_hessians_and_output(
+    layer_adapter: LayerAdapter,
+    layer_args: list[tuple],
+    layer_kwargs: list[dict[str, Any]],
+    layer_masks: list[torch.Tensor] | None = None,
+    device: str = 'cuda',
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, list[torch.Tensor]]:
     """
     Take the input signals ("activations") for a layer, run the layer forward.
-    Return the output of the layer and the inputs to the attention inputs & output, and to the mlp inputs & output.
+
+    for each of the 4 components of the layer (QKV, O_proj, upgate, down_proj), we captuire the signal at this point and compute the Hessian.
+
+    Return
     """
-    qkv_inputs, o_proj_inputs, upgate_inputs, down_proj_inputs = [], [], [], []
-    outputs = []
-    device = 'cuda'
     layer_adapter.layer.to(device)
-
-    def make_hook(storage_list):
-        def hook_fn(_, args: tuple, _output: Any) -> None:
-            storage_list.append(args[0])
-
-        return hook_fn
-
-    hooks = [make_hook(qkv_inputs), make_hook(o_proj_inputs), make_hook(upgate_inputs), make_hook(down_proj_inputs)]
     modules = [
         layer_adapter.get_attention_inputs()[0],
         layer_adapter.get_attention_output(),
-        layer_adapter.get_mlp_inputs()[0],
+        layer_adapter.get_mlp_inputs()[0],  # TODO for MOE, we need a hook on every mlp input and output
         layer_adapter.get_mlp_output(),
     ]
+    hooks = [HessianHook() for _ in modules]
     hooks = [m.register_forward_hook(h) for m, h in zip(modules, hooks)]
 
-    for layer_args_batch, layer_kwargs_batch in zip(layer_args, layer_kwargs):
+    # loop over the batches
+    outputs = []
+    if layer_masks is None:
+        layer_masks = [None] * len(layer_args)
+    for layer_args_batch, layer_kwargs_batch, mask_batch in zip(layer_args, layer_kwargs, layer_masks):
         layer_args_batch, layer_kwargs_batch = map_tensors([layer_args_batch, layer_kwargs_batch], device=device)
         out = layer_adapter.layer(*layer_args_batch, **layer_kwargs_batch)
         if isinstance(out, tuple):
             out = out[layer_adapter.hidden_states_output_position]
         outputs.append(out)
+        [h.update_hessian(mask_batch) for h in hooks]
 
     for h in hooks:
         h.remove()
 
-    return qkv_inputs, o_proj_inputs, upgate_inputs, down_proj_inputs, outputs
+    H_qkv, H_o_proj, H_upgate, H_down_proj = [h.H for h in hooks]
+    return H_qkv, H_o_proj, H_upgate, H_down_proj, outputs
 
 
 def set_tensors(
@@ -319,13 +334,10 @@ def quantize_model_gptq(
     for layer_adapter in tqdm(model_adapter.get_layers(), unit="layer", desc="Quantizing layer"):
         layer_adapter.layer.to('cuda')
 
-        # get all activations for the current layer (4 sets)
-        qkv_inputs, o_proj_inputs, upgate_inputs, down_proj_inputs, outputs = get_signals(layer_adapter, args, kwargs)
-
-        # compute the 4 Hessians
-        H_qkv, H_o_proj, H_upgate, H_down_proj = [
-            construct_hessian(X, ignore_masks) for X in [qkv_inputs, o_proj_inputs, upgate_inputs, down_proj_inputs]
-        ]
+        # get all Hessians for the current layer, and layer outputs
+        H_qkv, H_o_proj, H_upgate, H_down_proj, outputs = get_hessians_and_output(
+            layer_adapter, args, kwargs, ignore_masks
+        )
 
         # get 4 weight matrices (concat as needed)
         W_qkv = torch.cat([w.weight.data for w in layer_adapter.get_attention_inputs()], dim=0)
@@ -334,42 +346,13 @@ def quantize_model_gptq(
         W_down_proj = layer_adapter.get_mlp_output().weight.data
 
         # 4 calls to quantizer
-        Q_qkv, scale_qkv, offset_qkv = quantize_weight_gptq(
-            W_qkv,
-            H_qkv,
-            bits,
-            symmetric=symmetric,
-            percdamp=damping,
-            groupsize=groupsize,
-            optimize_scales=optimize_scales,
+        kwargs = dict(
+            bits=bits, symmetric=symmetric, percdamp=damping, groupsize=groupsize, optimize_scales=optimize_scales
         )
-        Q_o_proj, scale_o_proj, offset_o_proj = quantize_weight_gptq(
-            W_o_proj,
-            H_o_proj,
-            bits,
-            symmetric=symmetric,
-            percdamp=damping,
-            groupsize=groupsize,
-            optimize_scales=optimize_scales,
-        )
-        Q_upgate, scale_upgate, offset_upgate = quantize_weight_gptq(
-            W_upgate,
-            H_upgate,
-            bits,
-            symmetric=symmetric,
-            percdamp=damping,
-            groupsize=groupsize,
-            optimize_scales=optimize_scales,
-        )
-        Q_down_proj, scale_down_proj, offset_down_proj = quantize_weight_gptq(
-            W_down_proj,
-            H_down_proj,
-            bits,
-            symmetric=symmetric,
-            percdamp=damping,
-            groupsize=groupsize,
-            optimize_scales=optimize_scales,
-        )
+        Q_qkv, scale_qkv, offset_qkv = quantize_weight_gptq(W_qkv, H_qkv, **kwargs)
+        Q_o_proj, scale_o_proj, offset_o_proj = quantize_weight_gptq(W_o_proj, H_o_proj, **kwargs)
+        Q_upgate, scale_upgate, offset_upgate = quantize_weight_gptq(W_upgate, H_upgate, bits, **kwargs)
+        Q_down_proj, scale_down_proj, offset_down_proj = quantize_weight_gptq(W_down_proj, H_down_proj, **kwargs)
 
         # set the quantized weights and scales of the attention inputs
         # now that we deconcateenate here, with start/end accounting for the different sizes
@@ -382,7 +365,9 @@ def quantize_model_gptq(
             attn_inputs,
             [Q_qkv[start:end] for start, end in zip(qkv_starts, qkv_ends)],
             [scale_qkv[start:end] for start, end in zip(qkv_starts, qkv_ends)],
-            [offset_qkv[start:end] for start, end in zip(qkv_starts, qkv_ends)] if offset_qkv is not None else [None] * len(attn_inputs),
+            [offset_qkv[start:end] for start, end in zip(qkv_starts, qkv_ends)]
+            if offset_qkv is not None
+            else [None] * len(attn_inputs),
         ):
             set_tensors(module, quantized_weight, scale, offset)
 
