@@ -139,11 +139,6 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
         help='Number of bits to quantize the weights to.',
     )
     parser.add_argument(
-        '--w-clip-vec',
-        action="store_true",
-        help='Vectorized weight clipping ratio search.',
-    )
-    parser.add_argument(
         '--w-asym',
         type=str2bool,
         default=False,
@@ -329,8 +324,7 @@ def quarot_main(args: argparse.Namespace) -> None:
             quarot_model,
             bits=args.w_bits,
             groupsize=args.w_groupsize,
-            symmetric=False if args.w_asym else True,
-            vectorized=True if args.w_clip_vec else False,
+            symmetric=False if args.w_asym else True
         )
         logging.info("Quantization complete.")
     elif args.w_gptq:
