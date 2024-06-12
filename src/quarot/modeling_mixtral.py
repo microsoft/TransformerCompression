@@ -42,7 +42,8 @@ class QuarotMixtralBlockSparseTop2MLP(MixtralBlockSparseTop2MLP):
         self,
         config: QuarotMixtralConfig,
         act_bits: int = 16,
-        act_clip_ratio: float = 1.0,
+        act_clip_ratio: float | None = None,
+        act_quantile: float | None = None,
         act_groupsize: int | None = None,
         online_had: bool = False,
         *args,
@@ -56,10 +57,10 @@ class QuarotMixtralBlockSparseTop2MLP(MixtralBlockSparseTop2MLP):
         self.online_down_proj_hadamard = OnlineHadamard(self.ffn_dim)
         if act_bits < 16:
             self.input_quantizer = ActQuantizer(
-                act_bits, symmetric=True, clip_ratio=act_clip_ratio, groupsize=act_groupsize
+                act_bits, symmetric=True, clip_ratio=act_clip_ratio, quantile=act_quantile, groupsize=act_groupsize
             )
             self.down_proj_input_quantizer = ActQuantizer(
-                act_bits, symmetric=True, clip_ratio=act_clip_ratio, groupsize=act_groupsize
+                act_bits, symmetric=True, clip_ratio=act_clip_ratio, quantile=act_quantile, groupsize=act_groupsize
             )
         else:
             self.input_quantizer = DummyActQuantizer()
@@ -110,13 +111,16 @@ class QuarotMixtralFlashAttention2(MixtralFlashAttention2):
         self,
         config: QuarotMixtralConfig,
         act_bits: int = 16,
-        act_clip_ratio: float = 1.0,
+        act_clip_ratio: float | None = None,
+        act_quantile: int | None = None,
         act_groupsize: int | None = None,
         k_bits: int = 16,
-        k_clip_ratio: float = 1.0,
+        k_clip_ratio: float | None = None,
+        k_quantile: float | None = None,
         k_groupsize: int | None = None,
         v_bits: int = 16,
-        v_clip_ratio: float = 1.0,
+        v_clip_ratio: float | None = None,
+        v_quantile: float | None = None,
         v_groupsize: int | None = None,
         online_had=False,
         *args,
@@ -134,10 +138,10 @@ class QuarotMixtralFlashAttention2(MixtralFlashAttention2):
 
         if act_bits < 16:
             self.input_quantizer = ActQuantizer(
-                act_bits, symmetric=True, clip_ratio=act_clip_ratio, groupsize=act_groupsize
+                act_bits, symmetric=True, clip_ratio=act_clip_ratio, quantile=act_quantile, groupsize=act_groupsize
             )
             self.o_proj_input_quantizer = ActQuantizer(
-                act_bits, symmetric=True, clip_ratio=act_clip_ratio, groupsize=act_groupsize
+                act_bits, symmetric=True, clip_ratio=act_clip_ratio, quantile=act_quantile, groupsize=act_groupsize
             )
         else:
             self.input_quantizer = DummyActQuantizer()
@@ -145,14 +149,14 @@ class QuarotMixtralFlashAttention2(MixtralFlashAttention2):
 
         if k_bits < 16:
             self.k_quantizer = KVQuantizerDequantizer(
-                k_bits, symmetric=False, clip_ratio=k_clip_ratio, groupsize=k_groupsize
+                k_bits, symmetric=False, clip_ratio=k_clip_ratio, quantile=k_quantile, groupsize=k_groupsize
             )
         else:
             self.k_quantizer = lambda x: x
 
         if v_bits < 16:
             self.v_quantizer = KVQuantizerDequantizer(
-                v_bits, symmetric=False, clip_ratio=v_clip_ratio, groupsize=v_groupsize
+                v_bits, symmetric=False, clip_ratio=v_clip_ratio, quantile=v_quantile, groupsize=v_groupsize
             )
         else:
             self.v_quantizer = lambda x: x
@@ -246,13 +250,16 @@ class QuarotMixtralForCausalLM(MixtralForCausalLM):
         online_had_attn: bool = False,
         rms_norm: bool = False,
         act_bits: int = 16,
-        act_clip_ratio: float = 1.0,
+        act_clip_ratio: float | None = None,
+        act_quantile: float | None = None,
         act_groupsize: int | None = None,
         k_bits: int = 16,
-        k_clip_ratio: float = 1.0,
+        k_clip_ratio: float | None = None,
+        k_quantile: float | None = None,
         k_groupsize: int | None = None,
         v_bits: int = 16,
         v_clip_ratio: float = 1.0,
+        v_quantile: float | None = None,
         v_groupsize: int | None = None,
         config: QuarotMixtralConfig = None,
     ) -> None:
@@ -273,12 +280,15 @@ class QuarotMixtralForCausalLM(MixtralForCausalLM):
                 config=config,
                 act_bits=act_bits,
                 act_clip_ratio=act_clip_ratio,
+                act_quantile=act_quantile,
                 act_groupsize=act_groupsize,
                 k_bits=k_bits,
                 k_clip_ratio=k_clip_ratio,
+                k_quantile=k_quantile,
                 k_groupsize=k_groupsize,
                 v_bits=v_bits,
                 v_clip_ratio=v_clip_ratio,
+                v_quantile=v_quantile,
                 v_groupsize=v_groupsize,
                 online_had=online_had_attn,
                 layer_idx=layer_idx,
@@ -288,6 +298,7 @@ class QuarotMixtralForCausalLM(MixtralForCausalLM):
                 config=config,
                 act_bits=act_bits,
                 act_clip_ratio=act_clip_ratio,
+                act_quantile=act_quantile,
                 act_groupsize=act_groupsize,
                 online_had=online_had_mlp,
             )

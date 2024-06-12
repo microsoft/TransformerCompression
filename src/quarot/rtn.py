@@ -196,7 +196,6 @@ def quantize_module_rtn(
     bits: int,
     symmetric: bool = True,
     clip_weights: bool = True,
-    vectorized: bool = True,
     groupsize: int | None = None,
 ) -> None:
     """
@@ -205,7 +204,7 @@ def quantize_module_rtn(
     """
     weight = module.weight
 
-    scale, offset = calculate_scales(weight, bits, symmetric, clip_weights, vectorized=vectorized, groupsize=groupsize)
+    scale, offset = calculate_scales(weight, bits, symmetric, clip_weights, groupsize=groupsize)
     quantized_weight = quantize_weight_rtn(weight, scale, offset, bits)
 
     if isinstance(module, QuarotFP16Linear):
@@ -224,7 +223,6 @@ def quantize_model_rtn(
     bits: int,
     symmetric: bool = True,
     clip_weights: bool = True,
-    vectorized: bool = True,
     groupsize: int | None = None,
 ) -> None:
     """
@@ -235,10 +233,9 @@ def quantize_model_rtn(
         bits: the number of bits to quantize the weights to
         symmetric: whether to use symmetric quantization
         clip_weights: whether to perform a search for the best clip ratio for weight clipping
-        vectorized: whether to use a vectorized implementation for weight clipping
         groupsize: the groupsize for quantization. If None, quantize each channel in full.
     """
     for layer in tqdm(model.model.layers, unit="layer", desc="Quantizing layer"):
         for _, module in layer.named_modules():
             if isinstance(module, QuarotFP16Linear):
-                quantize_module_rtn(module, bits, symmetric, clip_weights, vectorized, groupsize)
+                quantize_module_rtn(module, bits, symmetric, clip_weights, groupsize)

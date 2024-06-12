@@ -291,9 +291,9 @@ def quarot_main(args: argparse.Namespace) -> None:
     with transformers.modeling_utils.no_init_weights():
         # initialize quarot model
 
-        act_args = {'a_bits': args.a_bits, 'a_clip_ratio': args.a_clip_ratio, 'a_groupsize': args.a_groupsize}
-        key_args = {'k_bits': args.k_bits, 'k_clip_ratio': args.k_clip_ratio, 'k_groupsize': args.k_groupsize}
-        value_args = {'v_bits': args.v_bits, 'v_clip_ratio': args.v_clip_ratio, 'v_groupsize': args.v_groupsize}
+        act_args = {'a_bits': args.a_bits, 'a_clip_ratio': args.a_clip_ratio, 'a_groupsize': args.a_groupsize, 'a_quantile': args.a_quantile}
+        key_args = {'k_bits': args.k_bits, 'k_clip_ratio': args.k_clip_ratio, 'k_groupsize': args.k_groupsize, 'k_quantile': args.k_quantile}
+        value_args = {'v_bits': args.v_bits, 'v_clip_ratio': args.v_clip_ratio, 'v_groupsize': args.v_groupsize, 'v_quantile': args.v_quantile}
         quarot_model = get_quarot_model(
             model_name_or_path=args.model,
             rotate=args.rotate,
