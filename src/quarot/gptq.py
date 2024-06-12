@@ -88,7 +88,7 @@ def quantize_weight_gptq(
     H.diagonal().add_(percdamp * torch.mean(torch.diag(H)))
 
     # calculate the inverse layer Hessian (Cholesky form).
-    # NB this is different to the original implementation. We require the (transpose) of the choleskyu of the _inverse_ of H.
+    # NB this is different to the original implementation. We require the (transpose) of the cholesky of the _inverse_ of H.
     # oringially this was done by chol(inv(H)). Here we do chol(H)^-1, with some re-ordering to ensure we get an equivalent solution.
     # chol(inv(H), upper=True) = flip(inv(chol(flip(H), upper=False)))
     # This version requires fewer flops and should be numerically superior.
@@ -185,13 +185,12 @@ class HessianHook:
     Onnce the hook is applied to a module, each batch gets stored in the hook. Between batches, update_hessian()
     is called to compute the Hessian of the layer.
     """
-
     def __init__(self):
         self.H = None
         self.num_samples = 0
         self.X = None
 
-    def __call__(self, _, args: tuple, _output: Any) -> None:
+    def __call__(self, _module:torch.nn.Module, args: tuple, _output: Any) -> None:
         if self.X is not None:
             raise ValueError("HessianHook called multiple times without update")
         self.X = args[0]
@@ -200,27 +199,32 @@ class HessianHook:
         if self.X is None:
             raise ValueError("No input to compute Hessian")
 
-        # remove reference to this match
+        # remove reference to this batch
         X = self.X
         self.X = None
+        
+        # if this is a packed tensor, unpack it
+        if isinstance(X, PackedQuantizedTensor):
+            X = X.quantized_x
 
-        # maske as needed, count elements
+        # mask as needed, count elements
         batch_size, seq_len = X.shape[:2]
         if ignore_mask is not None:
             X[ignore_mask == 0] = 0
-            num_elements = ignore_mask.sum()
+            num_elements = ignore_mask.sum() 
         else:
             num_elements = batch_size * seq_len
 
         # compute the Hessian update
-        X = X * torch.rsqrt(torch.tensor(num_elements, device=X.device, dtype=X.dtype))
+        X = X.to('cuda', dtype=torch.float32)
+        X = X * torch.rsqrt(torch.tensor(num_elements, device='cuda', dtype=torch.float32))
         H_batch = torch.einsum('bld,blc->dc', X, X)
         if self.H is None:
             self.H = H_batch
         else:
-            H = H * (self.num_samples / (self.num_samples + num_elements)) + H_batch * (
-                num_elements / (self.num_samples + num_elements)
-            )
+            alpha = self.num_samples / (self.num_samples + num_elements)
+            beta = num_elements / (self.num_samples + num_elements)
+            self.H = self.H * alpha + H_batch * beta
         self.num_samples += num_elements
 
 
@@ -237,7 +241,12 @@ def get_hessians_and_output(
 
     for each of the 4 components of the layer (QKV, O_proj, upgate, down_proj), we captuire the signal at this point and compute the Hessian.
 
-    Return
+    Returns:
+    - H_qkv: the Hessian of the QKV component
+    - H_o_proj: the Hessian of the O_proj component
+    - H_upgate: the Hessian of the upgate component
+    - H_down_proj: the Hessian of the down_proj component
+    - outputs: the output of the layer
     """
     layer_adapter.layer.to(device)
     modules = [
@@ -247,24 +256,22 @@ def get_hessians_and_output(
         layer_adapter.get_mlp_output(),
     ]
     hooks = [HessianHook() for _ in modules]
-    hooks = [m.register_forward_hook(h) for m, h in zip(modules, hooks)]
+    hook_handles = [m.register_forward_hook(h) for m, h in zip(modules, hooks)]
 
     # loop over the batches
     outputs = []
-    if layer_masks is None:
+    if layer_masks in [None, []]:
         layer_masks = [None] * len(layer_args)
-    for layer_args_batch, layer_kwargs_batch, mask_batch in zip(layer_args, layer_kwargs, layer_masks):
-        layer_args_batch, layer_kwargs_batch = map_tensors([layer_args_batch, layer_kwargs_batch], device=device)
-        out = layer_adapter.layer(*layer_args_batch, **layer_kwargs_batch)
+    for args_batch, kwargs_batch, mask_batch in zip(layer_args, layer_kwargs, layer_masks):
+        args_batch, kwargs_batch = map_tensors([args_batch, kwargs_batch], device=device)
+        out = layer_adapter.layer(*args_batch, **kwargs_batch)
         if isinstance(out, tuple):
             out = out[layer_adapter.hidden_states_output_position]
         outputs.append(out)
         [h.update_hessian(mask_batch) for h in hooks]
 
-    for h in hooks:
-        h.remove()
-
     H_qkv, H_o_proj, H_upgate, H_down_proj = [h.H for h in hooks]
+    [h.remove() for h in hook_handles]
     return H_qkv, H_o_proj, H_upgate, H_down_proj, outputs
 
 
@@ -294,7 +301,7 @@ def set_tensors(
     else:
         raise ValueError(f"Unsupported module type {type(module)}")
 
-
+@torch.no_grad()
 def quantize_model_gptq(
     model_adapter: ModelAdapter,
     dataloader: torch.utils.data.DataLoader[torch.Tensor],
@@ -321,6 +328,10 @@ def quantize_model_gptq(
     - optimize_scales: whether to optimize the scaling factors after quantization.
     """
     model_adapter.model.eval()
+    
+    quantizer_kwargs = dict(
+        bits=bits, symmetric=symmetric, percdamp=damping, groupsize=groupsize, optimize_scales=optimize_scales
+    )
 
     inps, args, kwargs, ignore_masks = [], [], [], []
     for batch in dataloader:
@@ -346,13 +357,10 @@ def quantize_model_gptq(
         W_down_proj = layer_adapter.get_mlp_output().weight.data
 
         # 4 calls to quantizer
-        kwargs = dict(
-            bits=bits, symmetric=symmetric, percdamp=damping, groupsize=groupsize, optimize_scales=optimize_scales
-        )
-        Q_qkv, scale_qkv, offset_qkv = quantize_weight_gptq(W_qkv, H_qkv, **kwargs)
-        Q_o_proj, scale_o_proj, offset_o_proj = quantize_weight_gptq(W_o_proj, H_o_proj, **kwargs)
-        Q_upgate, scale_upgate, offset_upgate = quantize_weight_gptq(W_upgate, H_upgate, bits, **kwargs)
-        Q_down_proj, scale_down_proj, offset_down_proj = quantize_weight_gptq(W_down_proj, H_down_proj, **kwargs)
+        Q_qkv, scale_qkv, offset_qkv = quantize_weight_gptq(W_qkv, H_qkv, **quantizer_kwargs)
+        Q_o_proj, scale_o_proj, offset_o_proj = quantize_weight_gptq(W_o_proj, H_o_proj, **quantizer_kwargs)
+        Q_upgate, scale_upgate, offset_upgate = quantize_weight_gptq(W_upgate, H_upgate, **quantizer_kwargs)
+        Q_down_proj, scale_down_proj, offset_down_proj = quantize_weight_gptq(W_down_proj, H_down_proj, **quantizer_kwargs)
 
         # set the quantized weights and scales of the attention inputs
         # now that we deconcateenate here, with start/end accounting for the different sizes
