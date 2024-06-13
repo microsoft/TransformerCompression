@@ -1,49 +1,67 @@
-# Copyright (c) Microsoft Corporation.
-# Licensed under the MIT license.
+# coding=utf-8
+# Copyright 2024 Microsoft and the HuggingFace Inc. team. All rights reserved.
 #
-# This file contains derivations from
-# https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py
-# Copyright 2022 EleutherAI and the HuggingFace Inc. team. All rights reserved.
-# https://www.apache.org/licenses/LICENSE-2.0
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+import warnings
+from typing import Any, Optional, Tuple
 
 import torch
 from torch import FloatTensor, LongTensor, Tensor, matmul
 from torch.nn import Linear, Module
 from transformers import PretrainedConfig, PreTrainedTokenizerBase
-from transformers.models.llama.modeling_llama import LlamaConfig, LlamaDecoderLayer, LlamaForCausalLM, LlamaRMSNorm
+from transformers.models.phi3.modeling_phi3 import Phi3Config, Phi3DecoderLayer, Phi3ForCausalLM, Phi3RMSNorm
 
 from slicegpt.model_adapter import LayerAdapter, ModelAdapter
 
 
-class CompressedLlamaDecoderLayer(LlamaDecoderLayer):
+class CompressedPhi3DecoderLayer(Phi3DecoderLayer):
     """
-    This class simulates the LlamaDecoderLayer class from transformers
-    (https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py#L376)
+    This class simulates the Phi3DecoderLayer class from transformers
+    (https://github.com/huggingface/transformers/blob/main/src/transformers/models/phi3/modeling_phi3.py#L817)
     but with the addition of a shortcut_Q attribute. This attribute is used to rotate the residual tensors.
     """
 
     def forward(
         self,
-        hidden_states: Tensor,
-        attention_mask: Tensor | None = None,
-        position_ids: LongTensor | None = None,
-        past_key_value: tuple[Tensor] | None = None,
-        output_attentions: bool | None = False,
-        use_cache: bool | None = False,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        output_attentions: Optional[bool] = False,
+        use_cache: Optional[bool] = False,
         **kwargs,
-    ) -> tuple:
+    ) -> Tuple[Any]:
+        if "padding_mask" in kwargs:
+            warnings.warn(
+                "Passing `padding_mask` is deprecated and will be removed in v4.37. "
+                "Please make sure use `attention_mask` instead.`"
+            )
         """
         Args:
-            hidden_states (`torch.FloatTensor`): input to the layer of shape `(batch, seq_len, embed_dim)`
+            hidden_states (`torch.FloatTensor`):
+                input to the layer of shape `(batch, seq_len, embed_dim)`
             attention_mask (`torch.FloatTensor`, *optional*): attention mask of size
                 `(batch, 1, tgt_len, src_len)` where padding elements are indicated by very large negative values.
+            position_ids (`torch.LongTensor` of shape `({0})`, *optional*):
+                Indices of positions of each input sequence tokens in the position embeddings. Selected in the range
+                `[0, config.n_positions - 1]`. [What are position IDs?](../glossary#position-ids)
             output_attentions (`bool`, *optional*):
-                Whether to return the attentions tensors of all attention layers. See `attentions` under
+                Whether or not to return the attentions tensors of all attention layers. See `attentions` under
                 returned tensors for more detail.
             use_cache (`bool`, *optional*):
                 If set to `True`, `past_key_values` key value states are returned and can be used to speed up decoding
                 (see `past_key_values`).
-            past_key_value (`tuple(torch.FloatTensor)`, *optional*): cached past key and value projection states
+            past_key_value (`Tuple(torch.FloatTensor)`, *optional*): cached past key and value projection states
         """
 
         residual = hidden_states
@@ -51,31 +69,30 @@ class CompressedLlamaDecoderLayer(LlamaDecoderLayer):
         hidden_states = self.input_layernorm(hidden_states)
 
         # Self Attention
-        hidden_states, self_attn_weights, present_key_value = self.self_attn(
+        attn_outputs, self_attn_weights, present_key_value = self.self_attn(
             hidden_states=hidden_states,
             attention_mask=attention_mask,
             position_ids=position_ids,
             past_key_value=past_key_value,
             output_attentions=output_attentions,
             use_cache=use_cache,
-            **kwargs,
         )
+
         if self.attn_shortcut_Q is not None:
             rotated_residual = matmul(residual, self.attn_shortcut_Q)
-            hidden_states = rotated_residual + hidden_states
+            hidden_states = rotated_residual + self.resid_attn_dropout(attn_outputs)
         else:
-            hidden_states = residual + hidden_states
+            hidden_states = residual + self.resid_attn_dropout(attn_outputs)
 
-        # Fully Connected
         residual = hidden_states
         hidden_states = self.post_attention_layernorm(hidden_states)
         hidden_states = self.mlp(hidden_states)
 
         if self.mlp_shortcut_Q is not None:
             rotated_residual = matmul(residual, self.mlp_shortcut_Q)
-            hidden_states = rotated_residual + hidden_states
+            hidden_states = rotated_residual + self.resid_mlp_dropout(hidden_states)
         else:
-            hidden_states = residual + hidden_states
+            hidden_states = residual + self.resid_mlp_dropout(hidden_states)
 
         outputs = (hidden_states,)
 
@@ -88,10 +105,10 @@ class CompressedLlamaDecoderLayer(LlamaDecoderLayer):
         return outputs
 
 
-class LlamaLayerAdapter(LayerAdapter):
-    def __init__(self, layer: LlamaDecoderLayer) -> None:
+class Phi3LayerAdapter(LayerAdapter):
+    def __init__(self, layer: Phi3DecoderLayer) -> None:
         super().__init__()
-        self._layer: LlamaDecoderLayer = layer
+        self._layer: Phi3DecoderLayer = layer
 
     @property
     def layer(self) -> Module:
@@ -112,22 +129,22 @@ class LlamaLayerAdapter(LayerAdapter):
         return self.layer.post_attention_layernorm
 
     def get_attention_inputs(self) -> list[Linear]:
-        return [self.layer.self_attn.q_proj, self.layer.self_attn.k_proj, self.layer.self_attn.v_proj]
+        return [self.layer.self_attn.qkv_proj]
 
     def get_attention_output(self) -> Linear:
         return self.layer.self_attn.o_proj
 
     def get_mlp_inputs(self) -> list[Linear]:
-        return [self.layer.mlp.gate_proj, self.layer.mlp.up_proj]
+        return [self.layer.mlp.gate_up_proj]
 
     def get_mlp_output(self) -> Linear:
         return self.layer.mlp.down_proj
 
 
-class LlamaModelAdapter(ModelAdapter):
-    def __init__(self, model: LlamaForCausalLM) -> None:
+class Phi3ModelAdapter(ModelAdapter):
+    def __init__(self, model: Phi3ForCausalLM) -> None:
         super().__init__()
-        self._model: LlamaForCausalLM = model
+        self._model: Phi3ForCausalLM = model
 
     @property
     def model(self) -> Module:
@@ -139,7 +156,7 @@ class LlamaModelAdapter(ModelAdapter):
 
     @property
     def config_type(self) -> type:
-        return LlamaConfig
+        return Phi3Config
 
     @property
     def parallel_blocks(self) -> bool:
@@ -147,6 +164,7 @@ class LlamaModelAdapter(ModelAdapter):
 
     @property
     def seqlen(self) -> int:
+        # if no sliding window, max_position_embeddings is same as original_max_position_embeddings
         return self.config.max_position_embeddings
 
     @property
@@ -159,19 +177,19 @@ class LlamaModelAdapter(ModelAdapter):
 
     @property
     def original_layer_type(self) -> type:
-        return LlamaDecoderLayer
+        return Phi3DecoderLayer
 
     @property
     def original_layer_norm_type(self) -> type:
-        return LlamaRMSNorm
+        return Phi3RMSNorm
 
     @property
     def layer_adapter_type(self) -> type:
-        return LlamaLayerAdapter
+        return Phi3LayerAdapter
 
     @property
     def compressed_layer_type(self) -> type:
-        return CompressedLlamaDecoderLayer
+        return CompressedPhi3DecoderLayer
 
     @property
     def use_cache(self) -> bool:
@@ -209,11 +227,6 @@ class LlamaModelAdapter(ModelAdapter):
     def get_lm_head(self) -> Linear:
         return self.model.lm_head
 
-    def post_init(self, tokenizer: PreTrainedTokenizerBase) -> None:
-        # Llama-2 and Llama-3 don't have a pad tokens by default
-        tokenizer.pad_token = tokenizer.eos_token
-        self.config.pad_token_id = tokenizer.pad_token_id
-
     @classmethod
     def _from_pretrained(
         cls,
@@ -224,15 +237,15 @@ class LlamaModelAdapter(ModelAdapter):
         local_files_only: bool = False,
         token: str | bool | None = None,
     ) -> ModelAdapter | None:
-        if not (model_name.startswith("meta-llama/Llama-2") or model_name.startswith("meta-llama/Meta-Llama-3")):
+        if not model_name.startswith("microsoft/Phi-3-mini-4k-instruct"):
             return None
 
-        model = LlamaForCausalLM.from_pretrained(
+        model = Phi3ForCausalLM.from_pretrained(
             model_path, torch_dtype=dtype, token=token, local_files_only=local_files_only
         )
         model.config.torch_dtype = dtype
 
-        return LlamaModelAdapter(model)
+        return Phi3ModelAdapter(model)
 
     @classmethod
     def _from_uninitialized(
@@ -244,18 +257,18 @@ class LlamaModelAdapter(ModelAdapter):
         local_files_only: bool = False,
         token: str | bool | None = None,
     ) -> ModelAdapter | None:
-        if not (model_name.startswith("meta-llama/Llama-2") or model_name.startswith("meta-llama/Meta-Llama-3")):
+        if not model_name.startswith("microsoft/Phi-3-mini-4k-instruct"):
             return None
 
-        class UninitializedLlamaForCausalLM(LlamaForCausalLM):
+        class UninitializedPhi3ForCausalLM(Phi3ForCausalLM):
             def _init_weights(self, _) -> None:
                 # Prevent weight initialization
                 pass
 
-        config = LlamaConfig.from_pretrained(
+        config = Phi3Config.from_pretrained(
             model_path, torch_dtype=dtype, token=token, local_files_only=local_files_only
         )
-        model = UninitializedLlamaForCausalLM(config)
+        model = UninitializedPhi3ForCausalLM(config)
         model = model.to(dtype=dtype)
 
-        return LlamaModelAdapter(model)
+        return Phi3ModelAdapter(model)

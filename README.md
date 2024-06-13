@@ -12,7 +12,7 @@ The code is arranged as a package `slicegpt` in `/src`, and scripts to replicate
 `/experiments`. To install the `slicegpt` package, we recommend
 
 ```
-    pip install -e . 
+    pip install -e .[experiment]
 ```
 
 ## Running SliceGPT
@@ -39,7 +39,7 @@ manually or using a key vault. Alternatively, set the environment variable `HF_T
 To install additional dependencies required for post-slicing recovery fine-tuning (RFT):
 
 ```
-    pip install -e .[finetune]
+    pip install -e .[experiment,finetune]
 ```
 
 The following replicates the experiments in the paper (LoRA hyperparams valid for all Llama-2 and Phi-2 models): 
@@ -87,9 +87,14 @@ Notes:
 
 The following models from Hugging Face hub are currently supported
 - [microsoft/phi-2](https://huggingface.co/microsoft/phi-2)
+- [microsoft/Phi-3-mini-4k-instruct](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct)
 - [meta-llama/Llama-2-7b-hf](https://huggingface.co/meta-llama/Llama-2-7b)
 - [meta-llama/Llama-2-13b-hf](https://huggingface.co/meta-llama/Llama-2-13b)
 - [meta-llama/Llama-2-70b-hf](https://huggingface.co/meta-llama/Llama-2-70b)
+- [meta-llama/Meta-Llama-3-8B](https://huggingface.co/meta-llama/Meta-Llama-3-8B)
+- [meta-llama/Meta-Llama-3-8B-Instruct](https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct)
+- [meta-llama/Meta-Llama-3-70B](https://huggingface.co/meta-llama/Meta-Llama-3-70B)
+- [meta-llama/Meta-Llama-3-70B-Instruct](https://huggingface.co/meta-llama/Meta-Llama-3-70B-Instruct)
 - [facebook/opt-125m](https://huggingface.co/facebook/opt-125m)
 - [facebook/opt-1.3b](https://huggingface.co/facebook/opt-1.3b)
 - [facebook/opt-2.7b](https://huggingface.co/facebook/opt-2.7b)
@@ -118,7 +123,7 @@ and update `hf_utils.get_model_and_tokenizer` before slicing the new model.
   This class should also  provide an adapted `forward()` method to work with the compressed model. 
   This method should specify how the skip connection orthogonal matrices are used, depending on 
   whether MLP and attention blocks are sequential ([OPT](./src/slicegpt/adapters/opt_adapter.py), 
-  [Llama-2](./src/slicegpt/adapters/llama_adapter.py)) or parallel 
+  [Llama-2/Llama-3](./src/slicegpt/adapters/llama_adapter.py)) or parallel 
   ([Phi-2](./src/slicegpt/adapters/phi2_adapter.py)). The `self.*_shortcut_Q` matrices are attached to the modules during
   slicing and are available in `forward()`. If the skip connection does not need modification, these matrices will be None, 
   and the `forward()` method can follow the original workflow. For more details on this, 

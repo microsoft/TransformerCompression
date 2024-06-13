@@ -3,9 +3,9 @@
 
 import logging
 import pathlib
+from typing import Any
 
 import torch
-from peft import LoraConfig, get_peft_model
 from transformers import AutoTokenizer, PreTrainedTokenizerBase
 
 from .layernorm_fusion import fuse_modules, replace_layers
@@ -116,13 +116,15 @@ def load_sliced_model(
     sliced_model_path: str,
     *,
     token: str | None = None,
-    lora_config: LoraConfig = None,
+    lora_config: Any = None,
     sparsity: float | None = None,
     round_interval: int | None = 1,
 ) -> tuple[ModelAdapter, PreTrainedTokenizerBase]:
     """
-    Load the sliced model and the tokenizer from the given path. If lora_config is supplied as an arg then this
-    function will return a PEFT model (post-slicing finetuned model).
+    Load the sliced model and the tokenizer from the given path. If lora_config: peft.LoraConfig is supplied
+    as an arg then this function will return a PEFT model (post-slicing finetuned model). Despite being declared as
+    "Any", lora_config is supposed to have the type peft.LoraConfig. It has type "Any" in the function's signature,
+    so that it would be possible to use it without taking a dependency on peft, when one is not required.
     The corresponding model adapter class must be imported before calling this method.
     """
     my_model_suffix = pathlib.Path(model_name).name
@@ -164,6 +166,8 @@ def load_sliced_model(
     slice_rotated_model(model_adapter)
 
     if lora_config:
+        from peft import get_peft_model
+
         model_adapter.model = get_peft_model(model_adapter.model, lora_config)
 
     logging.info(f"Loading sliced model weights from {sliced_model_path}")
