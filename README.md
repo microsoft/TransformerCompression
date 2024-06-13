@@ -1,12 +1,15 @@
 # Transformer Compression
 
 This repository contains the code for the following papers:
-- [SliceGPT](#slicegpt): Compress Large Language Models by Deleting Rows and Columns [[arxiv](https://arxiv.org/abs/2401.15024)]
-- [QuaRot](#quarot): Outlier-Free 4-Bit Inference in Rotated LLMs [[arxiv](https://arxiv.org/pdf/2404.00456)]
+- SliceGPT: Compress Large Language Models by Deleting Rows and Columns (ICLR'24) [[arxiv](https://arxiv.org/abs/2401.15024), [Hugging Face](https://huggingface.co/papers/2401.15024)]
+- QuaRot: Outlier-Free 4-Bit Inference in Rotated LLMs [[arxiv](https://arxiv.org/pdf/2404.00456)]
 
-# SliceGPT 
 
-This repository contains the code for the paper [SliceGPT](https://arxiv.org/abs/2401.15024) (ICLR'24). Also discussed on [Hugging Face](https://huggingface.co/papers/2401.15024). 
+<details>
+<summary style="font-size: 20px;">SliceGPT </summary>
+<p></p>
+
+## Installation
 
 SliceGPT is a new post-training sparsification scheme that makes transformer networks (including LLMs) smaller by 
 first applying orthogonal transformations to each transformer layer that leave the model unchanged, and then slicing off the 
@@ -147,9 +150,13 @@ Example: [run_slicegpt.py](./experiments/run_slicegpt.py)
 
 _Note:_ If the model you wish to support is not available in Hugging Face, you will also need to implement 
 custom model loading and initialization functionality.
+</details>
 
-# QuaRot
-This repository contains the code for the paper [QuaRot](https://arxiv.org/pdf/2404.00456).
+<details>
+<summary style="font-size: 20px;">QuaRot</summary>
+<p></p>
+
+## Installation
 
 The code is arranged as a package `quarot` in `/src`, and scripts to replicate experiments from the paper are in 
 `/experiments`. To install the `quarot` package, we recommend
@@ -193,9 +200,9 @@ The following models from Hugging Face hub are currently supported (including th
 Require testing:
 - [meta-llama/Meta-Llama-3-70B](https://huggingface.co/meta-llama/Meta-Llama-3-70B)
 - [meta-llama/Llama-2-70b-hf](https://huggingface.co/meta-llama/Llama-2-70b)
+</details>
 
-
-# Contributing
+## Contributing
 
 This project welcomes contributions and suggestions.  Most contributions require you to agree to a
 Contributor License Agreement (CLA) declaring that you have the right to, and actually do, grant us
@@ -209,7 +216,7 @@ This project has adopted the [Microsoft Open Source Code of Conduct](https://ope
 For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or
 contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
 
-# Trademarks
+## Trademarks
 
 This project may contain trademarks or logos for projects, products, or services. Authorized use of Microsoft 
 trademarks or logos is subject to and must follow 
