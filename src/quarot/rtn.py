@@ -133,13 +133,13 @@ def calculate_scales(
     """
     Calculate the scales (and offsets if asymmetric) for quantizing a weight tensor to INT<bits>
 
-    If search is true, we run a grid search for the best scalubg factor
+    If search is true, we run a grid search for the best scaling factor
     otherwise, we use the quantile of the data to scale
-    if quantile is None we use a 'clip ratio' time the max weight.
+    if quantile is None we use a 'clip ratio' times the max weight.
 
     Quantile is ignored if doing a search. Clip ratio is ignored if quantile is not None.
 
-    This method account for grouping: we reshape the data into num_groups x group_size, and then squeeze out at the end.
+    This method accounts for grouping: we reshape the data into num_groups x group_size, and then squeeze out at the end.
     """
     orig_device = weight.device
     weight = weight.to(device=device)
@@ -193,7 +193,6 @@ def quantize_module_rtn(
     module: QuarotFP16Linear,
     bits: int,
     symmetric: bool = True,
-    clip_weights: bool = True,
     groupsize: int | None = None,
 ) -> None:
     """
@@ -202,7 +201,7 @@ def quantize_module_rtn(
     """
     weight = module.weight
 
-    scale, offset = calculate_scales(weight, bits, symmetric, clip_weights, groupsize=groupsize)
+    scale, offset = calculate_scales(weight, bits, symmetric=symmetric, groupsize=groupsize)
     quantized_weight = quantize_weight_rtn(weight, scale, offset, bits)
 
     if isinstance(module, QuarotFP16Linear):
@@ -220,7 +219,6 @@ def quantize_model_rtn(
     model,
     bits: int,
     symmetric: bool = True,
-    clip_weights: bool = True,
     groupsize: int | None = None,
 ) -> None:
     """
@@ -236,4 +234,4 @@ def quantize_model_rtn(
     for layer in tqdm(model.model.layers, unit="layer", desc="Quantizing layer"):
         for _, module in layer.named_modules():
             if isinstance(module, QuarotFP16Linear):
-                quantize_module_rtn(module, bits, symmetric, clip_weights, groupsize)
+                quantize_module_rtn(module, bits, symmetric, groupsize)
