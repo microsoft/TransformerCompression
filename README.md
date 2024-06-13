@@ -1,4 +1,10 @@
-# Transformer Compression with SliceGPT
+# Transformer Compression
+
+This repository contains the code for the following papers:
+- [SliceGPT](#slicegpt): Compress Large Language Models by Deleting Rows and Columns [[arxiv](https://arxiv.org/abs/2401.15024)]
+- [QuaRot](#quarot): Outlier-Free 4-Bit Inference in Rotated LLMs [[arxiv](https://arxiv.org/pdf/2404.00456)]
+
+# SliceGPT 
 
 This repository contains the code for the paper [SliceGPT](https://arxiv.org/abs/2401.15024) (ICLR'24). Also discussed on [Hugging Face](https://huggingface.co/papers/2401.15024). 
 
@@ -142,7 +148,54 @@ Example: [run_slicegpt.py](./experiments/run_slicegpt.py)
 _Note:_ If the model you wish to support is not available in Hugging Face, you will also need to implement 
 custom model loading and initialization functionality.
 
-## Contributing
+# QuaRot
+This repository contains the code for the paper [QuaRot](https://arxiv.org/pdf/2404.00456).
+
+The code is arranged as a package `quarot` in `/src`, and scripts to replicate experiments from the paper are in 
+`/experiments`. To install the `quarot` package, we recommend
+
+```
+    pip install -e .
+    pip install packaging
+    pip install flash-attn==2.5.8 --no-build-isolation
+    pip install -e .[quarot]
+```
+
+## Running QuaRot
+
+To run QuaRot A4W4KV4 with GPTQ on `microsoft/Phi3-mini-4k-instruct`, from the `experiments` folder, run 
+```
+    python run_quarot.py \
+           --model microsoft/Phi3-mini-4k-instruct \
+           --rotate \
+           --w-bits 4 \
+           --w-gptq \
+           --a-bits 4 \
+           --k-bits 4 \
+           --v-bits 4 \
+           --lm-eval \
+           --tasks piqa \
+           --device cuda:0 \
+           --no-wandb
+```
+
+This will apply full 4-bit QuaRot to the Phi-3 model, storing the `int` weights in `torch.float16`, and evaluate the WikiText2 perplexity and [lm eval](https://github.com/EleutherAI/lm-evaluation-harness) PIQA task accuracy. To run RTN QuaRot, use `--w-rtn` instead of `--w-gptq`. For large models requiring multiple GPU cards, use `--distribute-model`.
+
+## Supported models
+
+The following models from Hugging Face hub are currently supported (including their `instruct` versions):
+- [mistralai/Mixtral-8x7B-v0.1](https://huggingface.co/mistralai/Mixtral-8x7B-v0.1)
+- [microsoft/Phi-3-mini-4k-instruct](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct)
+- [meta-llama/Meta-Llama-3-8B](https://huggingface.co/meta-llama/Meta-Llama-3-8B)
+- [meta-llama/Llama-2-7b-hf](https://huggingface.co/meta-llama/Llama-2-7b)
+- [meta-llama/Llama-2-13b-hf](https://huggingface.co/meta-llama/Llama-2-13b)
+
+Require testing:
+- [meta-llama/Meta-Llama-3-70B](https://huggingface.co/meta-llama/Meta-Llama-3-70B)
+- [meta-llama/Llama-2-70b-hf](https://huggingface.co/meta-llama/Llama-2-70b)
+
+
+# Contributing
 
 This project welcomes contributions and suggestions.  Most contributions require you to agree to a
 Contributor License Agreement (CLA) declaring that you have the right to, and actually do, grant us
@@ -156,7 +209,7 @@ This project has adopted the [Microsoft Open Source Code of Conduct](https://ope
 For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or
 contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
 
-## Trademarks
+# Trademarks
 
 This project may contain trademarks or logos for projects, products, or services. Authorized use of Microsoft 
 trademarks or logos is subject to and must follow 
