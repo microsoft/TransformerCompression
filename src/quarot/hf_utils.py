@@ -44,7 +44,6 @@ def get_quarot_model(
     value_args: dict,
     model_config: PretrainedConfig,
 ):
-
     lm_classes = {
         'meta-llama/Llama-2-7b-hf': QuarotLlamaForCausalLM,
         'meta-llama/Llama-2-13b-hf': QuarotLlamaForCausalLM,
@@ -60,6 +59,7 @@ def get_quarot_model(
     online_had_attn = True if rotate else False
     rms_norm = True if rotate else False
     return lm_classes[model_name_or_path](
+        config=model_config,
         online_had_mlp=online_had_mlp,
         online_had_attn=online_had_attn,
         rms_norm=rms_norm,
@@ -75,7 +75,6 @@ def get_quarot_model(
         v_clip_ratio=value_args['v_clip_ratio'],
         v_quantile=value_args['v_quantile'],
         v_groupsize=value_args['v_groupsize'],
-        config=model_config,
     )
 
 

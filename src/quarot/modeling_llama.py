@@ -205,8 +205,11 @@ class QuarotFP16LlamaFlashAttention2(LlamaFlashAttention2):
 
 
 class QuarotLlamaForCausalLM(LlamaForCausalLM):
+    config_class = QuarotLlamaConfig
+
     def __init__(
         self,
+        config: QuarotLlamaConfig = None,
         online_had_mlp: bool = False,
         online_had_attn: bool = False,
         rms_norm: bool = False,
@@ -222,7 +225,6 @@ class QuarotLlamaForCausalLM(LlamaForCausalLM):
         v_clip_ratio: float | None = None,
         v_quantile: float | None = None,
         v_groupsize: int | None = None,
-        config: QuarotLlamaConfig = None,
     ) -> None:
         """
         Args:

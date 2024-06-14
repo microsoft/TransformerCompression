@@ -296,8 +296,11 @@ class QuarotFP16Phi3FlashAttention2(Phi3FlashAttention2):
 
 
 class QuarotPhi3ForCausalLM(Phi3ForCausalLM):
+    config_class = QuarotPhi3Config
+
     def __init__(
         self,
+        config: QuarotPhi3Config = None,
         online_had_mlp: bool = False,
         online_had_attn: bool = False,
         rms_norm: bool = False,
@@ -313,7 +316,6 @@ class QuarotPhi3ForCausalLM(Phi3ForCausalLM):
         v_clip_ratio: float = 1.0,
         v_quantile: float | None = None,
         v_groupsize: int | None = None,
-        config: QuarotPhi3Config = None,
     ) -> None:
         """
         Args:

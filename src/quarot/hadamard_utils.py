@@ -164,7 +164,6 @@ def apply_hadamard(modules, head_dim=None):
     """
 
     for module in flatten(modules):
-
         W_ = module.weight.data
         dtype = W_.dtype
         dev = W_.device

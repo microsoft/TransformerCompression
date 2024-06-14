@@ -244,8 +244,11 @@ class QuarotMixtralFlashAttention2(MixtralFlashAttention2):
 
 
 class QuarotMixtralForCausalLM(MixtralForCausalLM):
+    config_class = QuarotMixtralConfig
+
     def __init__(
         self,
+        config: QuarotMixtralConfig = None,
         online_had_mlp: bool = False,
         online_had_attn: bool = False,
         rms_norm: bool = False,
@@ -261,7 +264,6 @@ class QuarotMixtralForCausalLM(MixtralForCausalLM):
         v_clip_ratio: float = 1.0,
         v_quantile: float | None = None,
         v_groupsize: int | None = None,
-        config: QuarotMixtralConfig = None,
     ) -> None:
         """
         Args:
