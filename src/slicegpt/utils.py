@@ -99,3 +99,17 @@ def flatten(input):
             yield from flatten(item)
     else:
         yield input
+
+
+# TODO: typing
+def unflatten(flat_list, like):
+    """ "
+    The inverse fo the flatten function above: take a flat list of elements and nest them according to the structure of the 'like' list (or nested list)
+    """
+    ret = []
+    for element in like:
+        if isinstance(element, list):
+            ret.append(unflatten(flat_list, like=element))
+        else:
+            ret.append(flat_list.pop(0))
+    return ret

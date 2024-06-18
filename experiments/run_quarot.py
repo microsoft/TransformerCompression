@@ -154,16 +154,13 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
         help='Number of bits to quantize the weights to.',
     )
     parser.add_argument(
+        '--a-asym', type=str2bool, default=False, help='Asymmetric activation quantization (else symmetric by default).'
+    )
+    parser.add_argument(
         '--a-clip-ratio',
         type=float,
         default=1.0,
         help='Clip ratio for activation quantization: new_max = max * clip_ratio.',
-    )
-    parser.add_argument(
-        '--a-quantile',
-        type=float,
-        default=None,
-        help='Quantile for activation quantization, default is None.',
     )
     parser.add_argument(
         '--a-groupsize',
@@ -186,12 +183,6 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
         help='Clip ratio for keys quantization: new_max = max * clip_ratio.',
     )
     parser.add_argument(
-        '--k-quantile',
-        type=float,
-        default=None,
-        help='Quantile for keys quantization, default is None.',
-    )
-    parser.add_argument(
         '--k-groupsize',
         type=int,
         default=None,
@@ -208,12 +199,6 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
         type=float,
         default=1.0,
         help='Clip ratio for values quantization: new_max = max * clip_ratio.',
-    )
-    parser.add_argument(
-        '--v-quantile',
-        type=float,
-        default=None,
-        help='Quantile for values quantization, default is None.',
     )
     parser.add_argument(
         '--v-groupsize',
@@ -304,35 +289,30 @@ def quarot_main(args: argparse.Namespace) -> None:
         # Rotate the model with fused Hadamard transformations.
         rotate.rotate_model(model_adapter, args.rotation_seed)
 
-    model_config = quarot_model_config(args.model, dtype=config.dtype, groupsize=args.w_groupsize, offset=args.w_asym)
+    quantization_kwargs = dict(
+        w_bits=args.w_bits,
+        w_groupsize=args.w_groupsize,
+        w_asym=args.w_asym,
+        #
+        act_bits=args.a_bits,
+        act_groupsize=args.a_groupsize,
+        act_asym=args.a_asym,
+        act_clip_ratio=args.a_clip_ratio,
+        #
+        k_bits=args.k_bits,
+        k_clip_ratio=args.k_clip_ratio,
+        v_bits=args.v_bits,
+        v_clip_ratio=args.v_clip_ratio,
+    )
+
+    model_config = quarot_model_config(args.model, dtype=config.dtype, quantization_kwargs=quantization_kwargs)
 
     with transformers.modeling_utils.no_init_weights():
         # initialize quarot model
 
-        act_args = {
-            'a_bits': args.a_bits,
-            'a_clip_ratio': args.a_clip_ratio,
-            'a_groupsize': args.a_groupsize,
-            'a_quantile': args.a_quantile,
-        }
-        key_args = {
-            'k_bits': args.k_bits,
-            'k_clip_ratio': args.k_clip_ratio,
-            'k_groupsize': args.k_groupsize,
-            'k_quantile': args.k_quantile,
-        }
-        value_args = {
-            'v_bits': args.v_bits,
-            'v_clip_ratio': args.v_clip_ratio,
-            'v_groupsize': args.v_groupsize,
-            'v_quantile': args.v_quantile,
-        }
         quarot_model = get_quarot_model(
             model_name_or_path=args.model,
             rotate=args.rotate,
-            act_args=act_args,
-            key_args=key_args,
-            value_args=value_args,
             model_config=model_config,
         )
 
