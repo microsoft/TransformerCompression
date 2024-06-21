@@ -45,31 +45,52 @@ class QuarotPhi3Config(Phi3Config):
     model_type = "phi3_quarot"
     groupsize = None
     offset = False
+    
+    # weight quantization args
+    w_bits: int = 16
+    w_asym: bool = False
+    w_groupsize: int | None = None
+
+    # activation quantization args
+    act_bits: int = 16
+    act_asym: bool = False
+    act_groupsize: int | None = None
+    act_clip_ratio: float | None = None
+
+    # key and value quantization args
+    k_bits: int = 16
+    k_clip_ratio: float | None = None
+    k_groupsize: int | None = None
+    v_bits: int = 16
+    v_clip_ratio: float | None = None
+    v_groupsize: int | None = None
 
 
 class QuarotPhi3MLP(Phi3MLP):
     def __init__(
         self,
         config: QuarotPhi3Config,
-        act_bits: int = 16,
-        act_clip_ratio: float | None = None,
-        act_quantile: float | None = None,
-        act_groupsize: int | None = None,
         online_had: bool = False,
         *args,
         **kwargs,
     ):
         super().__init__(config, *args, **kwargs)
         self.online_had = online_had
-        self.gate_up_proj = QuarotFP16Linear.like(self.gate_up_proj, groupsize=config.groupsize, offset=config.offset)
-        self.down_proj = QuarotFP16Linear.like(self.down_proj, groupsize=config.groupsize, offset=config.offset)
+        self.gate_up_proj = QuarotFP16Linear.like(self.gate_up_proj, bits=config.w_bits, groupsize=config.w_groupsize, offset=config.w_asym)
+        self.down_proj = QuarotFP16Linear.like(self.down_proj, bits=config.w_bits, groupsize=config.w_groupsize, offset=config.w_asym)
         self.online_down_proj_hadamard = OnlineHadamard(config.intermediate_size)
-        if act_bits < 16:
+        if config.act_bits < 16:
             self.input_quantizer = ActQuantizer(
-                act_bits, symmetric=True, clip_ratio=act_clip_ratio, quantile=act_quantile, groupsize=act_groupsize
+                config.act_bits,
+                symmetric=not config.act_asym,
+                clip_ratio=config.act_clip_ratio,
+                groupsize=config.act_groupsize,
             )
             self.down_proj_input_quantizer = ActQuantizer(
-                act_bits, symmetric=True, clip_ratio=act_clip_ratio, quantile=act_quantile, groupsize=act_groupsize
+                config.act_bits,
+                symmetric=not config.act_asym,
+                clip_ratio=config.act_clip_ratio,
+                groupsize=config.act_groupsize,
             )
         else:
             self.input_quantizer = DummyActQuantizer()
@@ -99,51 +120,45 @@ class QuarotFP16Phi3FlashAttention2(Phi3FlashAttention2):
     def __init__(
         self,
         config: QuarotPhi3Config,
-        act_bits: int = 16,
-        act_clip_ratio: float | None = None,
-        act_quantile: float | None = None,
-        act_groupsize: int | None = None,
-        k_bits: int = 16,
-        k_clip_ratio: float | None = None,
-        k_quantile: float | None = None,
-        k_groupsize: int | None = None,
-        v_bits: int = 16,
-        v_clip_ratio: float = 1.0,
-        v_quantile: float | None = None,
-        v_groupsize: int | None = None,
         online_had=False,
         *args,
         **kwargs,
     ):
         super().__init__(config, *args, **kwargs)
         self.online_had = online_had
-        self.qkv_proj = QuarotFP16Linear.like(self.qkv_proj, groupsize=config.groupsize, offset=config.offset)
-        self.o_proj = QuarotFP16Linear.like(self.o_proj, groupsize=config.groupsize, offset=config.offset)
+        self.qkv_proj = QuarotFP16Linear.like(self.qkv_proj, bits=config.w_bits, groupsize=config.w_groupsize, offset=config.w_asym)
+        self.o_proj = QuarotFP16Linear.like(self.o_proj, bits=config.w_bits, groupsize=config.w_groupsize, offset=config.w_asym)
         self.online_o_proj_hadamard = OnlineHadamard(self.num_heads)
         self.online_k_hadamard = OnlineHadamard(self.head_dim)
         self.online_q_hadamard = OnlineHadamard(self.head_dim)
 
-        if act_bits < 16:
+        if config.act_bits < 16:
             self.input_quantizer = ActQuantizer(
-                act_bits, symmetric=True, clip_ratio=act_clip_ratio, quantile=act_quantile, groupsize=act_groupsize
+                config.act_bits,
+                symmetric=not config.act_asym,
+                clip_ratio=config.act_clip_ratio,
+                groupsize=config.act_groupsize,
             )
             self.o_proj_input_quantizer = ActQuantizer(
-                act_bits, symmetric=True, clip_ratio=act_clip_ratio, quantile=act_quantile, groupsize=act_groupsize
+                config.act_bits,
+                symmetric=not config.act_asym,
+                clip_ratio=config.act_clip_ratio,
+                groupsize=config.act_groupsize,
             )
         else:
             self.input_quantizer = DummyActQuantizer()
             self.o_proj_input_quantizer = DummyActQuantizer()
 
-        if k_bits < 16:
+        if config.k_bits < 16:
             self.k_quantizer = KVQuantizerDequantizer(
-                k_bits, symmetric=False, clip_ratio=k_clip_ratio, quantile=k_quantile, groupsize=k_groupsize
+                config.k_bits, symmetric=False, clip_ratio=config.k_clip_ratio, groupsize=config.k_groupsize
             )
         else:
             self.k_quantizer = lambda x: x
 
-        if v_bits < 16:
+        if config.v_bits < 16:
             self.v_quantizer = KVQuantizerDequantizer(
-                v_bits, symmetric=False, clip_ratio=v_clip_ratio, quantile=v_quantile, groupsize=v_groupsize
+                config.v_bits, symmetric=False, clip_ratio=config.v_clip_ratio, groupsize=config.v_groupsize
             )
         else:
             self.v_quantizer = lambda x: x
@@ -298,22 +313,10 @@ class QuarotFP16Phi3FlashAttention2(Phi3FlashAttention2):
 class QuarotPhi3ForCausalLM(Phi3ForCausalLM):
     def __init__(
         self,
+        config: QuarotPhi3Config = None,
         online_had_mlp: bool = False,
         online_had_attn: bool = False,
         rms_norm: bool = False,
-        act_bits: int = 16,
-        act_clip_ratio: float | None = None,
-        act_quantile: float | None = None,
-        act_groupsize: int | None = None,
-        k_bits: int = 16,
-        k_clip_ratio: float | None = None,
-        k_quantile: float | None = None,
-        k_groupsize: int | None = None,
-        v_bits: int = 16,
-        v_clip_ratio: float = 1.0,
-        v_quantile: float | None = None,
-        v_groupsize: int | None = None,
-        config: QuarotPhi3Config = None,
     ) -> None:
         """
         Args:
@@ -330,27 +333,11 @@ class QuarotPhi3ForCausalLM(Phi3ForCausalLM):
         for layer_idx, layer in enumerate(self.model.layers):
             layer.self_attn = QuarotFP16Phi3FlashAttention2(
                 config=config,
-                act_bits=act_bits,
-                act_clip_ratio=act_clip_ratio,
-                act_quantile=act_quantile,
-                act_groupsize=act_groupsize,
-                k_bits=k_bits,
-                k_clip_ratio=k_clip_ratio,
-                k_quantile=k_quantile,
-                k_groupsize=k_groupsize,
-                v_bits=v_bits,
-                v_clip_ratio=v_clip_ratio,
-                v_quantile=v_quantile,
-                v_groupsize=v_groupsize,
                 online_had=online_had_attn,
                 layer_idx=layer_idx,
             )
             layer.mlp = QuarotPhi3MLP(
                 config=config,
-                act_bits=act_bits,
-                act_clip_ratio=act_clip_ratio,
-                act_quantile=act_quantile,
-                act_groupsize=act_groupsize,
                 online_had=online_had_mlp,
             )
             if rms_norm:

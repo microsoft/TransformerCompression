@@ -16,12 +16,15 @@ from .modeling_phi3 import QuarotPhi3Config, QuarotPhi3ForCausalLM
 
 
 def quarot_model_config(
-    model_name_or_path: str, dtype: torch.dtype, groupsize: int | None = None, offset: bool = False
+    model_name_or_path: str,
+    dtype: torch.dtype,
+    quantization_kwargs: dict,
 ):
     lm_configs = {
         'meta-llama/Llama-2-7b-hf': QuarotLlamaConfig,
         'meta-llama/Llama-2-13b-hf': QuarotLlamaConfig,
         'meta-llama/Meta-Llama-3-8B': QuarotLlamaConfig,
+        'meta-llama/Meta-Llama-3-70B': QuarotLlamaConfig,
         'microsoft/Phi-3-mini-4k-instruct': QuarotPhi3Config,
         'mistralai/Mixtral-8x7B-v0.1': QuarotMixtralConfig,
     }
@@ -31,17 +34,15 @@ def quarot_model_config(
 
     model_config = lm_configs[model_name_or_path].from_pretrained(model_name_or_path, dtype=dtype, use_cache=False)
     model_config._attn_implementation = "flash_attention_2"
-    model_config.groupsize = groupsize
-    model_config.offset = offset
+    for key, value in quantization_kwargs.items():
+        setattr(model_config, key, value)
+
     return model_config
 
 
 def get_quarot_model(
     model_name_or_path: str,
     rotate: bool,
-    act_args: dict,
-    key_args: dict,
-    value_args: dict,
     model_config: PretrainedConfig,
 ):
 
@@ -49,6 +50,7 @@ def get_quarot_model(
         'meta-llama/Llama-2-7b-hf': QuarotLlamaForCausalLM,
         'meta-llama/Llama-2-13b-hf': QuarotLlamaForCausalLM,
         'meta-llama/Meta-Llama-3-8B': QuarotLlamaForCausalLM,
+        'meta-llama/Meta-Llama-3-70B': QuarotLlamaForCausalLM,
         'microsoft/Phi-3-mini-4k-instruct': QuarotPhi3ForCausalLM,
         'mistralai/Mixtral-8x7B-v0.1': QuarotMixtralForCausalLM,
     }
@@ -63,18 +65,6 @@ def get_quarot_model(
         online_had_mlp=online_had_mlp,
         online_had_attn=online_had_attn,
         rms_norm=rms_norm,
-        act_bits=act_args['a_bits'],
-        act_clip_ratio=act_args['a_clip_ratio'],
-        act_quantile=act_args['a_quantile'],
-        act_groupsize=act_args['a_groupsize'],
-        k_bits=key_args['k_bits'],
-        k_clip_ratio=key_args['k_clip_ratio'],
-        k_quantile=key_args['k_quantile'],
-        k_groupsize=key_args['k_groupsize'],
-        v_bits=value_args['v_bits'],
-        v_clip_ratio=value_args['v_clip_ratio'],
-        v_quantile=value_args['v_quantile'],
-        v_groupsize=value_args['v_groupsize'],
         config=model_config,
     )
 

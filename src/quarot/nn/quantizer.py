@@ -22,30 +22,25 @@ class ActQuantizer(torch.nn.Module):
         bits: int,
         symmetric: bool = True,
         clip_ratio: float | None = None,
-        quantile: float | None = None,
         groupsize: int | None = None,
     ) -> None:
         super().__init__()
         self.bits = bits
-        assert symmetric, "Activation quantization should be symmetric."
         self.clip_ratio = clip_ratio
         self.groupsize = groupsize
-        self.quantile = quantile
+        self.symmetric = symmetric
 
     def forward(self, x: torch.Tensor) -> PackedQuantizedTensor:
-        x_scales, offset = calculate_scales(
+        scale, offset = calculate_scales(
             x,
             self.bits,
-            symmetric=True,
+            symmetric=self.symmetric,
             search=False,
             clip_ratio=self.clip_ratio,
-            quantile=self.quantile,
             groupsize=self.groupsize,
         )
-        quantized_x = quantize_weight_rtn(
-            weight=x, scale=x_scales, offset=offset, bits=self.bits
-        )  # note that offset is always none becasue symmteric is True.
-        return PackedQuantizedTensor(quantized_x, x_scales)
+        x_int = quantize_weight_rtn(weight=x, scale=scale, offset=offset, bits=self.bits)
+        return PackedQuantizedTensor(x_int, scale, offset)
 
 
 class KVQuantizerDequantizer(torch.nn.Module):
@@ -56,7 +51,6 @@ class KVQuantizerDequantizer(torch.nn.Module):
         bits: int,
         symmetric: bool = False,
         clip_ratio: float | None = None,
-        quantile: float | None = None,
         groupsize: int | None = None,
     ) -> None:
         super().__init__()
@@ -64,7 +58,6 @@ class KVQuantizerDequantizer(torch.nn.Module):
         assert not symmetric, "KV quantization should be asymmetric."
         self.clip_ratio = clip_ratio
         self.groupsize = groupsize
-        self.quantile = quantile
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x_scales, x_offsets = calculate_scales(
@@ -73,7 +66,6 @@ class KVQuantizerDequantizer(torch.nn.Module):
             symmetric=False,
             search=False,
             clip_ratio=self.clip_ratio,
-            quantile=self.quantile,
             groupsize=self.groupsize,
         )
         quantized_x = quantize_weight_rtn(x, x_scales, x_offsets, self.bits)
