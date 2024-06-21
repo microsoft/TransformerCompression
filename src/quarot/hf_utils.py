@@ -24,6 +24,7 @@ def quarot_model_config(
         'meta-llama/Llama-2-7b-hf': QuarotLlamaConfig,
         'meta-llama/Llama-2-13b-hf': QuarotLlamaConfig,
         'meta-llama/Meta-Llama-3-8B': QuarotLlamaConfig,
+        'meta-llama/Meta-Llama-3-70B': QuarotLlamaConfig,
         'microsoft/Phi-3-mini-4k-instruct': QuarotPhi3Config,
         'mistralai/Mixtral-8x7B-v0.1': QuarotMixtralConfig,
     }
@@ -49,6 +50,7 @@ def get_quarot_model(
         'meta-llama/Llama-2-7b-hf': QuarotLlamaForCausalLM,
         'meta-llama/Llama-2-13b-hf': QuarotLlamaForCausalLM,
         'meta-llama/Meta-Llama-3-8B': QuarotLlamaForCausalLM,
+        'meta-llama/Meta-Llama-3-70B': QuarotLlamaForCausalLM,
         'microsoft/Phi-3-mini-4k-instruct': QuarotPhi3ForCausalLM,
         'mistralai/Mixtral-8x7B-v0.1': QuarotMixtralForCausalLM,
     }

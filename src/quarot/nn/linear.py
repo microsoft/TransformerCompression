@@ -54,8 +54,7 @@ class QuarotFP16Linear(torch.nn.Module):
         if self.bits == 16:
             return # nothing to do
         elif self.bits == 8:
-            dtype = torch.uint8 if is_signed else torch.int8
-            dtype=torch.int16
+            dtype = torch.int8 if is_signed else torch.uint8
             self.weight = self.weight.int().to(dtype)
             if self.offset is not None:
                 self.offset = self.offset.int().to(dtype)

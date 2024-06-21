@@ -25,6 +25,7 @@ from quarot.modeling_mixtral import QuarotMixtralForCausalLM
 from quarot.modeling_phi3 import QuarotPhi3ForCausalLM
 from slicegpt import data_utils, gpu_utils, layernorm_fusion, utils
 from slicegpt.config import config
+from quarot import quant_utils
 
 
 def str2bool(v):
@@ -265,6 +266,11 @@ def quarot_main(args: argparse.Namespace) -> None:
     )
 
     model = model_adapter.model
+    
+    size_in_mb = quant_utils.count_bytes(model) / 1024 / 1024
+    logging.info(f"Model size: {size_in_mb:.2f} MB")
+    wandb.log({"model_size_mb_pre": size_in_mb})
+    
 
     dataset = data_utils.get_dataset(args.cal_dataset)
     test_dataset = dataset["test"]
@@ -358,6 +364,10 @@ def quarot_main(args: argparse.Namespace) -> None:
         logging.info("Quantization complete.")
     else:
         logging.info("No weight quantization performed")
+        
+    size_in_mb = quant_utils.count_bytes(quarot_model) / 1024 / 1024
+    logging.info(f"Model size: {size_in_mb:.2f} MB")
+    wandb.log({"model_size_mb_post": size_in_mb})
 
     def reset_model_device() -> None:
         if args.distribute_model:

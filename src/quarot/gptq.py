@@ -299,6 +299,17 @@ def get_hessians_and_output(
     return hessians, outputs
 
 
+def compress_linear_modules(module):
+    """
+    Compress the weight matrices of a module to a lower bit width.
+    """
+    for name, child in module.named_children():
+        if isinstance(child, QuarotFP16Linear):
+            child.compress()
+        else:
+            compress_linear_modules(child)
+
+
 @torch.no_grad()
 def quantize_model_gptq(
     model_adapter: ModelAdapter,
@@ -447,6 +458,4 @@ def quantize_model_gptq(
         cleanup_memory()
         
         # compress the weights to a low-bit width (eveythin above is in float16|32)
-        for module in layer_adapter.get_modules():
-            if isinstance(module, QuarotFP16Linear):
-                module.compress()
+        compress_linear_modules(layer_adapter.layer)

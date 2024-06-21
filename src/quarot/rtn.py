@@ -234,3 +234,4 @@ def quantize_model_rtn(
                 scale, offset = calculate_scales(module.weight, bits, symmetric=symmetric, groupsize=groupsize)
                 quantized_weight = quantize_weight_rtn(module.weight, scale, offset, bits)
                 set_tensors(module, quantized_weight, scale, offset)
+                module.compress()

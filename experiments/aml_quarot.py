@@ -36,12 +36,12 @@ job = command(
         " --w-groupsize ${{inputs.groupsize}}"
         " --w-asym ${{inputs.asym}}"
         # " --gptq-opt-scales" very slow, makes little difference!
-        #activation stuff:
-        " --a-bits ${{inputs.bits}}"
-        " --a-clip-ratio ${{inputs.clip_ratio}}"
-        " --a-groupsize ${{inputs.groupsize}}"
-        " --a-asym ${{inputs.asym}}"
-        # #kv stuff
+        # #activation stuff:
+        # " --a-bits ${{inputs.bits}}"
+        # " --a-clip-ratio ${{inputs.clip_ratio}}"
+        # " --a-groupsize ${{inputs.groupsize}}"
+        # " --a-asym ${{inputs.asym}}"
+        # # #kv stuff
         # " --v-bits ${{inputs.bits}}"
         # " --v-clip-ratio 1.0"
         # " --k-bits ${{inputs.bits}}"
@@ -51,7 +51,7 @@ job = command(
         " --cal-nsamples ${{inputs.cal_nsamples}}"
         " --cal-batch-size 16"
         " --lm-eval"
-        " --wandb-project quarot-phi-wna"
+        " --wandb-project llama3-70-wonly"
         " --distribute-model"
     ),
     environment_variables={
@@ -60,7 +60,7 @@ job = command(
         "WANDB_API_KEY": os.getenv("WANDB_API_KEY"),
         "HF_TOKEN": os.getenv("HF_TOKEN"),
     },
-    display_name="quarot-wna-sweep-phi",
+    display_name="llama3-70-wonly",
     tags=dict(ProjectID="PRJ-0001-A04", Experiment="quarot-mixtral"),
     **kwargs
 )
@@ -70,17 +70,18 @@ sweep_job = job(
     rotate=Choice([1, 0]),
     asym=Choice([0, 1]),
     groupsize=Choice([0, 32, 64]),
-    clip_ratio=Choice([0.7, 0.75, 0.8, 0.85, 0.9, 0.95]),
+    clip_ratio=Choice([0.9, 0.95, 1.0]),
     cal_nsamples=Choice([128]),
     model=Choice(
             [
-            #"mistralai/Mixtral-8x7B-v0.1"]
-            "microsoft/Phi-3-mini-4k-instruct",
-            #"meta-llama/Meta-Llama-3-8B"
+            #"mistralai/Mixtral-8x7B-v0.1",
+            #"microsoft/Phi-3-mini-4k-instruct",
+            #"meta-llama/Meta-Llama-3-8B",
+            "meta-llama/Meta-Llama-3-70B", 
             ]     
         ),
     # model = "meta-llama/Meta-Llama-3-8B","meta-llama/Llama-2-7b-hf"
-    bits=Choice([2,3, 4]),
+    bits=Choice([3, 4]),
 ).sweep(compute=kwargs['compute'], sampling_algorithm='grid', primary_metric='quarot_ppl', goal="Minimize")
 sweep_job.resources = kwargs['resources']
 returned_job = ml_client.jobs.create_or_update(sweep_job)

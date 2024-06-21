@@ -100,3 +100,19 @@ def from_int4(w, signed=False, dtype=torch.float32):
     out[..., ::2] = lower
     out[..., 1::2] = upper
     return out.to(torch.int8).to(dtype)
+
+
+def count_bytes(model, ignore_embeddings=True, ignore_head=True):
+    """
+    Count the number of bytes in a model. Include parameters and registered buffers.
+    """
+    num_bytes = 0
+    sd = model.state_dict()
+    for k, p, in sd.items():
+        if ignore_embeddings and 'embed' in k:
+            continue
+        if ignore_head and 'head' in k:
+            continue
+        num_bytes += p.numel() * p.element_size()
+    return num_bytes
+    

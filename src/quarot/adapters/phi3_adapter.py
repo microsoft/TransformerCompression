@@ -59,11 +59,14 @@ class Phi3LayerAdapter(LayerAdapter):
         return self.layer.mlp.down_proj
 
     # QuaRot specific. NB diff behaviour to Llama2/3!
+    # Here we create a 'dummy' linear module, whose weights point to a view of the original weights.
+    # This is because the original weights are stack in [W_q, W_k, W_v] format, but we need to split
+    # out W_v to apply rotation to it.
     def get_v_proj(self) -> Linear:
         qkv = self.layer.self_attn.qkv_proj
         out_features, in_features = qkv.weight.shape
         v_proj_out_features = out_features // 3
-        v_proj = QuarotFP16Linear(in_features, v_proj_out_features, bias=False)
+        v_proj = torch.nn.Linear(in_features, v_proj_out_features, bias=False)
 
         # point v_proj weight to qkv weight
         v_proj.weight = torch.nn.Parameter(qkv.weight[2 * v_proj_out_features :, :])
