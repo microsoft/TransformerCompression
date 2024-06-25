@@ -22,12 +22,44 @@ torch.set_default_dtype(torch.float16)
     ],
 )
 def test_calculate_scales_symmetric(bits, weight, expected_scales):
-    from quarot.rtn import calculate_scales
+    from quarot.rtn import calculate_scales, quantize_weight_rtn, dequantize
 
     symmetric = True
+    
+    # check that the scales are as expected when scaling by max(abs(weight))
     scales, offsets = calculate_scales(weight, bits, symmetric=symmetric, search=False, device='cpu')
     assert torch.allclose(scales, expected_scales)
     assert offsets is None
+    
+@pytest.mark.quarot
+@pytest.mark.parametrize('leading_dims', [(), (2,), (2, 3)])
+@pytest.mark.parametrize('quant_dim', [64, 256])
+@pytest.mark.parametrize('groupsize', [16, 32])
+@pytest.mark.parametrize('bits', [2, 3, 4, 8])
+@pytest.mark.parametrize('symmetric', [True, False])
+@pytest.mark.parametrize('seed', [0])
+def test_search_improves_error(leading_dims, quant_dim, groupsize, bits, symmetric, seed):
+    from quarot.rtn import calculate_scales, quantize_weight_rtn, dequantize
+    # test that searching for the optimal scale gives the same or better result
+    # as using the max scaling factor
+    torch.manual_seed(seed)
+    W = torch.randn(leading_dims + (quant_dim,), dtype=torch.float16)
+    
+    scales_nosearch, offsets_nosearch = calculate_scales(W, bits, symmetric=symmetric, search=False, device='cpu')
+    scales_search, offsets_search = calculate_scales(W, bits, symmetric=symmetric, search=True, device='cpu')
+    
+    W_int_nosearch = quantize_weight_rtn(W, scales_nosearch, offsets_nosearch, bits)
+    W_int_search = quantize_weight_rtn(W, scales_search, offsets_search, bits)
+    
+    W_recon_nosearch = dequantize(W_int_nosearch, scales_nosearch, offsets_nosearch)
+    W_recon_search = dequantize(W_int_search, scales_search, offsets_search)
+    
+    err_nosearch = torch.norm(W - W_recon_nosearch, p=2.4) / torch.norm(W, p=2.4)
+    err_search = torch.norm(W - W_recon_search, p=2.4) / torch.norm(W, p=2.4)
+    
+    assert err_search <= err_nosearch
+    
+                                    
 
 
 @pytest.mark.quarot
