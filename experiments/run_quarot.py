@@ -2,6 +2,7 @@
 # Licensed under the MIT license.
 
 import argparse
+import json
 import logging
 import os
 
@@ -232,6 +233,7 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
     parser.add_argument(
         '--lm-eval-batch-size', type=int, default=128, help='Batch size for evaluating with lm eval harness.'
     )
+    parser.add_argument("--save-dir", type=str, default=".", help="Path to save the model.")
 
     return parser.parse_args() if interactive else parser.parse_args('')
 
@@ -254,6 +256,10 @@ def process_quarot_args(args):
         args.w_groupsize = None
 
     config.dtype = torch.float16
+
+    os.makedirs(args.save_dir, exist_ok=True)
+    with open(f"{args.save_dir}/args.json", 'w') as fp:
+        json.dump(vars(args), fp, indent=4, sort_keys=True)
 
 
 def quarot_main(args: argparse.Namespace) -> None:
@@ -379,6 +385,12 @@ def quarot_main(args: argparse.Namespace) -> None:
     else:
         logging.info("No weight quantization performed")
 
+    os.makedirs(args.save_dir, exist_ok=True)
+    logging.info(f" Saving model to {args.save_dir}")
+    quarot_model.to(config.device).eval()
+    quarot_model.save_pretrained(args.save_dir)
+    model_config.save_pretrained(args.save_dir)
+
     def reset_model_device() -> None:
         if args.distribute_model:
             # distribute model across available GPUs
@@ -411,6 +423,8 @@ def quarot_main(args: argparse.Namespace) -> None:
     metric_vals['acc_avg'] = round(sum(metric_vals.values()) / len(metric_vals.values()), 4)
     logging.info(f"LM Eval results: {metric_vals}")
     wandb.log(metric_vals)
+    with open(f"{args.save_dir}/lm_eval.json", "w") as f:
+        json.dump(metric_vals, f)
     [mlflow.log_metric(task, metric) for task, metric in metric_vals.items()]
 
 

@@ -5,7 +5,7 @@ import logging
 import pathlib
 
 import torch
-from transformers import AutoTokenizer, PretrainedConfig, PreTrainedTokenizerBase
+from transformers import AutoTokenizer, PretrainedConfig, PreTrainedTokenizerBase, PreTrainedModel
 
 from slicegpt.hf_utils import do_not_initialize
 
@@ -44,21 +44,12 @@ def get_quarot_model(
     value_args: dict,
     model_config: PretrainedConfig,
 ):
-    lm_classes = {
-        'meta-llama/Llama-2-7b-hf': QuarotLlamaForCausalLM,
-        'meta-llama/Llama-2-13b-hf': QuarotLlamaForCausalLM,
-        'meta-llama/Meta-Llama-3-8B': QuarotLlamaForCausalLM,
-        'microsoft/Phi-3-mini-4k-instruct': QuarotPhi3ForCausalLM,
-        'mistralai/Mixtral-8x7B-v0.1': QuarotMixtralForCausalLM,
-    }
-
-    if model_name_or_path not in lm_classes:
-        raise NotImplementedError("Model type not supported")
+    lm_class = resolve_quarot_model_class(model_name_or_path)
 
     online_had_mlp = True if rotate else False
     online_had_attn = True if rotate else False
     rms_norm = True if rotate else False
-    return lm_classes[model_name_or_path](
+    return lm_class(
         config=model_config,
         online_had_mlp=online_had_mlp,
         online_had_attn=online_had_attn,
@@ -76,6 +67,20 @@ def get_quarot_model(
         v_quantile=value_args['v_quantile'],
         v_groupsize=value_args['v_groupsize'],
     )
+
+
+def resolve_quarot_model_class(model_name: str) -> PreTrainedModel:
+    lm_classes = {
+        'meta-llama/Llama-2-7b-hf': QuarotLlamaForCausalLM,
+        'meta-llama/Llama-2-13b-hf': QuarotLlamaForCausalLM,
+        'meta-llama/Meta-Llama-3-8B': QuarotLlamaForCausalLM,
+        'microsoft/Phi-3-mini-4k-instruct': QuarotPhi3ForCausalLM,
+        'mistralai/Mixtral-8x7B-v0.1': QuarotMixtralForCausalLM,
+    }
+    if model_name not in lm_classes:
+        raise NotImplementedError("Model type not supported")
+
+    return lm_classes[model_name]
 
 
 @do_not_initialize
