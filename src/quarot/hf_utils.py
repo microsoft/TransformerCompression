@@ -30,7 +30,6 @@ def quarot_model_config(
         raise NotImplementedError("Model type not supported")
 
     model_config = lm_configs[model_name_or_path].from_pretrained(model_name_or_path, dtype=dtype, use_cache=False)
-    model_config._attn_implementation = "flash_attention_2"
     model_config.groupsize = groupsize
     model_config.offset = offset
     return model_config
