@@ -1,6 +1,15 @@
-# Transformer Compression with SliceGPT
+# Transformer Compression
 
-This repository contains the code for the paper [SliceGPT](https://arxiv.org/abs/2401.15024) (ICLR'24). Also discussed on [Hugging Face](https://huggingface.co/papers/2401.15024). 
+This repository contains the code for the following papers:
+- SliceGPT: Compress Large Language Models by Deleting Rows and Columns (ICLR'24) [[arxiv](https://arxiv.org/abs/2401.15024), [Hugging Face](https://huggingface.co/papers/2401.15024)]
+- QuaRot: Outlier-Free 4-Bit Inference in Rotated LLMs [[arxiv](https://arxiv.org/pdf/2404.00456)]
+
+
+<details>
+<summary style="font-size: 20px;">SliceGPT </summary>
+<p></p>
+
+## Installation
 
 SliceGPT is a new post-training sparsification scheme that makes transformer networks (including LLMs) smaller by 
 first applying orthogonal transformations to each transformer layer that leave the model unchanged, and then slicing off the 
@@ -12,7 +21,7 @@ The code is arranged as a package `slicegpt` in `/src`, and scripts to replicate
 `/experiments`. To install the `slicegpt` package, we recommend
 
 ```
-    pip install -e . 
+    pip install -e .[experiment]
 ```
 
 ## Running SliceGPT
@@ -39,7 +48,7 @@ manually or using a key vault. Alternatively, set the environment variable `HF_T
 To install additional dependencies required for post-slicing recovery fine-tuning (RFT):
 
 ```
-    pip install -e .[finetune]
+    pip install -e .[experiment,finetune]
 ```
 
 The following replicates the experiments in the paper (LoRA hyperparams valid for all Llama-2 and Phi-2 models): 
@@ -87,9 +96,14 @@ Notes:
 
 The following models from Hugging Face hub are currently supported
 - [microsoft/phi-2](https://huggingface.co/microsoft/phi-2)
+- [microsoft/Phi-3-mini-4k-instruct](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct)
 - [meta-llama/Llama-2-7b-hf](https://huggingface.co/meta-llama/Llama-2-7b)
 - [meta-llama/Llama-2-13b-hf](https://huggingface.co/meta-llama/Llama-2-13b)
 - [meta-llama/Llama-2-70b-hf](https://huggingface.co/meta-llama/Llama-2-70b)
+- [meta-llama/Meta-Llama-3-8B](https://huggingface.co/meta-llama/Meta-Llama-3-8B)
+- [meta-llama/Meta-Llama-3-8B-Instruct](https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct)
+- [meta-llama/Meta-Llama-3-70B](https://huggingface.co/meta-llama/Meta-Llama-3-70B)
+- [meta-llama/Meta-Llama-3-70B-Instruct](https://huggingface.co/meta-llama/Meta-Llama-3-70B-Instruct)
 - [facebook/opt-125m](https://huggingface.co/facebook/opt-125m)
 - [facebook/opt-1.3b](https://huggingface.co/facebook/opt-1.3b)
 - [facebook/opt-2.7b](https://huggingface.co/facebook/opt-2.7b)
@@ -118,7 +132,7 @@ and update `hf_utils.get_model_and_tokenizer` before slicing the new model.
   This class should also  provide an adapted `forward()` method to work with the compressed model. 
   This method should specify how the skip connection orthogonal matrices are used, depending on 
   whether MLP and attention blocks are sequential ([OPT](./src/slicegpt/adapters/opt_adapter.py), 
-  [Llama-2](./src/slicegpt/adapters/llama_adapter.py)) or parallel 
+  [Llama-2/Llama-3](./src/slicegpt/adapters/llama_adapter.py)) or parallel 
   ([Phi-2](./src/slicegpt/adapters/phi2_adapter.py)). The `self.*_shortcut_Q` matrices are attached to the modules during
   slicing and are available in `forward()`. If the skip connection does not need modification, these matrices will be None, 
   and the `forward()` method can follow the original workflow. For more details on this, 
@@ -136,6 +150,57 @@ Example: [run_slicegpt.py](./experiments/run_slicegpt.py)
 
 _Note:_ If the model you wish to support is not available in Hugging Face, you will also need to implement 
 custom model loading and initialization functionality.
+</details>
+
+<details>
+<summary style="font-size: 20px;">QuaRot</summary>
+<p></p>
+
+## Installation
+
+The code is arranged as a package `quarot` in `/src`, and scripts to replicate experiments from the paper are in 
+`/experiments`. To install the `quarot` package, we recommend
+
+```
+    pip install -e .
+    pip install packaging
+    pip install flash-attn==2.5.8 --no-build-isolation
+    pip install -e .[quarot]
+```
+
+## Running QuaRot
+
+To run QuaRot A4W4KV4 with GPTQ on `microsoft/Phi3-mini-4k-instruct`, from the `experiments` folder, run 
+```
+    python run_quarot.py \
+           --model microsoft/Phi3-mini-4k-instruct \
+           --rotate \
+           --w-bits 4 \
+           --w-gptq \
+           --a-bits 4 \
+           --k-bits 4 \
+           --v-bits 4 \
+           --lm-eval \
+           --tasks piqa \
+           --device cuda:0 \
+           --no-wandb
+```
+
+This will apply full 4-bit QuaRot to the Phi-3 model, storing the `int` weights in `torch.float16`, and evaluate the WikiText2 perplexity and [lm eval](https://github.com/EleutherAI/lm-evaluation-harness) PIQA task accuracy. To run RTN QuaRot, use `--w-rtn` instead of `--w-gptq`. For large models requiring multiple GPU cards, use `--distribute-model`.
+
+## Supported models
+
+The following models from Hugging Face hub are currently supported (including their `instruct` versions):
+- [mistralai/Mixtral-8x7B-v0.1](https://huggingface.co/mistralai/Mixtral-8x7B-v0.1)
+- [microsoft/Phi-3-mini-4k-instruct](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct)
+- [meta-llama/Meta-Llama-3-8B](https://huggingface.co/meta-llama/Meta-Llama-3-8B)
+- [meta-llama/Llama-2-7b-hf](https://huggingface.co/meta-llama/Llama-2-7b)
+- [meta-llama/Llama-2-13b-hf](https://huggingface.co/meta-llama/Llama-2-13b)
+
+Require testing:
+- [meta-llama/Meta-Llama-3-70B](https://huggingface.co/meta-llama/Meta-Llama-3-70B)
+- [meta-llama/Llama-2-70b-hf](https://huggingface.co/meta-llama/Llama-2-70b)
+</details>
 
 ## Contributing
 
