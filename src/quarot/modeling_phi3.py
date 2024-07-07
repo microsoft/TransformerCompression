@@ -15,9 +15,11 @@
 
 """ PyTorch Phi-3 model."""
 
-from typing import Optional, Tuple
 import math
+from typing import Optional, Tuple
+
 import torch
+from torch import nn
 from transformers import Cache, Phi3Config
 from transformers.models.phi3.modeling_phi3 import (
     Phi3Attention,
@@ -157,7 +159,6 @@ class QuarotFP16Phi3Attention(Phi3Attention):
         output_attentions: bool = False,
         use_cache: bool = False,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
-
         bsz, q_len, _ = hidden_states.size()
 
         # QuaRot: quantize hidden states at input of attention
@@ -219,8 +220,8 @@ class QuarotFP16Phi3Attention(Phi3Attention):
             attn_weights = attn_weights + attention_mask
 
         # upcast attention to fp32
-        attn_weights = torch.nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(value_states.dtype)
-        attn_weights = torch.nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
+        attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(value_states.dtype)
+        attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
 
         attn_output = torch.matmul(attn_weights, value_states)
 
@@ -230,13 +231,17 @@ class QuarotFP16Phi3Attention(Phi3Attention):
                 f" {attn_output.size()}"
             )
 
+        attn_output = attn_output.transpose(1, 2).contiguous()
+
         # QuaRot: apply online hadamard if needed
         if self.online_had:
             attn_output = self.online_o_proj_hadamard(attn_output.transpose(-1, -2)).transpose(-1, -2)
+
         attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
 
         # QuaRot: quantize inputs of output projection
         attn_output = self.o_proj_input_quantizer(attn_output)
+
         attn_output = self.o_proj(attn_output)
 
         if not output_attentions:
