@@ -20,7 +20,7 @@ from .model_adapter import ModelAdapter
 
 
 @torch.inference_mode()
-def rotate_model(model_adapter: ModelAdapter, seed: int = 0) -> None:
+def rotate_model(model_adapter: ModelAdapter, no_unfused_Had: bool, seed: int = 0) -> None:
     '''
     Rotate the model using the QuaRot method.
     '''
@@ -42,8 +42,9 @@ def rotate_model(model_adapter: ModelAdapter, seed: int = 0) -> None:
         rotate_attention_output(layer_adapter, Q)
         rotate_mlp_input(layer_adapter, Q)
         rotate_mlp_output(layer_adapter, Q)
-        apply_hadamard(layer_adapter.get_mlp_output())
-        apply_hadamard_headwise(layer_adapter.get_v_proj(), head_dim)
-        apply_hadamard(layer_adapter.get_attention_output(), head_dim)
+        if not no_unfused_Had:
+            apply_hadamard(layer_adapter.get_mlp_output())
+            apply_hadamard_headwise(layer_adapter.get_v_proj(), head_dim)
+            apply_hadamard(layer_adapter.get_attention_output(), head_dim)
 
     utils.cleanup_memory()

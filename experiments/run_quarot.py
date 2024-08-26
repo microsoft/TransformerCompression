@@ -7,10 +7,10 @@ import logging
 import os
 
 import lm_eval
-import mlflow
 import torch
 import transformers
 import wandb
+from datasets import Dataset
 from lm_eval import utils as lm_eval_utils
 from lm_eval.api.registry import ALL_TASKS
 from lm_eval.models.huggingface import HFLM
@@ -20,10 +20,12 @@ from quarot import gptq, hf_utils, rotate, rtn
 from quarot.adapters.llama_adapter import LlamaModelAdapter
 from quarot.adapters.mixtral_adapter import MixtralModelAdapter
 from quarot.adapters.phi3_adapter import Phi3ModelAdapter
+from quarot.adapters.phi35_adapter import Phi35ModelAdapter
 from quarot.hf_utils import get_quarot_model, quarot_model_config
 from quarot.modeling_llama import QuarotLlamaForCausalLM
 from quarot.modeling_mixtral import QuarotMixtralForCausalLM
 from quarot.modeling_phi3 import QuarotPhi3ForCausalLM
+from quarot.modeling_phi35 import QuarotPhi35ForCausalLM
 from slicegpt import data_utils, gpu_utils, layernorm_fusion, utils
 from slicegpt.config import config
 
@@ -58,7 +60,6 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
         "--cal-dataset",
         type=str,
         help="Dataset to calibrate and calculate perplexity on.",
-        choices=["wikitext2", "ptb", "c4", "alpaca"],
         default="wikitext2",
     )
     parser.add_argument(
@@ -226,6 +227,9 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
     # LM Eval Arguments
     parser.add_argument("--lm-eval", action="store_true", help="Evaluate the model on LM Eval tasks.")
     parser.add_argument(
+        "--no-unfused-Had", action="store_true", help="Uses fused Hadamards only to allow export to onnx"
+    )
+    parser.add_argument(
         '--tasks',
         nargs='+',
         default=["piqa", "hellaswag", "arc_easy", "arc_challenge", "winogrande", "lambada_openai"],
@@ -257,6 +261,9 @@ def process_quarot_args(args):
 
     config.dtype = torch.float16
 
+    if not args.model_path:
+        args.model_path = args.model
+
     os.makedirs(args.save_dir, exist_ok=True)
     with open(f"{args.save_dir}/args.json", 'w') as fp:
         json.dump(vars(args), fp, indent=4, sort_keys=True)
@@ -275,11 +282,6 @@ def quarot_main(args: argparse.Namespace) -> None:
         logging.info(f'Failed to initialize wandb: {e}, continuing without wandb')
         wandb.init(project=args.wandb_project, mode='disabled')
 
-    # sort out mlflow
-    mlflow.config.enable_async_logging()
-    mlflow.start_run()
-    [mlflow.log_param(arg, argv) for arg, argv in vars(args).items()]
-
     # load one of the pre-trained models
     model_adapter, tokenizer = hf_utils.get_model_and_tokenizer(
         args.model, args.model_path, token=args.hf_token, dtype=config.dtype
@@ -287,8 +289,17 @@ def quarot_main(args: argparse.Namespace) -> None:
 
     model = model_adapter.model
 
-    dataset = data_utils.get_dataset(args.cal_dataset)
-    test_dataset = dataset["test"]
+    if args.cal_dataset in data_utils.ds_properties:
+        dataset = data_utils.get_dataset(args.cal_dataset)
+        test_dataset = dataset["test"]
+        train_dataset = dataset["train"]
+    elif os.path.exists(args.cal_dataset):
+        train_texts, test_texts = data_utils.format_dataset_from_path(args.cal_dataset, tokenizer)
+        train_dataset = Dataset.from_dict({"text": train_texts})
+        test_dataset = Dataset.from_dict({"text": test_texts})
+    else:
+        raise NotImplementedError("The provided dataset is not supported")
+
     test_loader = data_utils.prepare_test_dataloader(
         dataset=test_dataset, tokenizer=tokenizer, batch_size=args.ppl_eval_batch_size
     )
@@ -299,7 +310,6 @@ def quarot_main(args: argparse.Namespace) -> None:
         dataset_ppl = gpu_utils.evaluate_ppl(model, model.config.pad_token_id, test_loader)
         logging.info(f'Original ppl: {dataset_ppl:.4f}')
         wandb.log({"original_ppl": dataset_ppl})
-        mlflow.log_metric("original_ppl", dataset_ppl)
         model.cpu()
         utils.cleanup_memory()
 
@@ -308,9 +318,11 @@ def quarot_main(args: argparse.Namespace) -> None:
         layernorm_fusion.fuse_modules(model_adapter)  # TODO: fix expected adapter type
 
         # Rotate the model with fused Hadamard transformations.
-        rotate.rotate_model(model_adapter, args.rotation_seed)
+        rotate.rotate_model(model_adapter, args.no_unfused_Had, args.rotation_seed)
 
-    model_config = quarot_model_config(args.model, dtype=config.dtype, groupsize=args.w_groupsize, offset=args.w_asym)
+    model_config = quarot_model_config(
+        args.model, args.model_path, dtype=config.dtype, groupsize=args.w_groupsize, offset=args.w_asym
+    )
 
     with transformers.modeling_utils.no_init_weights():
         # initialize quarot model
@@ -334,8 +346,9 @@ def quarot_main(args: argparse.Namespace) -> None:
             'v_quantile': args.v_quantile,
         }
         quarot_model = get_quarot_model(
-            model_name_or_path=args.model,
+            model_name=args.model,
             rotate=args.rotate,
+            no_unfused_Had=args.no_unfused_Had,
             act_args=act_args,
             key_args=key_args,
             value_args=value_args,
@@ -352,6 +365,8 @@ def quarot_main(args: argparse.Namespace) -> None:
         quarot_model_adapter = LlamaModelAdapter(quarot_model)
     elif isinstance(quarot_model, QuarotPhi3ForCausalLM):
         quarot_model_adapter = Phi3ModelAdapter(quarot_model)
+    elif isinstance(quarot_model, QuarotPhi35ForCausalLM):
+        quarot_model_adapter = Phi35ModelAdapter(quarot_model)
     elif isinstance(quarot_model, QuarotMixtralForCausalLM):
         quarot_model_adapter = MixtralModelAdapter(quarot_model)
     else:
@@ -366,7 +381,7 @@ def quarot_main(args: argparse.Namespace) -> None:
     elif args.w_gptq:
         logging.info(f"Quantizing weights to INT{args.w_bits} using GPTQ.")
         train_loader = data_utils.prepare_dataloader(
-            dataset=dataset["train"],
+            dataset=train_dataset,
             tokenizer=tokenizer,
             batch_size=args.cal_batch_size,
             nsamples=args.cal_nsamples,
@@ -404,11 +419,9 @@ def quarot_main(args: argparse.Namespace) -> None:
     if args.rotate:
         logging.info(f'QuaRot ppl: {dataset_ppl:.4f}')
         wandb.log({"quarot_ppl": dataset_ppl})
-        mlflow.log_metric("quarot_ppl", dataset_ppl)
     else:
         logging.info(f'ppl: {dataset_ppl:.4f}')
         wandb.log({"ppl": dataset_ppl})
-        mlflow.log_metric("ppl", dataset_ppl)
 
     if not args.lm_eval:
         return
@@ -425,7 +438,6 @@ def quarot_main(args: argparse.Namespace) -> None:
     wandb.log(metric_vals)
     with open(f"{args.save_dir}/lm_eval.json", "w") as f:
         json.dump(metric_vals, f)
-    [mlflow.log_metric(task, metric) for task, metric in metric_vals.items()]
 
 
 if __name__ == "__main__":

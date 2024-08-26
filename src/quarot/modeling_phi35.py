@@ -20,34 +20,28 @@ from typing import Optional, Tuple
 
 import torch
 from torch import nn
-from transformers import Cache, Phi3Config
-from transformers.models.phi3.modeling_phi3 import (
-    Phi3Attention,
-    Phi3ForCausalLM,
-    Phi3MLP,
-    apply_rotary_pos_emb,
-    repeat_kv,
-)
+from transformers import Cache
 from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
 
 from slicegpt.modules import RMSN
 
+from .model_phi35 import Phi3Attention, Phi3Config, Phi3ForCausalLM, Phi3MLP, apply_rotary_pos_emb, repeat_kv
 from .nn import OnlineHadamard, QuarotFP16Linear
 from .nn.quantizer import ActQuantizer, DummyActQuantizer, KVQuantizerDequantizer
 
 ALL_LAYERNORM_LAYERS.append(RMSN)
 
 
-class QuarotPhi3Config(Phi3Config):
-    model_type = "phi3_quarot"
+class QuarotPhi35Config(Phi3Config):
+    model_type = "phi35_quarot"
     groupsize = None
     offset = False
 
 
-class QuarotPhi3MLP(Phi3MLP):
+class QuarotPhi35MLP(Phi3MLP):
     def __init__(
         self,
-        config: QuarotPhi3Config,
+        config: QuarotPhi35Config,
         act_bits: int = 16,
         act_clip_ratio: float | None = None,
         act_quantile: float | None = None,
@@ -92,10 +86,10 @@ class QuarotPhi3MLP(Phi3MLP):
         return self.down_proj(x)
 
 
-class QuarotFP16Phi3Attention(Phi3Attention):
+class QuarotFP16Phi35Attention(Phi3Attention):
     def __init__(
         self,
-        config: QuarotPhi3Config,
+        config: QuarotPhi35Config,
         act_bits: int = 16,
         act_clip_ratio: float | None = None,
         act_quantile: float | None = None,
@@ -245,12 +239,12 @@ class QuarotFP16Phi3Attention(Phi3Attention):
         return attn_output, attn_weights, past_key_value
 
 
-class QuarotPhi3ForCausalLM(Phi3ForCausalLM):
-    config_class = QuarotPhi3Config
+class QuarotPhi35ForCausalLM(Phi3ForCausalLM):
+    config_class = QuarotPhi35Config
 
     def __init__(
         self,
-        config: QuarotPhi3Config = None,
+        config: QuarotPhi35Config = None,
         online_had_mlp: bool = False,
         online_had_attn: bool = False,
         rms_norm: bool = False,
@@ -279,7 +273,7 @@ class QuarotPhi3ForCausalLM(Phi3ForCausalLM):
             self.model.norm = RMSN(config.hidden_size, eps=config.rms_norm_eps)
 
         for layer_idx, layer in enumerate(self.model.layers):
-            layer.self_attn = QuarotFP16Phi3Attention(
+            layer.self_attn = QuarotFP16Phi35Attention(
                 config=config,
                 act_bits=act_bits,
                 act_clip_ratio=act_clip_ratio,
@@ -296,7 +290,7 @@ class QuarotPhi3ForCausalLM(Phi3ForCausalLM):
                 online_had=online_had_attn,
                 layer_idx=layer_idx,
             )
-            layer.mlp = QuarotPhi3MLP(
+            layer.mlp = QuarotPhi35MLP(
                 config=config,
                 act_bits=act_bits,
                 act_clip_ratio=act_clip_ratio,

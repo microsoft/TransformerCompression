@@ -5,7 +5,7 @@ import logging
 import pathlib
 
 import torch
-from transformers import AutoTokenizer, PretrainedConfig, PreTrainedTokenizerBase, PreTrainedModel
+from transformers import AutoTokenizer, PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase
 
 from slicegpt.hf_utils import do_not_initialize
 
@@ -13,41 +13,49 @@ from .model_adapter import ModelAdapter
 from .modeling_llama import QuarotLlamaConfig, QuarotLlamaForCausalLM
 from .modeling_mixtral import QuarotMixtralConfig, QuarotMixtralForCausalLM
 from .modeling_phi3 import QuarotPhi3Config, QuarotPhi3ForCausalLM
+from .modeling_phi35 import QuarotPhi35Config, QuarotPhi35ForCausalLM
 
 
 def quarot_model_config(
-    model_name_or_path: str, dtype: torch.dtype, groupsize: int | None = None, offset: bool = False
+    model_name: str, model_path: str, dtype: torch.dtype, groupsize: int | None = None, offset: bool = False
 ):
     lm_configs = {
         'meta-llama/Llama-2-7b-hf': QuarotLlamaConfig,
         'meta-llama/Llama-2-13b-hf': QuarotLlamaConfig,
         'meta-llama/Meta-Llama-3-8B': QuarotLlamaConfig,
         'microsoft/Phi-3-mini-4k-instruct': QuarotPhi3Config,
+        'Phi-3.5-mini-instruct': QuarotPhi35Config,
         'mistralai/Mixtral-8x7B-v0.1': QuarotMixtralConfig,
     }
 
-    if model_name_or_path not in lm_configs:
+    if model_name not in lm_configs:
         raise NotImplementedError("Model type not supported")
 
-    model_config = lm_configs[model_name_or_path].from_pretrained(model_name_or_path, dtype=dtype, use_cache=False)
+    model_config = lm_configs[model_name].from_pretrained(model_path, dtype=dtype, use_cache=False)
     model_config.groupsize = groupsize
     model_config.offset = offset
     return model_config
 
 
 def get_quarot_model(
-    model_name_or_path: str,
+    model_name: str,
     rotate: bool,
+    no_unfused_Had: bool,
     act_args: dict,
     key_args: dict,
     value_args: dict,
     model_config: PretrainedConfig,
 ):
-    lm_class = resolve_quarot_model_class(model_name_or_path)
+    lm_class = resolve_quarot_model_class(model_name)
 
     online_had_mlp = True if rotate else False
     online_had_attn = True if rotate else False
     rms_norm = True if rotate else False
+
+    if no_unfused_Had:
+        online_had_mlp = False
+        online_had_attn = False
+
     return lm_class(
         config=model_config,
         online_had_mlp=online_had_mlp,
@@ -74,6 +82,7 @@ def resolve_quarot_model_class(model_name: str) -> PreTrainedModel:
         'meta-llama/Llama-2-13b-hf': QuarotLlamaForCausalLM,
         'meta-llama/Meta-Llama-3-8B': QuarotLlamaForCausalLM,
         'microsoft/Phi-3-mini-4k-instruct': QuarotPhi3ForCausalLM,
+        'Phi-3.5-mini-instruct': QuarotPhi35ForCausalLM,
         'mistralai/Mixtral-8x7B-v0.1': QuarotMixtralForCausalLM,
     }
     if model_name not in lm_classes:

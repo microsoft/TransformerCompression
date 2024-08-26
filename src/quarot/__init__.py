@@ -4,8 +4,9 @@
 from .adapters.llama_adapter import LlamaModelAdapter
 from .adapters.mixtral_adapter import MixtralModelAdapter
 from .adapters.phi3_adapter import Phi3ModelAdapter
+from .adapters.phi35_adapter import Phi35ModelAdapter
 from .hadamard_utils import get_hadK
 from .hf_utils import get_model_and_tokenizer
 from .model_adapter import LayerAdapter, ModelAdapter
 
-__all__ = ["hadamard_utils", "quant_utils", "hf_utils", "rotation"]
+__all__ = ["hadamard_utils", "quant_utils", "hf_utils", "rotate"]

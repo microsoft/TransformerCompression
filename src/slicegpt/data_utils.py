@@ -8,6 +8,57 @@ import torch
 from torch.utils.data import DataLoader, Dataset, SubsetRandomSampler
 from transformers import PreTrainedTokenizerBase
 
+ds_properties = {
+    "wikitext2": {"path": "wikitext", "config_name": "wikitext-2-raw-v1"},
+    "ptb": {"path": "ptb_text_only", "config_name": "penn_treebank"},
+    "c4": {
+        "path": "allenai/c4",
+        "config_name": "allenai--c4",
+        "data_files": {
+            "train": "en/c4-train.00000-of-01024.json.gz",
+            "validation": "en/c4-validation.00000-of-00008.json.gz",
+        },
+        "cols_to_remove": ['url', 'timestamp'],
+    },
+    "alpaca": {"path": "tatsu-lab/alpaca", "cols_to_remove": ['input', 'output', 'instruction']},
+}
+
+
+def format_into_chat(example: dict, tokenizer: PreTrainedTokenizerBase):
+    system_msg = "You are a helpful AI assistant."
+    user_msg = example["instruction"] + "\n" + example["input"] if example["input"] else example["instruction"]
+    assistant_msg = example["output"]
+
+    messages = [
+        {"role": "system", "content": system_msg},
+        {"role": "user", "content": user_msg},
+        {"role": "assistant", "content": assistant_msg},
+    ]
+
+    return tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True, return_tensors='str')
+
+
+def format_dataset_from_path(path: str, tokenizer: PreTrainedTokenizerBase) -> (list, list):
+    logging.info(f"Loading dataset from : {path}")
+    ds = datasets.load_dataset("json", data_dir=f"{path}")
+    ds = ds["train"].train_test_split(test_size=0.2, seed=42)
+
+    train_samples = []
+    for example in ds["train"]:
+        formatted_msg = tokenizer.apply_chat_template(
+            example['messages'], tokenize=False, add_generation_prompt=True, return_tensors='str'
+        )
+        train_samples.append(formatted_msg)
+
+    test_samples = []
+    for example in ds["test"]:
+        formatted_msg = tokenizer.apply_chat_template(
+            example['messages'], tokenize=False, add_generation_prompt=True, return_tensors='str'
+        )
+        test_samples.append(formatted_msg)
+
+    return train_samples, test_samples
+
 
 def get_dataset(name: str) -> datasets.DatasetDict:
     """
@@ -20,21 +71,6 @@ def get_dataset(name: str) -> datasets.DatasetDict:
         The dataset.
     """
     logging.info(f"Loading dataset: {name}")
-
-    ds_properties = {
-        "wikitext2": {"path": "wikitext", "config_name": "wikitext-2-raw-v1"},
-        "ptb": {"path": "ptb_text_only", "config_name": "penn_treebank"},
-        "c4": {
-            "path": "allenai/c4",
-            "config_name": "allenai--c4",
-            "data_files": {
-                "train": "en/c4-train.00000-of-01024.json.gz",
-                "validation": "en/c4-validation.00000-of-00008.json.gz",
-            },
-            "cols_to_remove": ['url', 'timestamp'],
-        },
-        "alpaca": {"path": "tatsu-lab/alpaca", "cols_to_remove": ['input', 'output', 'instruction']},
-    }
 
     if name not in ds_properties:
         raise NotImplementedError("The provided dataset is not supported")
