@@ -18,6 +18,9 @@ from lm_eval.api.registry import ALL_TASKS
 from lm_eval.models.huggingface import HFLM
 from lm_eval.tasks import initialize_tasks
 
+sys.path.append(os.path.join(os.path.dirname(__file__), os.pardir, "src"))
+sys.path.append(os.path.join(os.path.dirname(__file__)))
+
 from quarot.hadamard_utils import random_hadamard_matrix
 from quarot import gptq, hf_utils, rotate, rtn
 from quarot.adapters.llama_adapter import LlamaModelAdapter
