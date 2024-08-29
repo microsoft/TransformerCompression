@@ -5,8 +5,10 @@ import argparse
 import json
 import logging
 import os
+import sys
 
 import lm_eval
+import numpy as np
 import torch
 import transformers
 import wandb
@@ -16,6 +18,7 @@ from lm_eval.api.registry import ALL_TASKS
 from lm_eval.models.huggingface import HFLM
 from lm_eval.tasks import initialize_tasks
 
+from quarot.hadamard_utils import random_hadamard_matrix
 from quarot import gptq, hf_utils, rotate, rtn
 from quarot.adapters.llama_adapter import LlamaModelAdapter
 from quarot.adapters.mixtral_adapter import MixtralModelAdapter
@@ -269,6 +272,21 @@ def process_quarot_args(args):
         json.dump(vars(args), fp, indent=4, sort_keys=True)
 
 
+def run_lm_eval(
+    hflm: HFLM, task_list: list, fewshot: int, batch_size: int, fraction: float, output_file: str, log_msg: str
+):
+    results = lm_eval.simple_evaluate(
+        hflm, tasks=task_list, num_fewshot=fewshot, batch_size=batch_size, limit=fraction
+    )['results']
+    metrics = {task: round(result.get('acc_norm,none', result['acc,none']), 4) for task, result in results.items()}
+    metrics['acc_avg'] = round(sum(metrics.values()) / len(metrics.values()), 4)
+    metrics['num_fewshot'] = fewshot
+    metrics['limit'] = fraction
+    logging.info(f"{log_msg} {metrics}")
+    with open(output_file, "w") as f:
+        json.dump(metrics, f)
+
+
 def quarot_main(args: argparse.Namespace) -> None:
     logging.info("Running QuaRot experiment.")
     logging.info(f"PyTorch device: {config.device}")
@@ -319,6 +337,11 @@ def quarot_main(args: argparse.Namespace) -> None:
 
         # Rotate the model with fused Hadamard transformations.
         rotate.rotate_model(model_adapter, args.no_unfused_Had, args.rotation_seed)
+
+        # Save Q matrix
+        Q = random_hadamard_matrix(model_adapter.model.config.hidden_size, seed=args.rotation_seed)
+        torch.save(Q, f"{args.save_dir}/Q_mat.pt")
+        np.save(f"{args.save_dir}/Q.npy", Q.numpy())
 
     model_config = quarot_model_config(
         args.model, args.model_path, dtype=config.dtype, groupsize=args.w_groupsize, offset=args.w_asym
@@ -430,14 +453,46 @@ def quarot_main(args: argparse.Namespace) -> None:
 
     initialize_tasks()
     task_names = lm_eval_utils.pattern_match(args.tasks, ALL_TASKS)
-    results = lm_eval.simple_evaluate(hflm, tasks=task_names, batch_size=args.lm_eval_batch_size)['results']
 
-    metric_vals = {task: round(result.get('acc_norm,none', result['acc,none']), 4) for task, result in results.items()}
-    metric_vals['acc_avg'] = round(sum(metric_vals.values()) / len(metric_vals.values()), 4)
-    logging.info(f"LM Eval results: {metric_vals}")
-    wandb.log(metric_vals)
-    with open(f"{args.save_dir}/lm_eval.json", "w") as f:
-        json.dump(metric_vals, f)
+    run_lm_eval(
+        hflm,
+        task_list=task_names,
+        fewshot=0,
+        batch_size=args.lm_eval_batch_size,
+        fraction=1,
+        output_file=f"{args.save_dir}/lm_eval.json",
+        log_msg="LM Eval results (limit=1): ",
+    )
+
+    run_lm_eval(
+        hflm,
+        task_list=task_names,
+        fewshot=0,
+        batch_size=args.lm_eval_batch_size,
+        fraction=0.15,
+        output_file=f"{args.save_dir}/lm_eval_sub.json",
+        log_msg="LM Eval results (limit=0.15): ",
+    )
+
+    run_lm_eval(
+        hflm,
+        task_list=['mmlu'],
+        fewshot=5,
+        batch_size=args.lm_eval_batch_size,
+        fraction=1,
+        output_file=f"{args.save_dir}/mmlu_eval.json",
+        log_msg="MMLU Eval results (limit=1): ",
+    )
+
+    run_lm_eval(
+        hflm,
+        task_list=['mmlu'],
+        fewshot=5,
+        batch_size=args.lm_eval_batch_size,
+        fraction=0.15,
+        output_file=f"{args.save_dir}/mmlu_eval_sub.json",
+        log_msg="MMLU Eval results (limit=0.15): ",
+    )
 
 
 if __name__ == "__main__":
