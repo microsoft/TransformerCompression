@@ -282,9 +282,9 @@ def run_lm_eval(
         limit = fraction
     else:
         limit = None
-    results = lm_eval.simple_evaluate(
-        hflm, tasks=task_list, num_fewshot=fewshot, batch_size=batch_size, limit=limit
-    )['results']
+    results = lm_eval.simple_evaluate(hflm, tasks=task_list, num_fewshot=fewshot, batch_size=batch_size, limit=limit)[
+        'results'
+    ]
     metrics = {task: round(result.get('acc_norm,none', result['acc,none']), 4) for task, result in results.items()}
     metrics['acc_avg'] = round(sum(metrics.values()) / len(metrics.values()), 4)
     metrics['num_fewshot'] = fewshot
