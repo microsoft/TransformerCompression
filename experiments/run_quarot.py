@@ -276,15 +276,19 @@ def process_quarot_args(args):
 
 
 def run_lm_eval(
-    hflm: HFLM, task_list: list, fewshot: int, batch_size: int, fraction: float, output_file: str, log_msg: str
+    hflm: HFLM, task_list: list, fewshot: int, batch_size: int, fraction: float | None, output_file: str, log_msg: str
 ):
+    if fraction and fraction < 1:
+        limit = fraction
+    else:
+        limit = None
     results = lm_eval.simple_evaluate(
-        hflm, tasks=task_list, num_fewshot=fewshot, batch_size=batch_size, limit=fraction
+        hflm, tasks=task_list, num_fewshot=fewshot, batch_size=batch_size, limit=limit
     )['results']
     metrics = {task: round(result.get('acc_norm,none', result['acc,none']), 4) for task, result in results.items()}
     metrics['acc_avg'] = round(sum(metrics.values()) / len(metrics.values()), 4)
     metrics['num_fewshot'] = fewshot
-    metrics['limit'] = fraction
+    metrics['limit'] = limit
     logging.info(f"{log_msg} {metrics}")
     with open(output_file, "w") as f:
         json.dump(metrics, f)
@@ -462,7 +466,7 @@ def quarot_main(args: argparse.Namespace) -> None:
         task_list=task_names,
         fewshot=0,
         batch_size=args.lm_eval_batch_size,
-        fraction=1,
+        fraction=None,
         output_file=f"{args.save_dir}/lm_eval.json",
         log_msg="LM Eval results (limit=1): ",
     )
@@ -482,7 +486,7 @@ def quarot_main(args: argparse.Namespace) -> None:
         task_list=['mmlu'],
         fewshot=5,
         batch_size=args.lm_eval_batch_size,
-        fraction=1,
+        fraction=None,
         output_file=f"{args.save_dir}/mmlu_eval.json",
         log_msg="MMLU Eval results (limit=1): ",
     )
