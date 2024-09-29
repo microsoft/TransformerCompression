@@ -34,11 +34,11 @@ TASK_METRIC_MAP = {
     "hellaswag": "acc_norm,none",
     "piqa": "acc_norm,none",
     "winogrande": "acc,none",
+    "wikitext": "word_perplexity,none",
 }
 
 
 def eval_arg_parser(interactive: bool = True) -> argparse.Namespace:
-    initialize_tasks()
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--model",
@@ -159,6 +159,7 @@ def eval_main(args: argparse.Namespace) -> None:
 
     ### LM Eval Harness ###
     hflm = HFLM(pretrained=model_adapter.model, tokenizer=tokenizer, batch_size=args.batch_size)
+    initialize_tasks()
 
     if args.tasks is None:
         task_names = tasks.ALL_TASKS
