@@ -21,12 +21,12 @@ from lm_eval.tasks import initialize_tasks
 sys.path.append(os.path.join(os.path.dirname(__file__), os.pardir, "src"))
 sys.path.append(os.path.join(os.path.dirname(__file__)))
 
-from quarot.hadamard_utils import random_hadamard_matrix
 from quarot import gptq, hf_utils, rotate, rtn
 from quarot.adapters.llama_adapter import LlamaModelAdapter
 from quarot.adapters.mixtral_adapter import MixtralModelAdapter
 from quarot.adapters.phi3_adapter import Phi3ModelAdapter
 from quarot.adapters.phi35_adapter import Phi35ModelAdapter
+from quarot.hadamard_utils import random_hadamard_matrix
 from quarot.hf_utils import get_quarot_model, quarot_model_config
 from quarot.modeling_llama import QuarotLlamaForCausalLM
 from quarot.modeling_mixtral import QuarotMixtralForCausalLM
@@ -34,6 +34,25 @@ from quarot.modeling_phi3 import QuarotPhi3ForCausalLM
 from quarot.modeling_phi35 import QuarotPhi35ForCausalLM
 from slicegpt import data_utils, gpu_utils, layernorm_fusion, utils
 from slicegpt.config import config
+
+TASK_METRIC_MAP = {
+    "mmlu_abstract_algebra": "acc,none",
+    "mmlu_business_ethics": "acc,none",
+    "mmlu_college_computer_science": "acc,none",
+    "mmlu_college_mathematics": "acc,none",
+    "mmlu_conceptual_physics": "acc,none",
+    "mmlu_formal_logic": "acc,none",
+    "mmlu_machine_learning": "acc,none",
+    "mmlu_miscellaneous": "acc,none",
+    "mmlu_philosophy": "acc,none",
+    "mmlu_global_facts": "acc,none",
+    "arc_challenge": "acc_norm,none",
+    "arc_easy": "acc_norm,none",
+    "hellaswag": "acc_norm,none",
+    "piqa": "acc_norm,none",
+    "winogrande": "acc,none",
+    "wikitext": "word_perplexity,none",
+}
 
 
 def str2bool(v):
@@ -275,9 +294,7 @@ def process_quarot_args(args):
         json.dump(vars(args), fp, indent=4, sort_keys=True)
 
 
-def run_lm_eval(
-    hflm: HFLM, task_list: list, fewshot: int, batch_size: int, fraction: float | None, output_file: str, log_msg: str
-):
+def run_lm_eval(hflm: HFLM, task_list: list, fewshot: int, batch_size: int, fraction: float | None, output_file: str):
     if fraction and fraction < 1:
         limit = fraction
     else:
@@ -285,11 +302,11 @@ def run_lm_eval(
     results = lm_eval.simple_evaluate(hflm, tasks=task_list, num_fewshot=fewshot, batch_size=batch_size, limit=limit)[
         'results'
     ]
-    metrics = {task: round(result.get('acc_norm,none', result['acc,none']), 4) for task, result in results.items()}
+    metrics = {task: round(result.get(TASK_METRIC_MAP[task]), 4) for task, result in results.items()}
     metrics['acc_avg'] = round(sum(metrics.values()) / len(metrics.values()), 4)
     metrics['num_fewshot'] = fewshot
     metrics['limit'] = limit
-    logging.info(f"{log_msg} {metrics}")
+    logging.info(f"{metrics}")
     with open(output_file, "w") as f:
         json.dump(metrics, f)
 
@@ -326,7 +343,7 @@ def quarot_main(args: argparse.Namespace) -> None:
         raise NotImplementedError("The provided dataset is not supported")
 
     test_loader = data_utils.prepare_test_dataloader(
-        dataset=test_dataset, tokenizer=tokenizer, batch_size=args.ppl_eval_batch_size
+        dataset=test_dataset, tokenizer=tokenizer, batch_size=args.ppl_eval_batch_size, seqlen=args.ppl_eval_seqlen
     )
 
     # original ppl
@@ -456,7 +473,12 @@ def quarot_main(args: argparse.Namespace) -> None:
     if not args.lm_eval:
         return
 
-    hflm = HFLM(pretrained=quarot_model, tokenizer=tokenizer, batch_size=args.lm_eval_batch_size)
+    hflm = HFLM(
+        pretrained=quarot_model,
+        tokenizer=tokenizer,
+        batch_size=args.lm_eval_batch_size,
+        max_length=args.ppl_eval_seqlen,
+    )
 
     initialize_tasks()
     task_names = lm_eval_utils.pattern_match(args.tasks, ALL_TASKS)
@@ -468,17 +490,6 @@ def quarot_main(args: argparse.Namespace) -> None:
         batch_size=args.lm_eval_batch_size,
         fraction=None,
         output_file=f"{args.save_dir}/lm_eval.json",
-        log_msg="LM Eval results (limit=1): ",
-    )
-
-    run_lm_eval(
-        hflm,
-        task_list=task_names,
-        fewshot=0,
-        batch_size=args.lm_eval_batch_size,
-        fraction=0.15,
-        output_file=f"{args.save_dir}/lm_eval_sub.json",
-        log_msg="LM Eval results (limit=0.15): ",
     )
 
     run_lm_eval(
@@ -488,17 +499,6 @@ def quarot_main(args: argparse.Namespace) -> None:
         batch_size=args.lm_eval_batch_size,
         fraction=None,
         output_file=f"{args.save_dir}/mmlu_eval.json",
-        log_msg="MMLU Eval results (limit=1): ",
-    )
-
-    run_lm_eval(
-        hflm,
-        task_list=['mmlu'],
-        fewshot=5,
-        batch_size=args.lm_eval_batch_size,
-        fraction=0.15,
-        output_file=f"{args.save_dir}/mmlu_eval_sub.json",
-        log_msg="MMLU Eval results (limit=0.15): ",
     )
 
 
