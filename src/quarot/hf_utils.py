@@ -158,3 +158,13 @@ def get_model_and_tokenizer(
     logging.info("Loading model done")
 
     return model_adapter, tokenizer
+
+
+def load_quarot_model(model_name: str, model_path: str, device: torch.device):
+    quarot_model_class = resolve_quarot_model_class(model_name)
+    model = quarot_model_class.from_pretrained(model_path, local_files_only=True, torch_dtype="auto")
+    model.seqlen = model.config.max_position_embeddings
+    model.eval()
+    model = model.to(device)
+    tokenizer = AutoTokenizer.from_pretrained(model_path, local_files_only=True, trust_remote_code=True)
+    return model, tokenizer

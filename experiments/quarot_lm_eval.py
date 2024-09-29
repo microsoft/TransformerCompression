@@ -5,7 +5,6 @@ import argparse
 import json
 import logging
 import os
-import sys
 
 import lm_eval
 import torch
@@ -15,12 +14,8 @@ from lm_eval import utils as lm_eval_utils
 from lm_eval.api.registry import ALL_TASKS
 from lm_eval.models.huggingface import HFLM
 from lm_eval.tasks import initialize_tasks
-from transformers import AutoTokenizer
 
-sys.path.append(os.path.join(os.path.dirname(__file__), os.pardir, "src"))
-sys.path.append(os.path.join(os.path.dirname(__file__)))
-
-from quarot.modeling_phi35 import QuarotPhi35ForCausalLM
+from quarot.hf_utils import load_quarot_model
 from slicegpt import data_utils, gpu_utils, utils
 from slicegpt.config import config
 
@@ -74,7 +69,6 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
     parser.add_argument(
         "--ppl-eval-nsamples", type=int, default=128, help="Number of samples to evaluate the perplexity on."
     )
-    parser.add_argument("--eval-baseline", action="store_true", help="Evaluate the baseline model.")
     parser.add_argument(
         "--distribute-model",
         action="store_true",
@@ -86,24 +80,8 @@ def quarot_arg_parser(interactive: bool = True) -> argparse.Namespace:
         default=None,
         help="PyTorch device to use. Example values are 'cpu', 'cuda', 'cuda:0'. If not specified it will be defaulted to 'cuda' if available and 'cpu' otherwise.",
     )
-    parser.add_argument(
-        "--cal-nsamples",
-        type=int,
-        help="Number of samples of the calibration data to load for GPTQ",
-        default=128,
-    )
-    parser.add_argument(
-        "--cal-batch-size",
-        type=int,
-        help="Batch size of the calibration data to load for GPTQ",
-        default=4,
-    )
 
     # LM Eval Arguments
-    parser.add_argument("--lm-eval", action="store_true", help="Evaluate the model on LM Eval tasks.")
-    parser.add_argument(
-        "--no-unfused-Had", action="store_true", help="Uses fused Hadamards only to allow export to onnx"
-    )
     parser.add_argument(
         '--tasks',
         nargs='+',
@@ -153,10 +131,7 @@ def quarot_main(args: argparse.Namespace) -> None:
     logging.info(f"PyTorch device: {config.device}")
     logging.info(f"Number of available cuda devices: {torch.cuda.device_count()}")
 
-    model = QuarotPhi35ForCausalLM.from_pretrained(args.quarot_model_path, local_files_only=True, torch_dtype="auto")
-    model = model.to(config.device)
-
-    tokenizer = AutoTokenizer.from_pretrained(args.quarot_model_path, local_files_only=True, trust_remote_code=True)
+    model, tokenizer = load_quarot_model(args.model, args.quarot_model_path, config.device)
 
     if args.cal_dataset in data_utils.ds_properties:
         dataset = data_utils.get_dataset(args.cal_dataset)
@@ -172,12 +147,8 @@ def quarot_main(args: argparse.Namespace) -> None:
     )
 
     dataset_ppl = gpu_utils.evaluate_ppl(model, model.config.pad_token_id, test_loader)
-
     logging.info(f'QuaRot ppl: {dataset_ppl:.4f}')
     wandb.log({"quarot_ppl": dataset_ppl})
-
-    if not args.lm_eval:
-        return
 
     hflm = HFLM(
         pretrained=model, tokenizer=tokenizer, batch_size=args.lm_eval_batch_size, max_length=args.ppl_eval_seqlen
