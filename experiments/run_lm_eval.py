@@ -18,6 +18,7 @@ from lm_eval.tasks import initialize_tasks
 from slicegpt import gpu_utils, hf_utils, utils
 from slicegpt.config import config
 
+
 TASK_METRIC_MAP = {
     "mmlu_abstract_algebra": "acc,none",
     "mmlu_business_ethics": "acc,none",
@@ -59,6 +60,12 @@ def eval_arg_parser(interactive: bool = True) -> argparse.Namespace:
         help="Path to load the model to fine-tune (sliced) and tokenizer from",
         default=None,
     )
+    path_group.add_argument(
+        "--quarot-model-path",
+        type=str,
+        help="Path to load the model to fine-tune (quarot) and tokenizer from",
+        default=None,
+    )
     parser.add_argument(
         "--sparsity", type=float, default=0.0, help="A measure of how much slicing is applied (in the range [0, 1))"
     )
@@ -81,9 +88,12 @@ def eval_arg_parser(interactive: bool = True) -> argparse.Namespace:
         '--tasks',
         nargs='+',
         default=["piqa", "hellaswag", "arc_easy", "arc_challenge", "winogrande"],
-        choices=lm_eval_utils.MultiChoice(tasks.ALL_TASKS),
     )
+    parser.add_argument("--seq-len", type=int, default=2048, help="Sequence length used by the model.")
     parser.add_argument('--num-fewshot', type=int, default=0, help="Number of fewshots for all tasks.")
+    parser.add_argument(
+        '--limit', type=float, default=None, help="Fraction of lm-eval dataset to use (specify a number less than 1)"
+    )
     parser.add_argument("--save-dir", type=str, default=".", help="Path to save the lm eval results")
     return parser.parse_args() if interactive else parser.parse_args('')
 
@@ -119,6 +129,25 @@ def calculate_avg_accuracy(task_names: str, results: dict) -> float:
     return (acc_cumul + acc_mmlu_avg) / (n_tasks - len(questions_per_mmlu_task) + 1)
 
 
+def run_lm_eval(hflm: HFLM, task_list: list, fewshot: int, batch_size: int, fraction: float | None, output_file: str):
+    if fraction and fraction < 1:
+        limit = fraction
+    else:
+        limit = None
+    results = lm_eval.simple_evaluate(hflm, tasks=task_list, num_fewshot=fewshot, batch_size=batch_size, limit=limit)[
+        'results'
+    ]
+    logging.info(results)
+    wandb.log(results)
+    metrics = {task: round(result.get(TASK_METRIC_MAP[task]), 4) for task, result in results.items()}
+    metrics['acc_avg'] = round(sum(metrics.values()) / len(metrics.values()), 4)
+    metrics['num_fewshot'] = fewshot
+    metrics['limit'] = limit
+    logging.info(f"{metrics}")
+    with open(output_file, "w") as f:
+        json.dump(metrics, f)
+
+
 def eval_main(args: argparse.Namespace) -> None:
     logging.info("Running SliceGPT LM eval experiment.")
 
@@ -143,22 +172,35 @@ def eval_main(args: argparse.Namespace) -> None:
             token=args.hf_token,
             round_interval=args.round_interval,
         )
+        model = model_adapter.model
+
+        if args.distribute_model:
+            gpu_utils.distribute_model(model_adapter)
+        else:
+            model.to(config.device)
+
+    elif args.quarot_model_path:
+        from quarot.hf_utils import load_quarot_model
+
+        # load the sliced model
+        logging.info(f"Loading quarot {args.model} model from {args.quarot_model_path}")
+        model, tokenizer = load_quarot_model(args.model, args.quarot_model_path, config.device)
     else:
         # load the original model
         logging.info(f"Loading {args.model} model")
         model_adapter, tokenizer = hf_utils.get_model_and_tokenizer(args.model, args.model_path, token=args.hf_token)
+        model = model_adapter.model
+
+        if args.distribute_model:
+            gpu_utils.distribute_model(model_adapter)
+        else:
+            model.to(config.device)
 
     # the lm eval harness ties the weights, but this should not be done for sliced models unless the lm_head was sliced
-    model_adapter.model.tie_weights = lambda: None
-
-    if args.distribute_model:
-        # distribute model across available GPUs
-        gpu_utils.distribute_model(model_adapter)
-    else:
-        model_adapter.model.to(config.device)
+    model.tie_weights = lambda: None
 
     ### LM Eval Harness ###
-    hflm = HFLM(pretrained=model_adapter.model, tokenizer=tokenizer, batch_size=args.batch_size)
+    hflm = HFLM(pretrained=model, tokenizer=tokenizer, batch_size=args.batch_size, max_length=args.seq_len)
     initialize_tasks()
 
     if args.tasks is None:
@@ -174,26 +216,14 @@ def eval_main(args: argparse.Namespace) -> None:
                 f"Please specify the metric to use for {task} in TASK_METRIC_MAP. Available info {TASK_METRIC_MAP}"
             )
 
-    results = lm_eval.simple_evaluate(hflm, tasks=task_names, num_fewshot=args.num_fewshot, batch_size=args.batch_size)[
-        'results'
-    ]
-
-    logging.info(results)
-    wandb.log(results)
-
-    with open(f"{args.save_dir}/full_results_{args.num_fewshot}_shot.json", "w") as f:
-        json.dump(results, f)
-
-    metric_vals = {task: round(result.get(TASK_METRIC_MAP[task]), 4) for task, result in results.items()}
-    acc_avg = calculate_avg_accuracy(task_names, results)
-    metric_vals['average'] = round(acc_avg, 4)
-    with open(f"{args.save_dir}/{args.num_fewshot}_shot_task_results.json", "w") as f:
-        json.dump(metric_vals, f)
-
-    wandb.log({'acc_avg': acc_avg})
-
-    logging.info(json.dumps(metric_vals, indent=4))
-    logging.info(f"Average accuracy across tasks: {acc_avg}")
+    run_lm_eval(
+        hflm,
+        task_list=task_names,
+        fewshot=0,
+        batch_size=args.batch_size,
+        fraction=args.limit,
+        output_file=f"{args.save_dir}/lm_eval.json",
+    )
 
 
 if __name__ == "__main__":
