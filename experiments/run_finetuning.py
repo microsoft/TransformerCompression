@@ -83,6 +83,12 @@ def finetuning_arg_parser(interactive: bool = True) -> argparse.Namespace:
         help="Path to load the model to fine-tune (sliced) and tokenizer from",
         default=None,
     )
+    path_group.add_argument(
+        "--quarot-model-path",
+        type=str,
+        help="Path to load the model to fine-tune (quarot) and tokenizer from",
+        default=None,
+    )
     parser.add_argument("--dtype", type=str, help="Data type to use.", choices=["fp32", "fp16"], default="fp16")
     parser.add_argument("--varied-seqlen", action="store_true", help="Varied sequence lengths in the calibration data.")
     parser.add_argument("--seed", type=int, default=42, help="Seed for sampling the calibration data.")
@@ -237,10 +243,24 @@ def finetuning_main(args: argparse.Namespace) -> None:
             token=args.hf_token,
             round_interval=args.round_interval,
         )
+        if args.distribute_model:
+            gpu_utils.distribute_model(model_adapter)
+        else:
+            model_adapter.model.to(config.device)
+        model = model_adapter.model
+    elif args.quarot_model_path:
+        from quarot.hf_utils import load_quarot_model
+        logging.info(f"Loading quarot {args.model} model from {args.quarot_model_path}")
+        model, tokenizer = load_quarot_model(args.model, args.quarot_model_path, config.device)
     else:
         # load the original model
         logging.info(f"Loading {args.model} model")
         model_adapter, tokenizer = hf_utils.get_model_and_tokenizer(args.model, args.model_path, token=args.hf_token)
+        if args.distribute_model:
+            gpu_utils.distribute_model(model_adapter)
+        else:
+            model_adapter.model.to(config.device)
+        model = model_adapter.model
 
     # get the dataset for perplexity evaluation
     ppl_ds = data_utils.get_dataset(args.ppl_eval_dataset)
@@ -254,13 +274,8 @@ def finetuning_main(args: argparse.Namespace) -> None:
         seed=args.seed,
     )
 
-    if args.distribute_model:
-        gpu_utils.distribute_model(model_adapter)
-    else:
-        model_adapter.model.to(config.device)
-
     # compute perplexity before finetuning
-    dataset_ppl = gpu_utils.evaluate_ppl(model_adapter.model, model_adapter.model.config.pad_token_id, ppl_eval_loader)
+    dataset_ppl = gpu_utils.evaluate_ppl(model, model.config.pad_token_id, ppl_eval_loader)
     logging.info(f'PPL before finetuning: {dataset_ppl:.4f}')
     wandb.log({"pre_finetune_ppl": dataset_ppl})
 
@@ -295,7 +310,6 @@ def finetuning_main(args: argparse.Namespace) -> None:
         target_modules=lora_target_map(args.model)[args.lora_target_option],
     )
 
-    model = model_adapter.model
     lora_model = get_peft_model(model, lora_config)
     lora_model.print_trainable_parameters()
 

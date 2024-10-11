@@ -81,7 +81,7 @@ def lora_target_map(model: str):
                     'lm_head',
                 ],
             }
-        case 'microsoft/Phi-3-mini-4k-instruct':
+        case 'microsoft/Phi-3-mini-4k-instruct' | 'Phi-3.5-mini-instruct':
             return {
                 'qkv_proj': ['qkv_proj'],
                 'attn_head': ['qkv_proj', 'o_proj'],

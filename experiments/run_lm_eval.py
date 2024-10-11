@@ -35,6 +35,7 @@ TASK_METRIC_MAP = {
     "hellaswag": "acc_norm,none",
     "piqa": "acc_norm,none",
     "winogrande": "acc,none",
+    "lamabada_openai": "acc_norm,none",
     "wikitext": "word_perplexity,none",
 }
 
@@ -181,15 +182,15 @@ def eval_main(args: argparse.Namespace) -> None:
 
     elif args.quarot_model_path:
         from quarot.hf_utils import load_quarot_model
-
-        # load the sliced model
         logging.info(f"Loading quarot {args.model} model from {args.quarot_model_path}")
         model, tokenizer = load_quarot_model(args.model, args.quarot_model_path, config.device)
     else:
         # load the original model
+        import quarot
         logging.info(f"Loading {args.model} model")
-        model_adapter, tokenizer = hf_utils.get_model_and_tokenizer(args.model, args.model_path, token=args.hf_token)
+        model_adapter, tokenizer = quarot.hf_utils.get_model_and_tokenizer(args.model, args.model_path, token=args.hf_token)
         model = model_adapter.model
+        model.eval()
 
         if args.distribute_model:
             gpu_utils.distribute_model(model_adapter)
