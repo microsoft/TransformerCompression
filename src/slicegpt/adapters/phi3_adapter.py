@@ -237,7 +237,7 @@ class Phi3ModelAdapter(ModelAdapter):
         local_files_only: bool = False,
         token: str | bool | None = None,
     ) -> ModelAdapter | None:
-        if not model_name.startswith("microsoft/Phi-3-mini-4k-instruct"):
+        if (not model_name.startswith("microsoft/Phi-3-mini-4k-instruct") and not model_name.startswith("microsoft/Phi-3.5-mini-instruct")):
             return None
 
         model = Phi3ForCausalLM.from_pretrained(

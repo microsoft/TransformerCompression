@@ -27,7 +27,7 @@ dependencies = [
     "numpy",
     "torch",
     "tqdm",
-    "transformers==4.41.0",
+    "transformers==4.46.3",
 ]
 
 [project.optional-dependencies]
