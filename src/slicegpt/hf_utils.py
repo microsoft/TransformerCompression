@@ -30,11 +30,12 @@ def do_not_initialize(func):
         torch.nn.init.uniform_ = skip
         torch.nn.init.normal_ = skip
 
-        result = func(*args, **kwargs)
-
-        torch.nn.init.kaiming_uniform_ = kaiming_fn
-        torch.nn.init.uniform_ = uniform_fn
-        torch.nn.init.normal_ = normal_fn
+        try:
+            result = func(*args, **kwargs)
+        finally:
+            torch.nn.init.kaiming_uniform_ = kaiming_fn
+            torch.nn.init.uniform_ = uniform_fn
+            torch.nn.init.normal_ = normal_fn
 
         return result
 
@@ -172,7 +173,7 @@ def load_sliced_model(
 
     logging.info(f"Loading sliced model weights from {sliced_model_path}")
     model_adapter.model.load_state_dict(
-        torch.load(str(pathlib.Path(sliced_model_path) / my_sliced_model_name), map_location="cpu")
+        torch.load(str(pathlib.Path(sliced_model_path) / my_sliced_model_name), map_location="cpu", weights_only=True)
     )
     model_adapter.model.eval()
 
