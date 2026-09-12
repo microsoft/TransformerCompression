@@ -31,16 +31,18 @@ class CompressedPhi3DecoderLayer(Phi3DecoderLayer):
     but with the addition of a shortcut_Q attribute. This attribute is used to rotate the residual tensors.
     """
 
+
     def forward(
-        self,
-        hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        past_key_value: Optional[Tuple[torch.Tensor]] = None,
-        output_attentions: Optional[bool] = False,
-        use_cache: Optional[bool] = False,
-        **kwargs,
-    ) -> Tuple[Any]:
+            self,
+            hidden_states: torch.Tensor,
+            attention_mask: Optional[torch.Tensor] = None,
+            position_ids: Optional[torch.LongTensor] = None,
+            past_key_value: Optional[Tensor] = None,
+            output_attentions: Optional[bool] = False,
+            use_cache: Optional[bool] = False,
+            position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
+            **kwargs,
+    ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
         if "padding_mask" in kwargs:
             warnings.warn(
                 "Passing `padding_mask` is deprecated and will be removed in v4.37. "
@@ -68,15 +70,26 @@ class CompressedPhi3DecoderLayer(Phi3DecoderLayer):
 
         hidden_states = self.input_layernorm(hidden_states)
 
-        # Self Attention
-        attn_outputs, self_attn_weights, present_key_value = self.self_attn(
-            hidden_states=hidden_states,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
-            past_key_value=past_key_value,
-            output_attentions=output_attentions,
-            use_cache=use_cache,
-        )
+        try:
+            attn_outputs, self_attn_weights = self.self_attn(
+                hidden_states=hidden_states,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                past_key_value=past_key_value,
+                output_attentions=output_attentions,
+                use_cache=use_cache,
+                position_embeddings=position_embeddings,
+                **kwargs,
+            )
+        except ValueError:  # Older version
+            attn_outputs, self_attn_weights, present_key_value = self.self_attn(
+                hidden_states=hidden_states,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                past_key_value=past_key_value,
+                output_attentions=output_attentions,
+                use_cache=use_cache,
+            )
 
         if self.attn_shortcut_Q is not None:
             rotated_residual = matmul(residual, self.attn_shortcut_Q)
@@ -99,7 +112,7 @@ class CompressedPhi3DecoderLayer(Phi3DecoderLayer):
         if output_attentions:
             outputs += (self_attn_weights,)
 
-        if use_cache:
+        if use_cache and 'present_key_value' in locals():
             outputs += (present_key_value,)
 
         return outputs
@@ -237,8 +250,12 @@ class Phi3ModelAdapter(ModelAdapter):
         local_files_only: bool = False,
         token: str | bool | None = None,
     ) -> ModelAdapter | None:
-        if not model_name.startswith("microsoft/Phi-3-mini-4k-instruct"):
+        if not (model_name.startswith("microsoft/Phi-3-mini-4k-instruct") or \
+                model_name.startswith("microsoft/phi-4") or \
+                model_name.startswith("microsoft/Phi-4-mini-instruct")): # TODO: Unfinished
             return None
+
+        print(model_path,dtype,token,local_files_only)
 
         model = Phi3ForCausalLM.from_pretrained(
             model_path, torch_dtype=dtype, token=token, local_files_only=local_files_only
@@ -257,7 +274,9 @@ class Phi3ModelAdapter(ModelAdapter):
         local_files_only: bool = False,
         token: str | bool | None = None,
     ) -> ModelAdapter | None:
-        if not model_name.startswith("microsoft/Phi-3-mini-4k-instruct"):
+        if not (model_name.startswith("microsoft/Phi-3-mini-4k-instruct") or \
+                model_name.startswith("microsoft/phi-4") or \
+                model_name.startswith("microsoft/Phi-4-mini-instruct")):
             return None
 
         class UninitializedPhi3ForCausalLM(Phi3ForCausalLM):

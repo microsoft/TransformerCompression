@@ -12,7 +12,7 @@ from torch import FloatTensor, LongTensor, Tensor, matmul
 from torch.nn import LayerNorm, Linear, Module
 from transformers import PretrainedConfig, PreTrainedTokenizerBase
 from transformers.models.phi.modeling_phi import PhiConfig, PhiDecoderLayer, PhiForCausalLM
-
+from typing import Optional, Tuple
 from slicegpt.model_adapter import LayerAdapter, ModelAdapter
 
 
@@ -25,12 +25,14 @@ class CompressedPhiDecoderLayer(PhiDecoderLayer):
 
     def forward(
         self,
-        hidden_states: Tensor,
-        attention_mask: Tensor | None = None,
-        position_ids: LongTensor | None = None,
-        output_attentions: bool | None = False,
-        use_cache: bool | None = False,
-        past_key_value: tuple[Tensor] | None = None,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        output_attentions: Optional[bool] = False,
+        use_cache: Optional[bool] = False,
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
+        **kwargs
     ) -> tuple:
         """
         Args:
@@ -55,14 +57,27 @@ class CompressedPhiDecoderLayer(PhiDecoderLayer):
         hidden_states = self.input_layernorm(hidden_states)
 
         # Self Attention
-        attn_outputs, self_attn_weights, present_key_value = self.self_attn(
-            hidden_states=hidden_states,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
-            past_key_value=past_key_value,
-            output_attentions=output_attentions,
-            use_cache=use_cache,
-        )
+        try:
+            attn_outputs, self_attn_weights = self.self_attn(
+                hidden_states=hidden_states,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                past_key_value=past_key_value,
+                output_attentions=output_attentions,
+                use_cache=use_cache,
+                position_embeddings=position_embeddings,
+                **kwargs,
+            )
+        except TypeError:
+            attn_outputs, self_attn_weights, present_key_value = self.self_attn(
+                hidden_states=hidden_states,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                past_key_value=past_key_value,
+                output_attentions=output_attentions,
+                use_cache=use_cache,
+            )
+
         attn_outputs = self.resid_dropout(attn_outputs)
 
         feed_forward_hidden_states = self.resid_dropout(self.mlp(hidden_states))
@@ -78,7 +93,7 @@ class CompressedPhiDecoderLayer(PhiDecoderLayer):
         if output_attentions:
             outputs += (self_attn_weights,)
 
-        if use_cache:
+        if use_cache and 'present_key_value' in locals():
             outputs += (present_key_value,)
 
         return outputs

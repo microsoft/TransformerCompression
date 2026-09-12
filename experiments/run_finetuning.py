@@ -330,6 +330,7 @@ def finetuning_main(args: argparse.Namespace) -> None:
         args=training_args,
         optimizers=(optimizer, lr_scheduler),
         callbacks=[EarlyStoppingCallback(early_stopping_patience=args.early_stopping_patience)],
+        eval_dataset=args.ppl_eval_dataset, # update for transformers==4.48.0
     )
 
     # required to enable gradient_checkpointing

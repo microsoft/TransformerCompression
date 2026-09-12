@@ -14,6 +14,7 @@ from transformers.models.opt.modeling_opt import OPTConfig, OPTDecoderLayer, OPT
 
 from slicegpt.model_adapter import LayerAdapter, ModelAdapter
 
+from typing import Optional, Tuple
 
 class CompressedOPTDecoderLayer(OPTDecoderLayer):
     """
@@ -24,12 +25,13 @@ class CompressedOPTDecoderLayer(OPTDecoderLayer):
 
     def forward(
         self,
-        hidden_states: Tensor,
-        attention_mask: Tensor | None = None,
-        layer_head_mask: Tensor | None = None,
-        past_key_value: tuple[Tensor] | None = None,
-        output_attentions: bool | None = False,
-        use_cache: bool | None = False,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        layer_head_mask: Optional[torch.Tensor] = None,
+        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        output_attentions: Optional[bool] = False,
+        use_cache: Optional[bool] = False,
+        position_ids: Optional[torch.LongTensor] = None
     ) -> tuple:
         """
         Args:
@@ -57,6 +59,7 @@ class CompressedOPTDecoderLayer(OPTDecoderLayer):
         hidden_states, self_attn_weights, present_key_value = self.self_attn(
             hidden_states=hidden_states,
             past_key_value=past_key_value,
+            position_ids=position_ids,
             attention_mask=attention_mask,
             layer_head_mask=layer_head_mask,
             output_attentions=output_attentions,

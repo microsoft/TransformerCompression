@@ -13,6 +13,7 @@ from transformers import PretrainedConfig, PreTrainedTokenizerBase
 from transformers.models.llama.modeling_llama import LlamaConfig, LlamaDecoderLayer, LlamaForCausalLM, LlamaRMSNorm
 
 from slicegpt.model_adapter import LayerAdapter, ModelAdapter
+from typing import Optional, Tuple
 
 
 class CompressedLlamaDecoderLayer(LlamaDecoderLayer):
@@ -22,16 +23,19 @@ class CompressedLlamaDecoderLayer(LlamaDecoderLayer):
     but with the addition of a shortcut_Q attribute. This attribute is used to rotate the residual tensors.
     """
 
-    def forward(
+    def forward(    # Update forward() for transformers 4.48.0
         self,
-        hidden_states: Tensor,
-        attention_mask: Tensor | None = None,
-        position_ids: LongTensor | None = None,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
         past_key_value: tuple[Tensor] | None = None,
-        output_attentions: bool | None = False,
-        use_cache: bool | None = False,
-        **kwargs,
-    ) -> tuple:
+        output_attentions: Optional[bool] = False,
+        use_cache: Optional[bool] = False,
+        cache_position: Optional[torch.LongTensor] = None,
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
+        **kwargs
+    ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
+
         """
         Args:
             hidden_states (`torch.FloatTensor`): input to the layer of shape `(batch, seq_len, embed_dim)`
@@ -51,15 +55,28 @@ class CompressedLlamaDecoderLayer(LlamaDecoderLayer):
         hidden_states = self.input_layernorm(hidden_states)
 
         # Self Attention
-        hidden_states, self_attn_weights, present_key_value = self.self_attn(
-            hidden_states=hidden_states,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
-            past_key_value=past_key_value,
-            output_attentions=output_attentions,
-            use_cache=use_cache,
-            **kwargs,
-        )
+        # TODO(mercy): Not sure if this works for older versions of LlaMa
+        try:
+            hidden_states, self_attn_weights = self.self_attn(
+                hidden_states=hidden_states,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                past_key_value=past_key_value,
+                output_attentions=output_attentions,
+                use_cache=use_cache,
+                position_embeddings=position_embeddings,
+                **kwargs,
+            )
+        except ValueError:  # Older LlaMa version
+            hidden_states, self_attn_weights, present_key_value = self.self_attn(
+                    hidden_states=hidden_states,
+                    attention_mask=attention_mask,
+                    position_ids=position_ids,
+                    past_key_value=past_key_value,
+                    output_attentions=output_attentions,
+                    use_cache=use_cache,
+                    **kwargs,
+                )
         if self.attn_shortcut_Q is not None:
             rotated_residual = matmul(residual, self.attn_shortcut_Q)
             hidden_states = rotated_residual + hidden_states
@@ -82,7 +99,7 @@ class CompressedLlamaDecoderLayer(LlamaDecoderLayer):
         if output_attentions:
             outputs += (self_attn_weights,)
 
-        if use_cache:
+        if use_cache and 'present_key_value' in locals():
             outputs += (present_key_value,)
 
         return outputs
@@ -224,7 +241,7 @@ class LlamaModelAdapter(ModelAdapter):
         local_files_only: bool = False,
         token: str | bool | None = None,
     ) -> ModelAdapter | None:
-        if not (model_name.startswith("meta-llama/Llama-2") or model_name.startswith("meta-llama/Meta-Llama-3")):
+        if not (model_name.startswith("meta-llama/Llama-") or model_name.startswith("meta-llama/Meta-Llama-3")):
             return None
 
         model = LlamaForCausalLM.from_pretrained(
@@ -244,7 +261,7 @@ class LlamaModelAdapter(ModelAdapter):
         local_files_only: bool = False,
         token: str | bool | None = None,
     ) -> ModelAdapter | None:
-        if not (model_name.startswith("meta-llama/Llama-2") or model_name.startswith("meta-llama/Meta-Llama-3")):
+        if not (model_name.startswith("meta-llama/Llama-") or model_name.startswith("meta-llama/Meta-Llama-3")):
             return None
 
         class UninitializedLlamaForCausalLM(LlamaForCausalLM):

@@ -26,7 +26,7 @@ def get_layer0_inputs(model_adapter: ModelAdapter, batch: Tensor) -> tuple[Tenso
     """
     # Move embeddings to device.
     for W in model_adapter.get_embeddings():
-        W.weight = torch.nn.Parameter(W.weight.to(config.device))
+        W.weight = torch.nn.Parameter(W.weight.to(model_adapter.model.device))
 
     class Catcher(torch.nn.Module):
         def __init__(self):
@@ -42,7 +42,7 @@ def get_layer0_inputs(model_adapter: ModelAdapter, batch: Tensor) -> tuple[Tenso
     model_adapter.set_raw_layer_at(0, layer0_catcher)
 
     try:
-        batch = utils.map_tensors(batch, device=config.device)
+        batch = utils.map_tensors(batch, device=model_adapter.model.device)
         model_adapter.model(**batch)
     except ValueError:
         pass
