@@ -167,6 +167,7 @@ def rotate_and_slice_sequential(
 
     # rotate and slice embeddings
     eig_val, Q = pca_calc(inps, ignore_masks)
+    slicing_scheduler.set_embedding_eigenvalues(eig_val.detach().cpu().tolist())
     Q = Q.to(device=config.device)
     if final_orientation == 'random':
         R = random_orthogonal_upper_left(Q.shape[0], slicing_scheduler.get_embedding_dimensions()[0])
@@ -194,6 +195,7 @@ def rotate_and_slice_sequential(
 
         mlp_ln_inputs, _ = get_signals(layer_adapter, args, kwargs)
         eig_val, Q = pca_calc(mlp_ln_inputs, ignore_masks)
+        slicing_scheduler.set_mlp_eigenvalues(idx, eig_val.detach().cpu().tolist())
         Q = Q.to(device=config.device, dtype=torch.float64)
         if final_orientation == 'random':
             R = random_orthogonal_upper_left(
@@ -225,6 +227,7 @@ def rotate_and_slice_sequential(
         # with slicing between Attention and mlp.
         _, inps = get_signals(layer_adapter, args, kwargs)
         eig_val, Q = pca_calc(inps, ignore_masks)
+        slicing_scheduler.set_attention_eigenvalues(idx, eig_val.detach().cpu().tolist())
         if final_orientation == 'random':
             R = random_orthogonal_upper_left(Q.shape[0], slicing_scheduler.get_mlp_output_dimension(idx))
             Q = Q @ R.to(Q.device)
@@ -280,7 +283,8 @@ def rotate_and_slice_parallel(
     slicing_scheduler.setup(hidden_size=model_adapter.hidden_size, layers_num=len(layers), parallel_blocks=True)
 
     # rotate and slice embeddings
-    _, Q = pca_calc(inps, ignore_masks)
+    eig_val, Q = pca_calc(inps, ignore_masks)
+    slicing_scheduler.set_embedding_eigenvalues(eig_val.detach().cpu().tolist())
     Q = Q.to(device=config.device)
     if final_orientation == 'random':
         R = random_orthogonal_upper_left(Q.shape[0], slicing_scheduler.get_embedding_dimensions()[0])
@@ -323,7 +327,8 @@ def rotate_and_slice_parallel(
             outputs.append(out)
 
         inps = outputs
-        _, Q = pca_calc(inps, ignore_masks)
+        eig_val, Q = pca_calc(inps, ignore_masks)
+        slicing_scheduler.set_attention_eigenvalues(idx, eig_val.detach().cpu().tolist())
 
         if final_orientation == 'random':
             R = random_orthogonal_upper_left(Q.shape[0], slicing_scheduler.get_mlp_output_dimension(idx))

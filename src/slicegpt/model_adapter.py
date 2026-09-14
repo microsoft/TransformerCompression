@@ -438,21 +438,22 @@ class SlicingConfig:
     do_slice_head: bool = False
     parallel_blocks: bool = False
 
-    # use dict[int, int] instead of list[int] to allow for arbitrary order updates and default dicts
+    # both sequential and parallel blocks case
     embedding_dimensions: dict[int, int] = field(default_factory=dict)
-
     attention_input_dimensions: dict[int, int] = field(default_factory=dict)
-    attention_output_dimensions: dict[int, int] = field(default_factory=dict)
-
-    mlp_input_dimensions: dict[int, int] = field(default_factory=dict)
     mlp_output_dimensions: dict[int, int] = field(default_factory=dict)
+
+    # the 2nd path for the sequential blocks case
+    attention_output_dimensions: dict[int, int] = field(default_factory=dict)
+    mlp_input_dimensions: dict[int, int] = field(default_factory=dict)
 
     head_dimension: int | None = None
 
-    const_dimension: int | None = None  # to be able to load models without config, sliced with const sparsity
+    # used when loading models sliced with const sparsity that are missing a json config
+    const_dimension: int | None = None
 
     @staticmethod
-    def from_dict(d: dict) -> 'SlicingConfig':
+    def from_dict(d: dict) -> SlicingConfig:
         """Return a SliceConfig object constructed from the provided dictionary."""
 
         def convert_dict_keys_to_int(d: Any) -> Any:
@@ -470,7 +471,7 @@ class SlicingConfig:
         return SlicingConfig(**convert_dict_keys_to_int(d))
 
     @staticmethod
-    def from_json_string(json_str: str) -> 'SlicingConfig':
+    def from_json_string(json_str: str) -> SlicingConfig:
         """Return a SliceConfig object constructed from the provided JSON string."""
         return SlicingConfig.from_dict(json.loads(json_str))
 
@@ -485,6 +486,6 @@ class SlicingConfig:
         """Return a JSON representation of this object."""
         return json.dumps(self.to_dict())
 
-    def clone(self) -> 'SlicingConfig':
+    def clone(self) -> SlicingConfig:
         """Return a clone of this object."""
         return copy.deepcopy(self)
